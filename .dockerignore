@@ -1,0 +1,17 @@
+node_modules/
+frontend/node_modules/
+frontend/dist/
+data/
+Book/
+!Book/
+!Book/*.pdf
+Newtestament/
+Passage/
+PPT/
+Mentor/
+.npm-cache/
+backup-before-zk-sync-*/
+.git/
+.env
+*.log
+npm-debug.log*

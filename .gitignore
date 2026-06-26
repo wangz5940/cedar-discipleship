@@ -1,0 +1,30 @@
+node_modules/
+frontend/dist/
+backend/main
+backend/server
+
+# Runtime data and sensitive content
+data/
+Book/
+PPT/
+Passage/
+Newtestament/
+Mentor/
+config.json
+weekly_task.md
+newtestament.md
+Kuangye.md
+.ssh/
+docs/
+
+
+# Local environment
+.env
+.env.local
+.env.production
+
+# Logs and local OS noise
+log/
+*.log
+npm-debug.log*
+.DS_Store

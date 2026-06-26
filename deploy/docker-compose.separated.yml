@@ -1,0 +1,73 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: agp-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-agp}
+      MYSQL_USER: ${MYSQL_USER:-agp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-agp}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-agp-root}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${AGP_MYSQL_PORT:-3307}:3306"
+    volumes:
+      - ../data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${MYSQL_USER:-agp}", "-p${MYSQL_PASSWORD:-agp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5m
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        GOPROXY: "${GOPROXY:-https://proxy.golang.org,direct}"
+        GOSUMDB: "${GOSUMDB:-sum.golang.org}"
+        GOPRIVATE: "${GOPRIVATE:-}"
+        GONOSUMDB: "${GONOSUMDB:-}"
+        GONOPROXY: "${GONOPROXY:-}"
+    container_name: agp-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      AGP_ADDR: ":8080"
+      AGP_DSN: "${MYSQL_USER:-agp}:${MYSQL_PASSWORD:-agp}@tcp(mysql:3306)/${MYSQL_DATABASE:-agp}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
+      AGP_JWT_SECRET: "${AGP_JWT_SECRET:-please-change-this-to-a-long-random-string}"
+      AGP_ASSETS_ROOT: "/data/agp/assets"
+      AGP_CONTENT_ROOT: "/data/agp/content"
+      AGP_MIGRATIONS_DIR: "/app/migrations"
+      BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
+      BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:-ChangeMe123}"
+      BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
+    volumes:
+      - ../data/assets:/data/agp/assets
+      - ../Book:/data/agp/content/Book:ro
+      - ../Newtestament:/data/agp/content/Newtestament:ro
+      - ../PPT:/data/agp/content/PPT:ro
+      - ../newtestament.md:/data/agp/content/newtestament.md:ro
+      - ../weekly_task.md:/data/agp/content/weekly_task.md:ro
+      - ../Kuangye.md:/data/agp/content/Kuangye.md:ro
+      - ../README.md:/data/agp/content/README.md:ro
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    container_name: agp-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    volumes:
+      - ../Newtestament:/usr/share/nginx/html/Newtestament:ro
+      - ../PPT:/usr/share/nginx/html/PPT:ro
+    ports:
+      - "${AGP_WEB_PORT:-5114}:80"
