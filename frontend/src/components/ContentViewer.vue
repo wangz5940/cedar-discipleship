@@ -74,7 +74,7 @@ function openAdjacentItem(item) {
 
 <template>
   <div v-if="viewer" class="modal-backdrop" @click="closeOnBackdrop">
-    <div class="viewer-modal">
+    <div class="viewer-modal" :class="{ 'viewer-modal-pdf': viewer.type === 'pdf' }">
       <div class="viewer-head">
         <div class="viewer-head-copy">
           <div class="eyebrow">Content Viewer</div>
@@ -162,7 +162,13 @@ function openAdjacentItem(item) {
           </div>
         </aside>
 
-        <div class="viewer-main" :class="{ 'viewer-main-video': viewer.type === 'video' }">
+        <div
+          class="viewer-main"
+          :class="{
+            'viewer-main-video': viewer.type === 'video',
+            'viewer-main-pdf': viewer.type === 'pdf',
+          }"
+        >
           <div v-if="activeSection" class="viewer-main-toolbar">
             <div class="viewer-main-context">
               <span class="pill">{{ activeSection.label }}</span>
@@ -185,7 +191,12 @@ function openAdjacentItem(item) {
               playsinline
             ></video>
           </div>
-          <iframe v-else class="viewer-frame" :src="viewer.url" :title="viewer.title"></iframe>
+          <iframe
+            v-else
+            class="viewer-frame"
+            :src="viewer.url"
+            :title="viewer.title"
+          ></iframe>
         </div>
       </div>
     </div>

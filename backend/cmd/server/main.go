@@ -1019,11 +1019,38 @@ func (a *app) resolveAssetPath(groupID, id uint64) (string, string, string, erro
 	if err := a.db.QueryRow(`SELECT storage_path, original_name, mime_type FROM assets WHERE id=? AND group_id=?`, id, groupID).Scan(&storagePath, &original, &mt); err != nil {
 		return "", "", "", err
 	}
-	abs, _, err := resolveFileInRoot(a.assetsRoot, storagePath)
+	abs, _, err := resolveExistingFileInRoots(storagePath, a.assetsRoot, a.contentRoot)
 	if err != nil {
 		return "", "", "", err
 	}
 	return abs, original, mt, nil
+}
+
+func resolveExistingFileInRoots(path string, roots ...string) (string, string, error) {
+	var lastErr error
+	for _, root := range roots {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		abs, original, err := resolveFileInRoot(root, path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		info, statErr := os.Stat(abs)
+		if statErr == nil && !info.IsDir() {
+			return abs, original, nil
+		}
+		if statErr != nil {
+			lastErr = statErr
+		} else {
+			lastErr = errors.New("path_is_directory")
+		}
+	}
+	if lastErr == nil {
+		lastErr = os.ErrNotExist
+	}
+	return "", "", lastErr
 }
 
 func resolveFileInRoot(root, path string) (string, string, error) {
@@ -2769,12 +2796,25 @@ func (a *app) currentWeekAt(groupID uint64, date string) (map[string]any, error)
 	var start, end time.Time
 	var title, verse string
 	var recite sql.NullString
-	err := a.db.QueryRow(`SELECT id,start_date,end_date,title,verse_ref,recite_text FROM study_weeks WHERE group_id=? AND start_date <= ? AND end_date >= ? ORDER BY start_date DESC LIMIT 1`, groupID, date, date).
-		Scan(&id, &start, &end, &title, &verse, &recite)
+	var bookEnabled, videoEnabled, verseEnabled, outlineEnabled bool
+	err := a.db.QueryRow(`SELECT id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled
+                FROM study_weeks WHERE group_id=? AND start_date <= ? AND end_date >= ? ORDER BY start_date DESC LIMIT 1`, groupID, date, date).
+		Scan(&id, &start, &end, &title, &verse, &recite, &bookEnabled, &videoEnabled, &verseEnabled, &outlineEnabled)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"id": id, "start": start.Format("2006-01-02"), "end": end.Format("2006-01-02"), "title": title, "verse_ref": verse, "recite_text": recite.String}, nil
+	return map[string]any{
+		"id":              id,
+		"start":           start.Format("2006-01-02"),
+		"end":             end.Format("2006-01-02"),
+		"title":           title,
+		"verse_ref":       verse,
+		"recite_text":     recite.String,
+		"book_enabled":    bookEnabled,
+		"video_enabled":   videoEnabled,
+		"verse_enabled":   verseEnabled,
+		"outline_enabled": outlineEnabled,
+	}, nil
 }
 
 func (a *app) weekTasks(groupID, weekID uint64) ([]map[string]any, error) {
@@ -2824,7 +2864,23 @@ func deleteStudyWeekTasksTx(tx *sql.Tx, groupID, weekID uint64) error {
 	return err
 }
 
+func existingStudyTaskTitleTx(tx *sql.Tx, groupID, weekID uint64, taskType string) string {
+	var title sql.NullString
+	if err := tx.QueryRow(`SELECT title FROM study_tasks WHERE group_id=? AND week_id=? AND task_type=? ORDER BY sort_order,id LIMIT 1`, groupID, weekID, taskType).Scan(&title); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(title.String)
+}
+
+func weeklyVerseTaskTitle(req studyWeekInput, existingTitle string) string {
+	if !req.VerseEnabled {
+		return ""
+	}
+	return firstNonEmpty(strings.TrimSpace(req.VerseRef), strings.TrimSpace(existingTitle), "背经")
+}
+
 func replaceStudyWeekTasksTx(tx *sql.Tx, groupID, weekID uint64, req studyWeekInput, now time.Time) error {
+	existingVerseTitle := existingStudyTaskTitleTx(tx, groupID, weekID, "weekly_verse")
 	if err := deleteStudyWeekTasksTx(tx, groupID, weekID); err != nil {
 		return err
 	}
@@ -2864,8 +2920,8 @@ func replaceStudyWeekTasksTx(tx *sql.Tx, groupID, weekID uint64, req studyWeekIn
 			break
 		}
 	}
-	if req.VerseEnabled && strings.TrimSpace(req.VerseRef) != "" {
-		if _, err := insertStudyTaskTx(tx, groupID, weekID, "weekly_verse", strings.TrimSpace(req.VerseRef), strings.TrimSpace(req.ReciteText), 1, now); err != nil {
+	if verseTitle := weeklyVerseTaskTitle(req, existingVerseTitle); verseTitle != "" {
+		if _, err := insertStudyTaskTx(tx, groupID, weekID, "weekly_verse", verseTitle, strings.TrimSpace(req.ReciteText), 1, now); err != nil {
 			return err
 		}
 	}

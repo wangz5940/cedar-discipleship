@@ -87,6 +87,14 @@ const scripture = computed(() => daily.value.scripture || {});
 const weekly = computed(() => settings.value.task_sections?.weekly || {});
 const share = computed(() => settings.value.task_sections?.share || {});
 const libraryItems = computed(() => resourceLibrary.value.flatMap((section) => section.items || []));
+const markdownFileOptions = computed(() => {
+  const seen = new Set();
+  return libraryItems.value.filter((item) => {
+    if (item.type !== 'markdown' || !item.url || seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  });
+});
 const readingOptions = computed(() => libraryItems.value.filter((item) => ['markdown', 'pdf'].includes(item.type)));
 const videoOptions = computed(() => libraryItems.value.filter((item) => item.type === 'video'));
 const outlineOptions = computed(() => libraryItems.value.filter((item) => item.type === 'image'));
@@ -167,6 +175,18 @@ function optionText(item) {
   return item.title || item.original_name || '未命名资源';
 }
 
+function fileOptionText(item) {
+  return item.title || item.original_name || item.url || '未命名文件';
+}
+
+function markdownOptionsWithCurrent(currentValue) {
+  const current = String(currentValue || '').trim();
+  if (!current || markdownFileOptions.value.some((item) => item.url === current)) {
+    return markdownFileOptions.value;
+  }
+  return [{ title: `${current}（当前配置）`, url: current, type: 'markdown' }, ...markdownFileOptions.value];
+}
+
 async function uploadSelectedFile() {
   await uploadLibraryFile(uploadInput.value, uploadCategory.value);
 }
@@ -196,7 +216,19 @@ async function runLocalBackupImport() {
 }
 
 function openAsset(asset) {
-  window.open(`/api/assets/${asset.id}/download`, '_blank', 'noopener');
+  previewLibraryItem({
+    title: asset.title || asset.original_name || '资源预览',
+    original_name: asset.original_name || '',
+    url: `/api/assets/${asset.id}/download`,
+    type:
+      asset.category === 'video'
+        ? 'video'
+        : asset.category === 'outline'
+          ? 'image'
+          : asset.category === 'markdown'
+            ? 'markdown'
+            : 'pdf',
+  });
 }
 
 function resourceTypeLabel(asset) {
@@ -416,8 +448,8 @@ async function selectCalendarDate(day) {
           <div v-if="!canAdmin" class="empty">当前账号没有管理权限。</div>
           <div v-else class="grid">
             <div class="admin-tabs">
-              <button :class="{ active: adminSection === 'members' }" type="button" @click="selectAdmin('members')">人员管理</button>
               <button :class="{ active: adminSection === 'learning' }" type="button" @click="selectAdmin('learning')">学习内容</button>
+              <button :class="{ active: adminSection === 'members' }" type="button" @click="selectAdmin('members')">人员管理</button>
               <button :class="{ active: adminSection === 'library' }" type="button" @click="selectAdmin('library')">资源库</button>
               <button :class="{ active: adminSection === 'data' }" type="button" @click="selectAdmin('data')">数据工具</button>
             </div>
@@ -501,11 +533,23 @@ async function selectCalendarDate(day) {
                     <h2>每日学习配置</h2>
                     <div class="form-stack admin-form-grid">
                       <label class="admin-field"><span class="admin-field-label">每日任务名称</span><input :value="daily.label || ''" @change="updateLearning(['task_sections','daily','label'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">每日任务文件</span><input :value="daily.path || ''" @change="updateLearning(['task_sections','daily','path'], $event.target.value)" /></label>
+                      <label class="admin-field">
+                        <span class="admin-field-label">每日任务文件</span>
+                        <select :value="daily.path || ''" @change="updateLearning(['task_sections','daily','path'], $event.target.value)">
+                          <option value="">使用默认文件（/newtestament.md）</option>
+                          <option v-for="option in markdownOptionsWithCurrent(daily.path)" :key="option.url" :value="option.url">{{ fileOptionText(option) }}</option>
+                        </select>
+                      </label>
                       <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修入口</span></label>
                       <label class="admin-field"><span class="admin-field-label">灵修标题</span><input :value="devotion.title || ''" @change="updateLearning(['task_sections','daily','devotion','title'], $event.target.value)" /></label>
                       <label class="admin-field"><span class="admin-field-label">阅读按钮文字</span><input :value="devotion.button_label || ''" @change="updateLearning(['task_sections','daily','devotion','button_label'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">每日任务文件</span><input :value="devotion.path || ''" @change="updateLearning(['task_sections','daily','devotion','path'], $event.target.value)" /></label>
+                      <label class="admin-field">
+                        <span class="admin-field-label">每日任务文件</span>
+                        <select :value="devotion.path || ''" @change="updateLearning(['task_sections','daily','devotion','path'], $event.target.value)">
+                          <option value="">沿用上面的每日任务文件</option>
+                          <option v-for="option in markdownOptionsWithCurrent(devotion.path || daily.path)" :key="option.url" :value="option.url">{{ fileOptionText(option) }}</option>
+                        </select>
+                      </label>
                       <label class="admin-field"><span class="admin-field-label">第 1 篇对应日期</span><input type="date" :value="devotion.numbered_start_date || ''" @change="updateLearning(['task_sections','daily','devotion','numbered_start_date'], $event.target.value)" /></label>
                       <label class="admin-field"><span class="admin-field-label">起始篇号</span><input type="number" min="1" :value="devotion.numbered_start || 1" @change="updateLearning(['task_sections','daily','devotion','numbered_start'], Number($event.target.value || 1))" /></label>
                     </div>
@@ -543,9 +587,11 @@ async function selectCalendarDate(day) {
                     <label class="admin-field"><span class="admin-field-label">默写经文</span><input :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref', $event.target.value)" /></label>
                     <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text', $event.target.value)"></textarea></label>
                     <div class="admin-binding-list">
-                      <div class="admin-field-label">读物挂载文件</div>
-                      <div v-for="(item, index) in weekDraft.readings || []" :key="`reading-${index}`" class="admin-binding-row">
+                      <div class="admin-field-label">读物挂载文件与页码</div>
+                      <div v-for="(item, index) in weekDraft.readings || []" :key="`reading-${index}`" class="admin-binding-row reading-binding-row">
                         <input :value="item.title || ''" placeholder="读物标题" @change="updateWeekBinding('readings', index, 'title', $event.target.value)" />
+                        <input type="number" min="1" inputmode="numeric" :value="item.page_start || ''" placeholder="起始页" @change="updateWeekBinding('readings', index, 'page_start', $event.target.value)" />
+                        <input type="number" min="1" inputmode="numeric" :value="item.page_end || ''" placeholder="结束页" @change="updateWeekBinding('readings', index, 'page_end', $event.target.value)" />
                         <select :value="librarySelectionValue(item)" @change="applyBindingSelection('readings', index, $event.target.value)">
                           <option value="">不挂载文件</option>
                           <option v-for="option in readingOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>

@@ -17,6 +17,8 @@ Kuangye.md
 .ssh/
 docs/
 
+.trae
+.agents/
 
 # Local environment
 .env

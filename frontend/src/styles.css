@@ -774,6 +774,9 @@ input:focus, select:focus, textarea:focus {
   gap: 10px;
   align-items: center;
 }
+.reading-binding-row {
+  grid-template-columns: minmax(0, 1.25fr) 96px 96px minmax(0, 1fr) auto;
+}
 .admin-checkbox-row {
   display: flex;
   flex-wrap: wrap;
@@ -1302,9 +1305,27 @@ input:focus, select:focus, textarea:focus {
   min-width: 0;
 }
 
+.viewer-main-pager {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.viewer-main-pager .ghost,
+.viewer-actions .secondary {
+  white-space: nowrap;
+}
+
 .viewer-main.viewer-main-video {
   display: grid;
   align-content: start;
+}
+
+.viewer-main.viewer-main-pdf {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
 }
 
 .viewer-sidebar {
@@ -2357,11 +2378,16 @@ textarea:focus {
   border-radius: var(--radius-md);
   padding: 24px;
   background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
 
 .task-option.done {
-  background: #f4f7f5;
-  border-color: rgba(77, 122, 87, 0.2);
+  background:
+    linear-gradient(180deg, rgba(232, 245, 236, 0.96), rgba(244, 250, 246, 0.98));
+  border-color: rgba(77, 122, 87, 0.42);
+  box-shadow:
+    0 18px 38px rgba(77, 122, 87, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
 
 .task-head {
@@ -2381,6 +2407,10 @@ textarea:focus {
   font-family: var(--font-serif);
   color: var(--text);
   font-weight: 600;
+}
+
+.task-option.done .task-title {
+  color: #23432c;
 }
 
 .task-subtitle {
@@ -2404,9 +2434,10 @@ textarea:focus {
 }
 
 .task-option.done .task-icon {
-  background: #ffffff;
-  color: #4d7a57;
-  border-color: rgba(77, 122, 87, 0.2);
+  background: linear-gradient(180deg, #ffffff, #edf8f0);
+  color: #2f6b3e;
+  border-color: rgba(77, 122, 87, 0.34);
+  box-shadow: 0 8px 18px rgba(77, 122, 87, 0.12);
 }
 
 .task-actions {
@@ -2427,9 +2458,26 @@ textarea:focus {
 }
 
 .task-state-badge.done {
-  background: var(--green-soft);
-  border-color: rgba(77, 122, 87, 0.2);
-  color: #3b5c42;
+  background: linear-gradient(180deg, #dff3e6, #eef9f1);
+  border-color: rgba(77, 122, 87, 0.34);
+  color: #244d30;
+  font-weight: 700;
+}
+
+.task-option.done .task-actions .ghost {
+  background: linear-gradient(180deg, #4d7a57, #3f6547);
+  color: #f7fff9;
+  box-shadow:
+    0 12px 22px rgba(77, 122, 87, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.task-option.done .task-actions .ghost:hover {
+  background: linear-gradient(180deg, #578763, #476f50);
+  color: #ffffff;
+  box-shadow:
+    0 14px 26px rgba(77, 122, 87, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .section-title {
@@ -2966,8 +3014,102 @@ textarea:focus {
   .viewer-body.viewer-body-split {
     grid-template-columns: 1fr;
   }
+
+  .viewer-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .viewer-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .viewer-main-toolbar {
+    display: grid;
+    gap: 10px;
+  }
+
+  .viewer-main-pager {
+    justify-content: flex-end;
+  }
   
   .mobile-tabs {
     padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+}
+
+@media (max-width: 760px) {
+  .modal-backdrop {
+    padding: 0;
+    place-items: stretch;
+  }
+
+  .viewer-modal {
+    width: 100%;
+    max-height: 100vh;
+    min-height: 100vh;
+    border-radius: 0;
+    border: 0;
+  }
+
+  .viewer-head {
+    padding: 20px 18px 16px;
+  }
+
+  .viewer-head h2 {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .viewer-actions {
+    justify-content: stretch;
+  }
+
+  .viewer-actions > button,
+  .viewer-actions > a {
+    flex: 1 1 calc(50% - 6px);
+    text-align: center;
+  }
+
+  .viewer-body {
+    padding: 14px;
+  }
+
+  .viewer-main-toolbar {
+    padding: 10px 12px;
+  }
+
+  .viewer-main-context {
+    display: grid;
+    gap: 4px;
+  }
+
+  .viewer-main-pager {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .viewer-main-pager .ghost {
+    width: 100%;
+  }
+
+  .viewer-main.viewer-main-pdf {
+    min-height: calc(100vh - 220px);
+  }
+
+  .viewer-main.viewer-main-pdf .viewer-frame {
+    min-height: calc(100vh - 300px);
+    height: calc(100vh - 300px);
+    border-radius: 18px;
+  }
+
+  .viewer-video-shell,
+  .viewer-image-wrap,
+  .viewer-frame {
+    border-radius: 18px;
   }
 }

@@ -7,7 +7,7 @@ const state = {
   token: localStorage.getItem('agp_token') || '',
   user: null,
   tab: 'home',
-  adminSection: 'members',
+  adminSection: 'learning',
   sidebarCollapsed: true,
   selectedDate: todayString(),
   calendar: null,
@@ -445,6 +445,9 @@ export function setTab(tab) {
     return;
   }
   state.tab = tab;
+  if (tab === 'admin' && ['learning', 'library'].includes(state.adminSection)) {
+    loadAdminData();
+  }
   render();
 }
 
@@ -916,6 +919,44 @@ export function extractPdfPageRange(text) {
   return `${start}-${end}`;
 }
 
+function parsePdfPageRangeParts(text) {
+  const pageRange = extractPdfPageRange(text);
+  if (!pageRange) return { pageStart: '', pageEnd: '' };
+  const [pageStart, pageEnd] = String(pageRange).split('-');
+  return {
+    pageStart: pageStart || '',
+    pageEnd: pageEnd || pageStart || '',
+  };
+}
+
+function normalizePageField(value) {
+  const parsed = Number(String(value ?? '').trim());
+  if (!Number.isFinite(parsed) || parsed < 1) return '';
+  return String(Math.floor(parsed));
+}
+
+function composePdfPageRange(startValue, endValue) {
+  const start = Number(normalizePageField(startValue));
+  if (!start) return '';
+  const end = Math.max(start, Number(normalizePageField(endValue) || start));
+  return `${start}-${end}`;
+}
+
+function applyPdfPageRangeToTitle(title, startValue, endValue) {
+  const source = String(title || '').trim();
+  const pageRange = composePdfPageRange(startValue, endValue);
+  const pageRegex = /(\d{1,4})\s*(?:[-~—–至到]\s*(\d{1,4}))?\s*页/;
+  const stripRegex = /\s*(\d{1,4})\s*(?:[-~—–至到]\s*(\d{1,4}))?\s*页/g;
+  if (!pageRange) {
+    return source.replace(stripRegex, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+  const nextRange = `${pageRange}页`;
+  if (pageRegex.test(source)) {
+    return source.replace(pageRegex, nextRange).replace(/\s{2,}/g, ' ').trim();
+  }
+  return source ? `${source} ${nextRange}`.trim() : nextRange;
+}
+
 function isTrimmedPDFSource(url) {
   return /^\/api\/(?:assets\/\d+\/range|content\/pdf-range)\b/.test(String(url || ''));
 }
@@ -925,6 +966,36 @@ function buildViewerURL(url, type, pageRange = '', sourceURL = '') {
   const startPage = isTrimmedPDFSource(sourceURL) ? '1' : String(pageRange).split('-')[0];
   const separator = String(url).includes('#') ? '&' : '#';
   return `${url}${separator}page=${encodeURIComponent(startPage)}&zoom=page-width`;
+}
+
+function preferStandalonePDFViewer(type) {
+  if (type !== 'pdf' || typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua);
+  const isNarrowViewport = window.matchMedia
+    ? window.matchMedia('(max-width: 900px)').matches
+    : window.innerWidth <= 900;
+  const hasCoarsePointer = window.matchMedia
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false;
+  return isMobileUA || (isNarrowViewport && hasCoarsePointer);
+}
+
+function openPendingViewerWindow(title) {
+  if (typeof window === 'undefined') return null;
+  const popup = window.open('', '_blank');
+  if (!popup) return null;
+  try {
+    popup.document.title = title || 'Opening PDF';
+    popup.document.body.style.margin = '0';
+    popup.document.body.style.display = 'grid';
+    popup.document.body.style.placeItems = 'center';
+    popup.document.body.style.minHeight = '100vh';
+    popup.document.body.style.fontFamily = 'system-ui, sans-serif';
+    popup.document.body.style.color = '#334155';
+    popup.document.body.textContent = '正在打开 PDF...';
+  } catch {}
+  return popup;
 }
 
 function resolveContentSourceURL(target) {
@@ -948,11 +1019,26 @@ export function closeViewer() {
 }
 
 export async function openContentTarget(target) {
-  closeViewer();
   const sourceURL = resolveContentSourceURL(target);
   const type = String(target.type || inferResourceType(target.url)).toLowerCase();
   const title = target.title || target.label || '阅读内容';
   const pageRange = target.pageRange || extractPdfPageRange(title);
+  if (preferStandalonePDFViewer(type)) {
+    if (!sourceURL.startsWith('/api/')) {
+      const finalURL = new URL(buildViewerURL(sourceURL, type, pageRange, sourceURL), window.location.origin).toString();
+      window.location.assign(finalURL);
+      return;
+    }
+    const res = await fetch(sourceURL, { headers: { Authorization: `Bearer ${state.token}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const blobType = inferResourceTypeFromMime(blob.type, type);
+    const objectURL = URL.createObjectURL(blob);
+    const finalURL = buildViewerURL(objectURL, blobType, pageRange, sourceURL);
+    window.location.assign(finalURL);
+    return;
+  }
+  closeViewer();
   if (sourceURL.startsWith('/api/')) {
     const res = await fetch(sourceURL, { headers: { Authorization: `Bearer ${state.token}` } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1020,7 +1106,7 @@ export async function openContentTarget(target) {
   render();
 }
 
-export async function openViewerItemInNewWindow(item) {
+export async function openViewerItemInNewWindow(item, popup = null) {
   try {
     const sourceURL = resolveContentSourceURL(item);
     const type = String(item.type || inferResourceType(item.url)).toLowerCase();
@@ -1031,12 +1117,22 @@ export async function openViewerItemInNewWindow(item) {
       const blobType = inferResourceTypeFromMime(blob.type, type);
       const objectURL = URL.createObjectURL(blob);
       const finalURL = buildViewerURL(objectURL, blobType, item.pageRange || extractPdfPageRange(item.title || ''), sourceURL);
-      window.open(finalURL, '_blank', 'noopener');
+      if (popup && !popup.closed) {
+        popup.location.replace(finalURL);
+      } else {
+        window.open(finalURL, '_blank', 'noopener');
+      }
       return;
     }
     const finalURL = buildViewerURL(sourceURL, type, item.pageRange || extractPdfPageRange(item.title || ''), sourceURL);
-    window.open(finalURL, '_blank', 'noopener');
+    const absoluteURL = new URL(finalURL, window.location.origin).toString();
+    if (popup && !popup.closed) {
+      popup.location.replace(absoluteURL);
+    } else {
+      window.open(absoluteURL, '_blank', 'noopener');
+    }
   } catch (error) {
+    if (popup && !popup.closed) popup.close();
     toast(`打开失败：${error.message}`);
   }
 }
@@ -1080,10 +1176,11 @@ function currentTaskOptions() {
   const configPlan = currentWeekConfigPlan();
   const serverTasks = state.bootstrap?.current_tasks || [];
   const bookTasks = serverTasks.filter((task) => task.task_type === 'weekly_book');
-  const videoTask = serverTasks.find((task) => task.task_type === 'weekly_video');
+  const videoTasks = serverTasks.filter((task) => task.task_type === 'weekly_video');
   const verseTask = serverTasks.find((task) => task.task_type === 'weekly_verse');
   const dailyLinks = [getDailyDevotionPlan(), getDailyScripturePlan()].filter(Boolean);
   const dailyLabel = dailyTaskLabel();
+  const videoLinks = currentWeeklyVideoLinks(videoTasks, configPlan);
   const tasks = [
     {
       type: 'daily_devotion',
@@ -1096,38 +1193,44 @@ function currentTaskOptions() {
       contentLinks: dailyLinks,
     },
   ];
-  for (const book of buildWeeklyBookEntries(bookTasks, week.title, configPlan)) {
+  if (week.book_enabled !== false) {
+    for (const book of buildWeeklyBookEntries(bookTasks, week.title, configPlan)) {
+      tasks.push({
+        type: 'weekly_book',
+        title: book.title,
+        icon: shortTaskIcon(book.title),
+        part: book.title,
+        detail: book.title,
+        summary: '周读物',
+        contentURL: book.contentLinks[0]?.url || '',
+        contentLinks: book.contentLinks,
+      });
+    }
+  }
+  if (week.video_enabled !== false && (videoLinks.length || videoTasks.length)) {
     tasks.push({
-      type: 'weekly_book',
-      title: book.title,
-      icon: shortTaskIcon(book.title),
-      part: book.title,
-      detail: book.title,
-      summary: '周读物',
-      contentURL: book.contentLinks[0]?.url || '',
-      contentLinks: book.contentLinks,
+      type: 'weekly_video',
+      title: videoLinks[0]?.title || videoTasks[0]?.title || '本周视频',
+      icon: '视频',
+      part: '',
+      detail: videoLinks[0]?.title || videoTasks[0]?.title || '本周视频',
+      summary: '必看视频',
+      contentURL: videoLinks[0]?.url || '',
+      contentLinks: videoLinks,
     });
   }
-  tasks.push({
-    type: 'weekly_video',
-    title: currentWeeklyVideoLinks(videoTask, configPlan)[0]?.title || videoTask?.title || '本周视频',
-    icon: '视频',
-    part: '',
-    detail: currentWeeklyVideoLinks(videoTask, configPlan)[0]?.title || videoTask?.title || '本周视频',
-    summary: '必看视频',
-    contentURL: currentWeeklyVideoLinks(videoTask, configPlan)[0]?.url || '',
-    contentLinks: currentWeeklyVideoLinks(videoTask, configPlan),
-  });
-  tasks.push({
-    type: 'weekly_verse',
-    title: week.verse_ref || verseTask?.title || '本周背经',
-    icon: '背经',
-    part: '',
-    detail: week.verse_ref || verseTask?.title || '本周背经',
-    summary: '背经与默想',
-    contentURL: '',
-    contentLinks: [],
-  });
+  if (week.verse_enabled !== false && (week.verse_ref || verseTask?.title)) {
+    tasks.push({
+      type: 'weekly_verse',
+      title: week.verse_ref || verseTask?.title || '本周背经',
+      icon: '背经',
+      part: '',
+      detail: week.verse_ref || verseTask?.title || '本周背经',
+      summary: '背经与默想',
+      contentURL: '',
+      contentLinks: [],
+    });
+  }
   const ownRecords = state.checkins.filter((item) => item.user_id === state.user?.id && item.logical_date === state.selectedDate);
   return tasks.map((task) => ({
     ...task,
@@ -1289,15 +1392,30 @@ function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
   return entries;
 }
 
-function currentWeeklyVideoLinks(videoTask, configPlan = null) {
+function currentWeeklyVideoLinks(videoTasks, configPlan = null) {
+  const taskList = Array.isArray(videoTasks) ? videoTasks.filter(Boolean) : (videoTasks ? [videoTasks] : []);
   const configVideos = normalizeWeekVideos(configPlan).map((item) => ({
     label: item.title || '视频内容',
     title: item.title || '本周视频',
     url: item.url,
     type: 'video',
   })).filter((item) => item.url);
-  const assetLink = firstTaskAssetLink(videoTask, videoTask?.title || '本周视频');
-  const links = [...configVideos, ...(assetLink ? [assetLink] : [])];
+  const directTaskLinks = taskList
+    .map((task) => {
+      const url = String(task?.url || task?.content || '').trim();
+      if (!url) return null;
+      return {
+        label: task.title || '视频内容',
+        title: task.title || '本周视频',
+        url,
+        type: inferResourceType(url, 'video'),
+      };
+    })
+    .filter(Boolean);
+  const assetLinks = taskList
+    .map((task) => firstTaskAssetLink(task, task?.title || '本周视频'))
+    .filter(Boolean);
+  const links = [...configVideos, ...directTaskLinks, ...assetLinks];
   return links.filter((item, index, arr) => item.url && arr.findIndex((other) => other.url === item.url) === index);
 }
 
@@ -1662,7 +1780,23 @@ function resourcesView() {
         el('span', { class: 'pill', text: asset.category }),
         el('h3', { text: asset.title }),
         el('p', { class: 'muted', text: asset.original_name }),
-        el('button', { class: 'secondary', text: '打开', onclick: () => window.open(`/api/assets/${asset.id}/download`, '_blank') }),
+        el('button', {
+          class: 'secondary',
+          text: '打开',
+          onclick: () => previewLibraryItem({
+            title: asset.title || asset.original_name || '资源预览',
+            original_name: asset.original_name || '',
+            url: `/api/assets/${asset.id}/download`,
+            type:
+              asset.category === 'video'
+                ? 'video'
+                : asset.category === 'outline'
+                  ? 'image'
+                  : asset.category === 'markdown'
+                    ? 'markdown'
+                    : 'pdf',
+          }),
+        }),
       ])))
     : el('div', { class: 'empty', text: '暂无资源，请在管理后台登记资料。' }));
 }
@@ -1697,8 +1831,8 @@ function adminShell(title, content) {
   return el('div', { class: 'grid' }, [
     el('div', { class: 'admin-tabs' }, [
       ...[
-        ['members', '人员管理'],
         ['learning', '学习内容'],
+        ['members', '人员管理'],
         ['library', '资源库'],
       ].map(([key, label]) => el('button', {
       class: state.adminSection === key ? 'active' : '',
@@ -1765,6 +1899,22 @@ function libraryItemBySelection(value) {
     || null;
 }
 
+function emptyWeekBinding(kind) {
+  if (kind === 'videos') {
+    return { title: '', url: '', type: 'video', asset_id: 0 };
+  }
+  return { title: '', url: '', type: 'pdf', asset_id: 0, page_start: '', page_end: '' };
+}
+
+function normalizeReadingDraftItem(item = {}) {
+  const parsed = parsePdfPageRangeParts(item.title || '');
+  return {
+    ...item,
+    page_start: normalizePageField(item.page_start) || parsed.pageStart,
+    page_end: normalizePageField(item.page_end) || parsed.pageEnd,
+  };
+}
+
 function weekDraftFromWeek(week = null) {
   if (!week) {
     return {
@@ -1778,8 +1928,8 @@ function weekDraftFromWeek(week = null) {
       video_enabled: true,
       verse_enabled: true,
       outline_enabled: true,
-      readings: [{ title: '', url: '', type: 'pdf', asset_id: 0 }],
-      videos: [{ title: '', url: '', type: 'video', asset_id: 0 }],
+      readings: [emptyWeekBinding('readings')],
+      videos: [emptyWeekBinding('videos')],
       outline: { title: '', url: '', type: 'image', asset_id: 0 },
     };
   }
@@ -1794,8 +1944,10 @@ function weekDraftFromWeek(week = null) {
     video_enabled: week.video_enabled !== false,
     verse_enabled: week.verse_enabled !== false,
     outline_enabled: week.outline_enabled !== false,
-    readings: (week.readings || []).length ? (week.readings || []).map((item) => ({ ...item })) : [{ title: '', url: '', type: 'pdf', asset_id: 0 }],
-    videos: (week.videos || []).length ? (week.videos || []).map((item) => ({ ...item })) : [{ title: '', url: '', type: 'video', asset_id: 0 }],
+    readings: (week.readings || []).length
+      ? (week.readings || []).map((item) => normalizeReadingDraftItem({ ...item }))
+      : [emptyWeekBinding('readings')],
+    videos: (week.videos || []).length ? (week.videos || []).map((item) => ({ ...item })) : [emptyWeekBinding('videos')],
     outline: week.outline ? { ...week.outline } : { title: '', url: '', type: 'image', asset_id: 0 },
   };
 }
@@ -1808,7 +1960,7 @@ export function updateWeekDraftField(key, value) {
 export function updateWeekBinding(kind, index, field, value) {
   const draft = { ...(state.weekDraft || weekDraftFromWeek()) };
   const list = Array.isArray(draft[kind]) ? draft[kind].map((item) => ({ ...item })) : [];
-  if (!list[index]) list[index] = { title: '', url: '', type: kind === 'videos' ? 'video' : 'pdf', asset_id: 0 };
+  if (!list[index]) list[index] = emptyWeekBinding(kind);
   list[index][field] = value;
   draft[kind] = list;
   state.weekDraft = draft;
@@ -1819,7 +1971,7 @@ export function applyBindingSelection(kind, index, value) {
   const item = libraryItemBySelection(value);
   const draft = { ...(state.weekDraft || weekDraftFromWeek()) };
   const list = Array.isArray(draft[kind]) ? draft[kind].map((entry) => ({ ...entry })) : [];
-  if (!list[index]) list[index] = { title: '', url: '', type: kind === 'videos' ? 'video' : 'pdf', asset_id: 0 };
+  if (!list[index]) list[index] = emptyWeekBinding(kind);
   list[index] = item ? {
     ...list[index],
     title: list[index].title || item.title || item.original_name || '',
@@ -1839,7 +1991,7 @@ export function applyBindingSelection(kind, index, value) {
 export function addWeekBinding(kind) {
   const draft = { ...(state.weekDraft || weekDraftFromWeek()) };
   const list = Array.isArray(draft[kind]) ? draft[kind].map((item) => ({ ...item })) : [];
-  list.push({ title: '', url: '', type: kind === 'videos' ? 'video' : 'pdf', asset_id: 0 });
+  list.push(emptyWeekBinding(kind));
   draft[kind] = list;
   state.weekDraft = draft;
   render();
@@ -1848,7 +2000,7 @@ export function addWeekBinding(kind) {
 export function removeWeekBinding(kind, index) {
   const draft = { ...(state.weekDraft || weekDraftFromWeek()) };
   const list = (draft[kind] || []).filter((_, current) => current !== index);
-  draft[kind] = list.length ? list : [{ title: '', url: '', type: kind === 'videos' ? 'video' : 'pdf', asset_id: 0 }];
+  draft[kind] = list.length ? list : [emptyWeekBinding(kind)];
   state.weekDraft = draft;
   render();
 }
@@ -1881,7 +2033,12 @@ export function restoreWeekDraftDefaults() {
     title: matched.title || draft.title,
     verse_ref: matched.verse || draft.verse_ref,
     recite_text: matched.reciteText || draft.recite_text,
-    readings: normalizeWeekReadings(matched).map((item) => ({ title: item.title, url: item.url, type: item.type || 'pdf', asset_id: 0 })),
+    readings: normalizeWeekReadings(matched).map((item) => normalizeReadingDraftItem({
+      title: item.title,
+      url: item.url,
+      type: item.type || 'pdf',
+      asset_id: 0,
+    })),
     videos: normalizeWeekVideos(matched).map((item) => ({ title: item.title, url: item.url, type: 'video', asset_id: 0 })),
     outline: matched.outlineImage ? { title: '提纲背诵', url: matched.outlineImage, type: 'image', asset_id: 0 } : draft.outline,
   };
@@ -1901,7 +2058,7 @@ export async function saveWeekDraft() {
     verse_enabled: Boolean(draft.verse_enabled),
     outline_enabled: Boolean(draft.outline_enabled),
     readings: (draft.readings || []).map((item) => ({
-      title: item.title || '',
+      title: applyPdfPageRangeToTitle(item.title || '', item.page_start, item.page_end),
       url: item.url || '',
       type: item.type || 'pdf',
       asset_id: Number(item.asset_id || 0),

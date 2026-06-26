@@ -196,7 +196,7 @@ func main() {
 	flag.BoolVar(&opt.allowDuplicateAsDeleted, "allow-duplicate-as-deleted", false, "import duplicate checkins as soft-deleted rows with non-zero active_key")
 	flag.BoolVar(&opt.skipConfig, "skip-config", false, "skip config import")
 	flag.BoolVar(&opt.skipRecords, "skip-records", false, "skip records import")
-        flag.BoolVar(&opt.failOnGeneratedUsernames, "fail-on-generated-usernames", false, "fail members whose usernames must be auto-generated")
+	flag.BoolVar(&opt.failOnGeneratedUsernames, "fail-on-generated-usernames", false, "fail members whose usernames must be auto-generated")
 	flag.Parse()
 
 	if err := run(opt); err != nil {
@@ -223,7 +223,7 @@ func run(opt options) error {
 	if err != nil {
 		return err
 	}
-        usernameMap := defaultUsernameMap()
+	usernameMap := defaultUsernameMap()
 
 	report := migrationReport{
 		GeneratedAt: time.Now().Format(time.RFC3339),
@@ -255,7 +255,7 @@ func run(opt options) error {
 	}
 
 	if opt.dryRun {
-                planDryRun(cfg, records, usernameMap, opt, &state, &report)
+		planDryRun(cfg, records, usernameMap, opt, &state, &report)
 		return writeAndPrintReport(opt, report)
 	}
 	if opt.dsn == "" {
@@ -277,7 +277,7 @@ func run(opt options) error {
 	}
 	defer tx.Rollback()
 
-        if err := importConfig(ctx, tx, cfg, usernameMap, opt, &state, &report); err != nil {
+	if err := importConfig(ctx, tx, cfg, usernameMap, opt, &state, &report); err != nil {
 		return err
 	}
 	if err := importRecords(ctx, tx, records, opt, &state, &report); err != nil {
@@ -300,14 +300,14 @@ func planDryRun(cfg oldConfig, records []oldRecord, usernameMap map[string]strin
 		report.Members.WouldSave = len(cfg.Members)
 		report.Weeks.WouldSave = len(cfg.WeeklySchedule)
 		for i, name := range cfg.Members {
-                        username, generated := usernameForMember(name, i+1, usernameMap)
+			username, generated := usernameForMember(name, i+1, usernameMap)
 			report.Details["generated_usernames"].(map[string]string)[name] = username
 			if generated {
-                                report.Warnings = append(report.Warnings, fmt.Sprintf("member %q username auto-generated as %q", name, username))
+				report.Warnings = append(report.Warnings, fmt.Sprintf("member %q username auto-generated as %q", name, username))
 			}
 			if generated && opt.failOnGeneratedUsernames {
 				report.Members.Failed++
-                                report.Failures = append(report.Failures, failure{Scope: "member", Key: name, Message: "username would be auto-generated"})
+				report.Failures = append(report.Failures, failure{Scope: "member", Key: name, Message: "username would be auto-generated"})
 			}
 			state.memberIDs[name] = uint64(i + 1)
 		}
@@ -377,13 +377,13 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 
 	report.Members.Parsed = len(cfg.Members)
 	for i, name := range cfg.Members {
-                username, generated := usernameForMember(name, i+1, usernameMap)
+		username, generated := usernameForMember(name, i+1, usernameMap)
 		report.Details["generated_usernames"].(map[string]string)[name] = username
 		if generated {
-                        report.Warnings = append(report.Warnings, fmt.Sprintf("member %q username auto-generated as %q", name, username))
+			report.Warnings = append(report.Warnings, fmt.Sprintf("member %q username auto-generated as %q", name, username))
 			if opt.failOnGeneratedUsernames {
 				report.Members.Failed++
-                                report.Failures = append(report.Failures, failure{Scope: "member", Key: name, Message: "username would be auto-generated"})
+				report.Failures = append(report.Failures, failure{Scope: "member", Key: name, Message: "username would be auto-generated"})
 				continue
 			}
 		}
@@ -780,16 +780,7 @@ func checkinExists(ctx context.Context, tx *sql.Tx, groupID, userID uint64, task
 
 func tasksForWeek(week oldWeek) []plannedTask {
 	var tasks []plannedTask
-	titles := titleList(week.Title)
-	readingTitle := strings.Join(titles, "\n")
-	if readingTitle == "" {
-		readingTitle = "周读物"
-	}
-	readAssets := make([]plannedAssetLink, 0, len(week.Readings))
-	for _, ref := range week.Readings {
-		readAssets = append(readAssets, plannedAssetLink{Ref: ref, Category: "book", UsageType: "reading"})
-	}
-	tasks = append(tasks, plannedTask{Type: "weekly_book", Title: readingTitle, Enabled: defaultBool(week.BookEnabled, true), Assets: readAssets})
+	tasks = append(tasks, readingTasksForWeek(week)...)
 
 	videoTitle := firstNonEmpty(week.Video, "周视频")
 	var videoAssets []plannedAssetLink
@@ -808,6 +799,58 @@ func tasksForWeek(week oldWeek) []plannedTask {
 		tasks = append(tasks, plannedTask{Type: "share", Title: firstNonEmpty(ref.Title, "课代表分享"), Enabled: true, Assets: []plannedAssetLink{{Ref: ref, Category: "share", UsageType: "share"}}})
 	}
 	return tasks
+}
+
+func readingTasksForWeek(week oldWeek) []plannedTask {
+	titles := titleList(week.Title)
+	enabled := defaultBool(week.BookEnabled, true)
+	total := len(week.Readings)
+	if len(titles) > total {
+		total = len(titles)
+	}
+	if total == 0 {
+		return []plannedTask{{
+			Type:    "weekly_book",
+			Title:   "周读物",
+			Enabled: enabled,
+		}}
+	}
+
+	tasks := make([]plannedTask, 0, total)
+	for index := 0; index < total; index += 1 {
+		var ref oldAssetRef
+		hasRef := index < len(week.Readings)
+		if hasRef {
+			ref = week.Readings[index]
+		}
+		title := firstNonEmpty(
+			strings.TrimSpace(ref.Title),
+			titleAt(titles, index),
+			assetBaseName(strings.TrimSpace(ref.URL)),
+			"周读物",
+		)
+		task := plannedTask{
+			Type:    "weekly_book",
+			Title:   title,
+			Enabled: enabled,
+		}
+		if hasRef && (strings.TrimSpace(ref.URL) != "" || strings.TrimSpace(ref.Title) != "") {
+			task.Assets = []plannedAssetLink{{
+				Ref:       ref,
+				Category:  "book",
+				UsageType: "reading",
+			}}
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks
+}
+
+func titleAt(items []string, index int) string {
+	if index < 0 || index >= len(items) {
+		return ""
+	}
+	return strings.TrimSpace(items[index])
 }
 
 func loadConfig(path string, skip bool) (oldConfig, error) {
@@ -908,7 +951,7 @@ func titleList(raw json.RawMessage) []string {
 }
 
 func usernameForMember(name string, index int, usernameMap map[string]string) (string, bool) {
-        if v := strings.TrimSpace(usernameMap[name]); v != "" {
+	if v := strings.TrimSpace(usernameMap[name]); v != "" {
 		return normalizeUsername(v), false
 	}
 	base := normalizeUsername(name)

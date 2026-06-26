@@ -51,6 +51,7 @@ services:
     volumes:
       - ../data/assets:/data/agp/assets
       - ../Book:/data/agp/content/Book:ro
+      - ../Mentor:/data/agp/content/Mentor:ro
       - ../Newtestament:/data/agp/content/Newtestament:ro
       - ../PPT:/data/agp/content/PPT:ro
       - ../newtestament.md:/data/agp/content/newtestament.md:ro
@@ -67,7 +68,10 @@ services:
     depends_on:
       - backend
     volumes:
+      - ../Book:/usr/share/nginx/html/Book:ro
+      - ../Mentor:/usr/share/nginx/html/Mentor:ro
       - ../Newtestament:/usr/share/nginx/html/Newtestament:ro
+      - ../Passage:/usr/share/nginx/html/Passage:ro
       - ../PPT:/usr/share/nginx/html/PPT:ro
     ports:
       - "${AGP_WEB_PORT:-5114}:80"
