@@ -2023,7 +2023,7 @@ textarea:focus {
 }
 
 .content-shell {
-  gap: 32px;
+  gap: 22px;
 }
 
 .sidebar {
@@ -2259,10 +2259,10 @@ textarea:focus {
 
 .today-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.9fr) 180px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.8fr) 132px;
   align-items: center;
-  gap: 32px;
-  padding: 40px;
+  gap: 18px;
+  padding: 24px 28px;
   border-radius: var(--radius-lg);
   background: #ffffff;
   border: 1px solid var(--line);
@@ -2275,28 +2275,28 @@ textarea:focus {
 .today-copy {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .today-copy h2 {
   color: var(--text);
-  font-size: clamp(36px, 4vw, 56px);
+  font-size: clamp(30px, 3vw, 42px);
   font-family: var(--font-serif);
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .today-copy p {
   margin: 0;
   color: var(--muted);
-  font-size: 16px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .today-meta-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .today-score {
@@ -2304,7 +2304,7 @@ textarea:focus {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  min-height: 140px;
+  min-height: 98px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: #faf8f5;
@@ -2313,15 +2313,15 @@ textarea:focus {
 
 .today-score strong {
   color: var(--text);
-  font-size: 48px;
+  font-size: 36px;
   font-family: var(--font-serif);
   line-height: 1;
 }
 
 .today-score span {
   color: var(--muted);
-  font-size: 13px;
-  margin-top: 8px;
+  font-size: 12px;
+  margin-top: 4px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -2330,15 +2330,24 @@ textarea:focus {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px auto;
+  grid-template-columns: 40px minmax(0, 1fr) 40px auto;
   align-items: center;
   justify-self: stretch;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 10px;
   border-radius: var(--radius-md);
   background: #ffffff;
   border: 1px solid var(--line);
   box-shadow: var(--shadow-soft);
+}
+
+.dashboard-strip .compact-stat {
+  min-height: 104px;
+  padding: 18px;
+}
+
+.dashboard-strip .compact-stat strong {
+  font-size: clamp(28px, 3vw, 38px);
 }
 
 .date-controls input {
@@ -2481,9 +2490,13 @@ textarea:focus {
 }
 
 .section-title {
-  margin: 48px 0 24px;
+  margin: 18px 0 16px;
   border-bottom: 2px solid var(--line);
-  padding-bottom: 12px;
+  padding-bottom: 10px;
+}
+
+.section-title:first-child {
+  margin-top: 0;
 }
 
 .section-title h2 {
@@ -2541,7 +2554,7 @@ textarea:focus {
   box-shadow: none;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 .admin-tabs button {

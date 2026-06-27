@@ -1,9 +1,11 @@
-package main
+package server
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	assetdomain "agp/backend/internal/asset"
 )
 
 func TestWeeklyVerseTaskTitle(t *testing.T) {
@@ -70,7 +72,7 @@ func TestResolveExistingFileInRootsFallsBackToContentRoot(t *testing.T) {
 		t.Fatalf("write content file: %v", err)
 	}
 
-	got, original, err := resolveExistingFileInRoots("/Book/sample.pdf", assetsRoot, contentRoot)
+	got, original, err := assetdomain.ResolveExistingFileInRoots("/Book/sample.pdf", assetsRoot, contentRoot)
 	if err != nil {
 		t.Fatalf("resolveExistingFileInRoots returned error: %v", err)
 	}
@@ -100,7 +102,7 @@ func TestResolveExistingFileInRootsPrefersAssetsRoot(t *testing.T) {
 		t.Fatalf("write content file: %v", err)
 	}
 
-	got, _, err := resolveExistingFileInRoots("shared/sample.pdf", assetsRoot, contentRoot)
+	got, _, err := assetdomain.ResolveExistingFileInRoots("shared/sample.pdf", assetsRoot, contentRoot)
 	if err != nil {
 		t.Fatalf("resolveExistingFileInRoots returned error: %v", err)
 	}
@@ -114,7 +116,7 @@ func TestResolveExistingFileInRootsReturnsErrorWhenMissing(t *testing.T) {
 	assetsRoot := filepath.Join(tempDir, "assets")
 	contentRoot := filepath.Join(tempDir, "content")
 
-	if _, _, err := resolveExistingFileInRoots("/Book/missing.pdf", assetsRoot, contentRoot); err == nil {
+	if _, _, err := assetdomain.ResolveExistingFileInRoots("/Book/missing.pdf", assetsRoot, contentRoot); err == nil {
 		t.Fatal("expected missing file error")
 	}
 }

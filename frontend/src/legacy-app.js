@@ -15,6 +15,7 @@ const state = {
   siteConfig: null,
   learningConfig: null,
   bootstrap: null,
+  todayHub: null,
   summary: null,
   monthlyRanking: null,
   checkins: [],
@@ -50,6 +51,17 @@ function syncViewerStore() {
 
 function clonePlain(value) {
   return JSON.parse(JSON.stringify(value ?? null));
+}
+
+export function enabledFlag(value, fallback = true) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (value === false || value === 0) return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  }
+  return Boolean(value);
 }
 
 function canAdminAccess() {
@@ -97,16 +109,20 @@ function checkinSnapshot() {
     return { visible: false };
   }
   const tasks = currentTaskOptions();
-  const completed = tasks.filter((task) => task.ownRecord).length;
+  const hubProgress = state.todayHub?.progress || {};
+  const hubTaskCount = Array.isArray(state.todayHub?.tasks) ? state.todayHub.tasks.length : 0;
+  const useHubProgress = hubTaskCount === tasks.length;
+  const completed = useHubProgress && Number.isFinite(Number(hubProgress.completed)) ? Number(hubProgress.completed) : tasks.filter((task) => task.ownRecord).length;
+  const total = useHubProgress && Number.isFinite(Number(hubProgress.total)) ? Number(hubProgress.total) : tasks.length;
   return {
     visible: true,
     selectedDate: state.selectedDate,
     maxDate: todayString(),
     selectedDateLabel: selectedDateDisplay(),
-    title: isTodaySelected() ? '今天的任务' : '补卡任务',
-    weekText: state.bootstrap?.current_week ? `${state.bootstrap.current_week.start} - ${state.bootstrap.current_week.end}` : '当前日期暂无周计划，仍可完成每日灵修打卡。',
+    title: state.todayHub?.title || (isTodaySelected() ? '今日学习' : '学习回顾'),
+    weekText: state.todayHub?.subtitle || (state.bootstrap?.current_week ? `${state.bootstrap.current_week.start} - ${state.bootstrap.current_week.end}` : '当前日期暂无周计划，仍可完成每日灵修。'),
     completed,
-    total: tasks.length,
+    total,
     isToday: isTodaySelected(),
     isFuture: isFutureSelected(),
     tasks,
@@ -195,7 +211,7 @@ function syncDashboardStore() {
 }
 
 const navItems = [
-  ['home', '打卡', 'Today'],
+  ['home', '今日', 'Today'],
   ['dashboard', '统计', 'Insights'],
   ['resources', '资源', 'Library'],
   ['admin', '管理', 'Admin'],
@@ -354,6 +370,7 @@ async function loadAll() {
     }
     if (!state.user.current_group_id) {
       state.bootstrap = null;
+      state.todayHub = null;
       state.learningConfig = null;
       state.summary = {};
       state.monthlyRanking = null;
@@ -376,21 +393,25 @@ async function loadAll() {
     const bootstrap = await api(`/app/bootstrap?date=${selectedDate}`);
     const checkinFrom = bootstrap.current_week?.start || selectedDate;
     const checkinTo = bootstrap.current_week?.end || selectedDate;
-    const [summary, monthlyRanking, checkins, weeks, assets] = await Promise.all([
+    const [summary, monthlyRanking, checkins, weeks, assets, todayHub, library] = await Promise.all([
       api(`/dashboard/summary?from=${selectedDate}&to=${selectedDate}`),
       api(`/dashboard/monthly-ranking?month=${month}`),
       api(`/checkins?from=${checkinFrom}&to=${checkinTo}&page_size=1000`),
       api('/study-weeks'),
       api('/assets').catch(() => ({ assets: [] })),
+      api(`/today?date=${selectedDate}`),
+      api('/library').catch(() => ({ sections: [] })),
     ]);
     state.bootstrap = bootstrap;
+    state.todayHub = todayHub;
     state.learningConfig = bootstrap.learning_config || null;
     state.summary = summary.summary || {};
     state.monthlyRanking = monthlyRanking;
     state.members = bootstrap.members || [];
     state.checkins = checkins.items || [];
     state.weeks = weeks.weeks || [];
-    state.assets = assets.assets || [];
+    state.resourceLibrary = library.sections || [];
+    state.assets = mergeResourceAssets(assets.assets || [], state.resourceLibrary);
   } catch (error) {
     if (String(error.message).includes('unauthorized')) {
       logout();
@@ -596,7 +617,7 @@ function layout(content) {
 }
 
 function pageTitle() {
-  const titles = { home: '今日打卡', dashboard: '统计中心', resources: '资源中心', admin: '管理后台' };
+  const titles = { home: '今日学习', dashboard: '统计中心', resources: '资源中心', admin: '管理后台' };
   if (state.tab === 'admin' && !canAdminAccess()) return titles.home;
   return titles[state.tab] || 'Cedar Discipleship';
 }
@@ -1154,7 +1175,7 @@ export async function toggleCheckin(task, member) {
   try {
     if (task.ownRecord) {
       await api(`/checkins/${task.ownRecord.id}`, { method: 'DELETE' });
-      toast('已取消打卡');
+      toast('已取消完成记录');
     } else {
       await api('/checkins', {
         method: 'POST',
@@ -1163,12 +1184,12 @@ export async function toggleCheckin(task, member) {
           part: task.part || '',
           detail: task.detail || task.title,
           logical_date: state.selectedDate,
-          week_id: Number(state.bootstrap?.current_week?.id || 0),
+          week_id: Number(task.weekID || state.bootstrap?.current_week?.id || 0),
           task_id: Number(task.taskID || 0),
           is_retro: !isTodaySelected(),
         }),
       });
-      toast('打卡成功');
+      toast('学习已完成');
     }
     await loadAll();
     render();
@@ -1199,7 +1220,7 @@ function currentTaskOptions() {
       contentLinks: dailyLinks,
     },
   ];
-  if (week.book_enabled !== false) {
+  if (enabledFlag(week.book_enabled)) {
     for (const book of buildWeeklyBookEntries(bookTasks, week.title, configPlan)) {
       tasks.push({
         type: 'weekly_book',
@@ -1215,9 +1236,11 @@ function currentTaskOptions() {
       });
     }
   }
-  if (week.video_enabled !== false && (videoLinks.length || videoTasks.length)) {
+  if (enabledFlag(week.video_enabled) && (videoLinks.length || videoTasks.length)) {
     tasks.push({
       type: 'weekly_video',
+      taskID: Number(videoTasks[0]?.id || 0),
+      weekID: Number(week.id || 0),
       title: videoLinks[0]?.title || videoTasks[0]?.title || '本周视频',
       icon: '视频',
       part: '',
@@ -1227,9 +1250,11 @@ function currentTaskOptions() {
       contentLinks: videoLinks,
     });
   }
-  if (week.verse_enabled !== false && (week.verse_ref || verseTask?.title)) {
+  if (enabledFlag(week.verse_enabled) && (week.verse_ref || verseTask?.title)) {
     tasks.push({
       type: 'weekly_verse',
+      taskID: Number(verseTask?.id || 0),
+      weekID: Number(week.id || 0),
       title: week.verse_ref || verseTask?.title || '本周背经',
       icon: '背经',
       part: '',
@@ -1239,11 +1264,42 @@ function currentTaskOptions() {
       contentLinks: [],
     });
   }
+  return mergeTodayHubTasks(tasks);
+}
+
+function mergeTodayHubTasks(tasks) {
+  const hubTasks = Array.isArray(state.todayHub?.tasks) ? state.todayHub.tasks : [];
   const ownRecords = state.checkins.filter((item) => item.user_id === state.user?.id);
-  return tasks.map((task) => ({
-    ...task,
-    ownRecord: ownRecords.find((item) => checkinMatchesTask(item, task)),
-  }));
+  return tasks.map((task) => {
+    const hubTask = findTodayHubTask(task, hubTasks);
+    const ownRecord = hubTask?.record || ownRecords.find((item) => checkinMatchesTask(item, task));
+    return {
+      ...task,
+      taskID: Number(task.taskID || hubTask?.task_id || 0),
+      weekID: Number(task.weekID || hubTask?.week_id || 0),
+      learningKind: hubTask?.kind || task.learningKind || '',
+      status: hubTask?.status || (ownRecord ? 'done' : 'pending'),
+      completed: Boolean(hubTask?.completed || ownRecord),
+      ownRecord,
+      summary: hubTask?.summary || task.summary,
+    };
+  });
+}
+
+function findTodayHubTask(task, hubTasks) {
+  if (!hubTasks.length) return null;
+  if (task.taskID) {
+    const matched = hubTasks.find((item) => item.type === task.type && Number(item.task_id || 0) === Number(task.taskID));
+    if (matched) return matched;
+  }
+  const title = String(task.part || task.detail || task.title || '').trim();
+  return hubTasks.find((item) => {
+    if (item.type !== task.type) return false;
+    if (task.type === 'weekly_book') {
+      return title && [item.part, item.detail, item.title].some((value) => String(value || '').trim() === title);
+    }
+    return true;
+  }) || null;
 }
 
 function firstTaskAssetLink(task, fallbackTitle = '') {
@@ -1261,7 +1317,7 @@ function firstTaskAssetLink(task, fallbackTitle = '') {
 function findAssetURL(keyword) {
   const target = String(keyword || '').toLowerCase();
   const asset = state.assets.find((item) => `${item.title || ''} ${item.original_name || ''} ${item.category || ''}`.toLowerCase().includes(target));
-  return asset?.id ? `/api/assets/${asset.id}/download` : '';
+  return asset?.url || (asset?.id ? `/api/assets/${asset.id}/download` : '');
 }
 
 function splitBookTitles(title) {
@@ -1557,6 +1613,11 @@ function checkinMatchesTask(item, task) {
     const recordDetail = String(item.detail || '');
     return Boolean(part) && (recordPart === part || recordDetail === part);
   }
+  if (task.type === 'weekly_video' || task.type === 'weekly_verse') {
+    if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
+    if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
+    return item.logical_date === state.selectedDate;
+  }
   if (item.logical_date !== state.selectedDate) return false;
   if (task.part) return item.part === task.part || item.detail === task.detail;
   return !item.part || item.part === task.part;
@@ -1828,6 +1889,32 @@ function resourcesView() {
     : el('div', { class: 'empty', text: '暂无资源，请在管理后台登记资料。' }));
 }
 
+function mergeResourceAssets(uploadedAssets, sections) {
+  const seen = new Set();
+  const merged = [];
+  for (const section of sections || []) {
+    for (const item of section.items || []) {
+      const resource = {
+        ...item,
+        id: item.id || `${item.category || section.key}:${item.url || item.title || item.original_name}`,
+        category: item.category || section.key || 'resource',
+        sectionLabel: section.label || '',
+      };
+      const key = resource.id ? `id:${resource.id}` : `url:${resource.url || resource.title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(resource);
+    }
+  }
+  for (const asset of uploadedAssets || []) {
+    const key = asset.id ? `id:${asset.id}` : `url:${asset.url || asset.title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(asset);
+  }
+  return merged;
+}
+
 export async function loadAdminData(force = false) {
   if (!state.user?.current_group_id) return;
   if (!force && state.adminDataGroupID === state.user.current_group_id && state.resourceLibrary) return;
@@ -1967,10 +2054,10 @@ function weekDraftFromWeek(week = null) {
     title: week.title || '',
     verse_ref: week.verse_ref || '',
     recite_text: week.recite_text || '',
-    book_enabled: week.book_enabled !== false,
-    video_enabled: week.video_enabled !== false,
-    verse_enabled: week.verse_enabled !== false,
-    outline_enabled: week.outline_enabled !== false,
+    book_enabled: enabledFlag(week.book_enabled),
+    video_enabled: enabledFlag(week.video_enabled),
+    verse_enabled: enabledFlag(week.verse_enabled),
+    outline_enabled: enabledFlag(week.outline_enabled),
     readings: (week.readings || []).length
       ? (week.readings || []).map((item) => normalizeReadingDraftItem({ ...item }))
       : [emptyWeekBinding('readings')],
@@ -1979,7 +2066,80 @@ function weekDraftFromWeek(week = null) {
   };
 }
 
+function draftBindingHasContent(item = {}) {
+  return Boolean(
+    String(item.title || '').trim()
+    || String(item.url || '').trim()
+    || Number(item.asset_id || 0) > 0
+  );
+}
+
+function weekHasTaskContent(week = {}) {
+  return Boolean(
+    (week.readings || []).some(draftBindingHasContent)
+    || (week.videos || []).some(draftBindingHasContent)
+    || draftBindingHasContent(week.outline)
+    || String(week.verse_ref || '').trim()
+    || String(week.recite_text || '').trim()
+  );
+}
+
+function currentWeekForDraft() {
+  const current = state.bootstrap?.current_week || {};
+  const currentID = Number(current.id || 0);
+  return (state.weeks || []).find((week) => currentID > 0 && Number(week.id) === currentID)
+    || (state.weeks || []).find((week) => String(week.start || '') === String(current.start || '') && String(week.end || '') === String(current.end || ''))
+    || null;
+}
+
+function fallbackWeekTaskDraft(excludeID, fallbackDraft) {
+  const currentWeek = currentWeekForDraft();
+  if (currentWeek && Number(currentWeek.id || 0) !== Number(excludeID || 0) && weekHasTaskContent(currentWeek)) {
+    return weekDraftFromWeek(currentWeek);
+  }
+  if (fallbackDraft && weekHasTaskContent(fallbackDraft)) {
+    return fallbackDraft;
+  }
+  const firstWeekWithTasks = (state.weeks || []).find((week) => Number(week.id || 0) !== Number(excludeID || 0) && weekHasTaskContent(week));
+  if (firstWeekWithTasks) {
+    return weekDraftFromWeek(firstWeekWithTasks);
+  }
+  return weekDraftFromWeek(currentWeek || state.weeks[0]);
+}
+
+function applyTaskTemplate(baseDraft, templateDraft) {
+  const template = templateDraft || weekDraftFromWeek();
+  return {
+    ...baseDraft,
+    title: template.title || '',
+    verse_ref: template.verse_ref || '',
+    recite_text: template.recite_text || '',
+    book_enabled: enabledFlag(template.book_enabled),
+    video_enabled: enabledFlag(template.video_enabled),
+    verse_enabled: enabledFlag(template.verse_enabled),
+    outline_enabled: enabledFlag(template.outline_enabled),
+    readings: clonePlain(template.readings || [emptyWeekBinding('readings')]),
+    videos: clonePlain(template.videos || [emptyWeekBinding('videos')]),
+    outline: clonePlain(template.outline || { title: '', url: '', type: 'image', asset_id: 0 }),
+  };
+}
+
+export function selectWeekDraft(weekID) {
+  const id = Number(weekID || 0);
+  const previousDraft = state.weekDraft || weekDraftFromWeek(currentWeekForDraft() || state.weeks[0]);
+  const selectedWeek = (state.weeks || []).find((week) => Number(week.id) === id);
+  const baseDraft = selectedWeek ? weekDraftFromWeek(selectedWeek) : weekDraftFromWeek();
+  state.weekDraft = selectedWeek && weekHasTaskContent(selectedWeek)
+    ? baseDraft
+    : applyTaskTemplate(baseDraft, fallbackWeekTaskDraft(id, previousDraft));
+  render();
+}
+
 export function updateWeekDraftField(key, value) {
+  if (key === 'id') {
+    selectWeekDraft(value);
+    return;
+  }
   state.weekDraft = { ...(state.weekDraft || weekDraftFromWeek()), [key]: value };
   render();
 }
@@ -2080,10 +2240,10 @@ export async function saveWeekDraft() {
     title: draft.title,
     verse_ref: draft.verse_ref,
     recite_text: draft.recite_text,
-    book_enabled: Boolean(draft.book_enabled),
-    video_enabled: Boolean(draft.video_enabled),
-    verse_enabled: Boolean(draft.verse_enabled),
-    outline_enabled: Boolean(draft.outline_enabled),
+    book_enabled: enabledFlag(draft.book_enabled),
+    video_enabled: enabledFlag(draft.video_enabled),
+    verse_enabled: enabledFlag(draft.verse_enabled),
+    outline_enabled: enabledFlag(draft.outline_enabled),
     readings: (draft.readings || []).map((item) => ({
       title: applyPdfPageRangeToTitle(item.title || '', item.page_start, item.page_end),
       url: item.url || '',
@@ -2264,9 +2424,7 @@ function weekPlannerCard() {
         el('select', {
           onchange: (e) => {
             const selected = Number(e.target.value || 0);
-            const week = (state.weeks || []).find((item) => Number(item.id) === selected);
-            state.weekDraft = weekDraftFromWeek(week);
-            render();
+            selectWeekDraft(selected);
           },
         }, [
           ...((state.weeks || []).map((week) => {
@@ -2280,7 +2438,7 @@ function weekPlannerCard() {
             return opt;
           })(),
         ]),
-        el('button', { class: 'secondary', text: '新增一周', onclick: () => { state.weekDraft = weekDraftFromWeek(); render(); } }),
+        el('button', { class: 'secondary', text: '新增一周', onclick: () => selectWeekDraft(0) }),
       ]),
     ]),
     el('div', { class: 'form-stack admin-form-grid' }, [
@@ -2326,10 +2484,10 @@ function weekPlannerCard() {
         ]),
       ]),
       el('div', { class: 'admin-checkbox-row' }, [
-        formToggle('显示周读物', draft.book_enabled !== false, (checked) => updateWeekDraftField('book_enabled', checked)),
-        formToggle('显示视频', draft.video_enabled !== false, (checked) => updateWeekDraftField('video_enabled', checked)),
-        formToggle('显示背经', draft.verse_enabled !== false, (checked) => updateWeekDraftField('verse_enabled', checked)),
-        formToggle('显示提纲背诵', draft.outline_enabled !== false, (checked) => updateWeekDraftField('outline_enabled', checked)),
+        formToggle('显示周读物', enabledFlag(draft.book_enabled), (checked) => updateWeekDraftField('book_enabled', checked)),
+        formToggle('显示视频', enabledFlag(draft.video_enabled), (checked) => updateWeekDraftField('video_enabled', checked)),
+        formToggle('显示背经', enabledFlag(draft.verse_enabled), (checked) => updateWeekDraftField('verse_enabled', checked)),
+        formToggle('显示提纲背诵', enabledFlag(draft.outline_enabled), (checked) => updateWeekDraftField('outline_enabled', checked)),
       ]),
       el('div', { class: 'form-actions' }, [
         el('button', { text: '保存当前周', disabled: canEditLearning() ? null : 'disabled', onclick: saveWeekDraft }),
@@ -2563,6 +2721,7 @@ export function logout() {
   state.token = '';
   state.user = null;
   state.bootstrap = null;
+  state.todayHub = null;
   render();
 }
 

@@ -10,6 +10,7 @@ import {
   closeCalendar,
   deleteWeekDraft,
   downloadAdminExport,
+  enabledFlag,
   importLocalBackupJSON,
   importStudyWeeksExcel,
   librarySelectionValue,
@@ -24,6 +25,7 @@ import {
   restoreWeekDraftDefaults,
   saveLearningConfig,
   saveWeekDraft,
+  selectWeekDraft,
   setAdminSection,
   setDefaultGroupAction,
   setMemberAdmin,
@@ -219,24 +221,24 @@ function openAsset(asset) {
   previewLibraryItem({
     title: asset.title || asset.original_name || '资源预览',
     original_name: asset.original_name || '',
-    url: `/api/assets/${asset.id}/download`,
-    type:
-      asset.category === 'video'
+    url: asset.url || `/api/assets/${asset.id}/download`,
+    type: asset.type ||
+      (asset.category === 'video'
         ? 'video'
         : asset.category === 'outline'
           ? 'image'
           : asset.category === 'markdown'
             ? 'markdown'
-            : 'pdf',
+            : 'pdf'),
   });
 }
 
 function resourceTypeLabel(asset) {
-  if (asset.category === 'video') return '视频资料';
+  if (asset.type === 'video' || asset.category === 'video') return '视频资料';
   if (asset.category === 'book') return '读物 PDF';
   if (asset.category === 'handout') return '讲义 PDF';
-  if (asset.category === 'markdown') return '文字材料';
-  if (asset.category === 'outline') return '提纲图片';
+  if (asset.type === 'markdown' || asset.category === 'markdown') return '文字材料';
+  if (asset.type === 'image' || asset.category === 'outline') return '提纲图片';
   return '归档资料';
 }
 
@@ -426,12 +428,12 @@ async function selectCalendarDate(day) {
                 <div v-for="asset in section.items" :key="asset.id" class="card resource-browser-card">
                   <div class="resource-browser-meta">
                     <span class="pill">{{ resourceTypeLabel(asset) }}</span>
-                    <span class="resource-browser-index">#{{ asset.id }}</span>
+                    <span class="resource-browser-index">{{ asset.source === 'static' ? '内置' : `#${asset.id}` }}</span>
                   </div>
                   <h3>{{ asset.title }}</h3>
                   <p class="muted">{{ asset.original_name }}</p>
                   <div class="resource-browser-footnotes">
-                    <span>来源：资源库归档</span>
+                    <span>来源：{{ asset.source === 'static' ? '内置资料' : '资源库归档' }}</span>
                     <span>建议：直接打开阅读</span>
                   </div>
                   <div class="resource-browser-actions">
@@ -575,7 +577,7 @@ async function selectCalendarDate(day) {
                   <div class="section-title">
                     <h2>周任务安排</h2>
                     <div class="inline-actions">
-                      <select :value="weekDraft.id || 0" @change="updateWeekDraftField('id', Number($event.target.value || 0))">
+                      <select :value="weekDraft.id || 0" @change="selectWeekDraft(Number($event.target.value || 0))">
                         <option v-for="week in weeks" :key="week.id" :value="week.id">{{ week.start }} - {{ week.end }}｜{{ week.title || '未命名周任务' }}</option>
                         <option value="0">新增一周</option>
                       </select>
@@ -622,10 +624,10 @@ async function selectCalendarDate(day) {
                       </div>
                     </div>
                     <div class="admin-checkbox-row">
-                      <label class="admin-toggle"><input type="checkbox" :checked="weekDraft.book_enabled !== false" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>显示周读物</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="weekDraft.video_enabled !== false" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>显示视频</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="weekDraft.verse_enabled !== false" @change="updateWeekDraftField('verse_enabled', $event.target.checked)" /><span>显示背经</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="weekDraft.outline_enabled !== false" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>显示提纲背诵</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>显示周读物</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.video_enabled)" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>显示视频</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.verse_enabled)" @change="updateWeekDraftField('verse_enabled', $event.target.checked)" /><span>显示背经</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.outline_enabled)" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>显示提纲背诵</span></label>
                     </div>
                     <div class="form-actions">
                       <button :disabled="!canEditLearning" type="button" @click="saveWeekDraft">保存当前周</button>

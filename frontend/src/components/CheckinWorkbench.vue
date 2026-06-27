@@ -26,17 +26,17 @@ function taskLocked(task) {
 function taskStatus(task) {
   if (task.ownRecord) return '已完成';
   if (taskLocked(task)) return '未开始';
-  return isToday.value ? '待打卡' : '待补卡';
+  return isToday.value ? '待学习' : '待补学';
 }
 
 function actionText(task) {
-  if (task.ownRecord) return '取消打卡';
+  if (task.ownRecord) return '取消完成';
   if (taskLocked(task)) return '未开始';
-  return isToday.value ? '立即打卡' : '补卡';
+  return isToday.value ? '完成学习' : '补学完成';
 }
 
 function taskSubtitle(task) {
-  return task.ownRecord ? `已完成 ${task.detail || task.title}` : (task.summary || '阅读内容后可直接完成打卡');
+  return task.ownRecord ? `已完成学习：${task.detail || task.title}` : (task.summary || '打开内容学习后可记录完成');
 }
 </script>
 
@@ -49,8 +49,8 @@ function taskSubtitle(task) {
           <h2>{{ title }}</h2>
           <p>{{ weekText }}</p>
           <div class="today-meta-pills">
-            <span class="pill">{{ total }} 项任务</span>
-            <span class="pill">{{ isToday ? '今日视图' : '补卡视图' }}</span>
+            <span class="pill">{{ total }} 项学习</span>
+            <span class="pill">{{ isToday ? '今日视图' : '回顾视图' }}</span>
           </div>
         </div>
         <div class="date-controls">
@@ -66,7 +66,7 @@ function taskSubtitle(task) {
         </div>
         <div class="today-score">
           <strong>{{ completed }}/{{ total }}</strong>
-          <span>我的完成</span>
+          <span>学习进度</span>
         </div>
       </section>
 
@@ -122,14 +122,14 @@ function taskSubtitle(task) {
 
       <section>
         <div class="section-title">
-          <h2>我的打卡情况</h2>
+          <h2>我的学习记录</h2>
         </div>
-        <div v-if="!ownItems.length" class="empty">暂无记录</div>
+        <div v-if="!ownItems.length" class="empty">暂无学习记录</div>
         <table v-else class="table">
           <thead>
             <tr>
               <th>日期</th>
-              <th>类型</th>
+              <th>学习项</th>
               <th>内容</th>
             </tr>
           </thead>
