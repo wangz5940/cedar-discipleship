@@ -373,11 +373,13 @@ async function loadAll() {
     }
     const selectedDate = state.selectedDate || todayString();
     const month = currentMonthString();
-    const [bootstrap, summary, monthlyRanking, checkins, weeks, assets] = await Promise.all([
-      api(`/app/bootstrap?date=${selectedDate}`),
+    const bootstrap = await api(`/app/bootstrap?date=${selectedDate}`);
+    const checkinFrom = bootstrap.current_week?.start || selectedDate;
+    const checkinTo = bootstrap.current_week?.end || selectedDate;
+    const [summary, monthlyRanking, checkins, weeks, assets] = await Promise.all([
       api(`/dashboard/summary?from=${selectedDate}&to=${selectedDate}`),
       api(`/dashboard/monthly-ranking?month=${month}`),
-      api(`/checkins?from=${selectedDate}&to=${selectedDate}&page_size=200`),
+      api(`/checkins?from=${checkinFrom}&to=${checkinTo}&page_size=1000`),
       api('/study-weeks'),
       api('/assets').catch(() => ({ assets: [] })),
     ]);
@@ -1159,6 +1161,7 @@ export async function toggleCheckin(task, member) {
           detail: task.detail || task.title,
           logical_date: state.selectedDate,
           week_id: Number(state.bootstrap?.current_week?.id || 0),
+          task_id: Number(task.taskID || 0),
           is_retro: !isTodaySelected(),
         }),
       });
@@ -1197,6 +1200,8 @@ function currentTaskOptions() {
     for (const book of buildWeeklyBookEntries(bookTasks, week.title, configPlan)) {
       tasks.push({
         type: 'weekly_book',
+        taskID: book.taskID || 0,
+        weekID: Number(week.id || 0),
         title: book.title,
         icon: shortTaskIcon(book.title),
         part: book.title,
@@ -1231,7 +1236,7 @@ function currentTaskOptions() {
       contentLinks: [],
     });
   }
-  const ownRecords = state.checkins.filter((item) => item.user_id === state.user?.id && item.logical_date === state.selectedDate);
+  const ownRecords = state.checkins.filter((item) => item.user_id === state.user?.id);
   return tasks.map((task) => ({
     ...task,
     ownRecord: ownRecords.find((item) => checkinMatchesTask(item, task)),
@@ -1366,30 +1371,41 @@ function bestAssetLinksForTitle(title, task) {
 function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
   const configuredReadings = normalizeWeekReadings(configPlan);
   if (configuredReadings.length) {
-    return configuredReadings.map((reading) => ({
-      title: reading.title,
-      contentLinks: reading.url
-        ? [{ label: '读物内容', title: reading.title, url: reading.url, type: reading.type || 'pdf', pageRange: extractPdfPageRange(reading.title) }]
-        : bestAssetLinksForTitle(reading.title, bookTasks[0]),
-    }));
+    return configuredReadings.map((reading, index) => {
+      const task = bookTaskForReading(bookTasks, reading, index);
+      return {
+        taskID: Number(task?.id || 0),
+        title: reading.title,
+        contentLinks: reading.url
+          ? [{ label: '读物内容', title: reading.title, url: reading.url, type: reading.type || 'pdf', pageRange: extractPdfPageRange(reading.title) }]
+          : bestAssetLinksForTitle(reading.title, task),
+      };
+    });
   }
   if (!bookTasks.length) {
-    return splitBookTitles(weekTitle).map((title) => ({
+    const title = String(weekTitle || '周读物').trim() || '周读物';
+    return [{
       title,
       contentLinks: staticContentLinksByTitle(title),
-    }));
+    }];
   }
-  const entries = [];
-  for (const task of bookTasks) {
-    const titles = splitBookTitles(task.title || weekTitle);
-    for (const title of titles) {
-      entries.push({
-        title,
-        contentLinks: bestAssetLinksForTitle(title, task),
-      });
-    }
+  return bookTasks.map((task) => {
+    const title = String(task.title || weekTitle || '周读物').trim() || '周读物';
+    return {
+      taskID: Number(task.id || 0),
+      title,
+      contentLinks: bestAssetLinksForTitle(title, task),
+    };
+  });
+}
+
+function bookTaskForReading(bookTasks, reading, index) {
+  const target = normalizeSearchText(reading?.title || '');
+  if (target) {
+    const matched = bookTasks.find((task) => normalizeSearchText(task.title || '') === target);
+    if (matched) return matched;
   }
-  return entries;
+  return bookTasks[index] || null;
 }
 
 function currentWeeklyVideoLinks(videoTasks, configPlan = null) {
@@ -1531,6 +1547,14 @@ function getDailyScripturePlan(date = state.selectedDate) {
 
 function checkinMatchesTask(item, task) {
   if (item.task_type !== task.type) return false;
+  if (task.type === 'weekly_book') {
+    if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
+    const part = String(task.part || task.title || '');
+    const recordPart = String(item.part || '');
+    const recordDetail = String(item.detail || '');
+    return Boolean(part) && (recordPart === part || recordDetail === part);
+  }
+  if (item.logical_date !== state.selectedDate) return false;
   if (task.part) return item.part === task.part || item.detail === task.detail;
   return !item.part || item.part === task.part;
 }
@@ -1539,7 +1563,7 @@ function buildCheckinMatrix(tasks) {
   const byUser = new Map();
   let doneSlots = 0;
   for (const member of sortedMembers()) {
-    const records = state.checkins.filter((item) => item.user_id === member.user_id && item.logical_date === state.selectedDate);
+    const records = state.checkins.filter((item) => item.user_id === member.user_id);
     const taskStates = tasks.map((task) => {
       const record = records.find((item) => checkinMatchesTask(item, task));
       if (record) doneSlots += 1;

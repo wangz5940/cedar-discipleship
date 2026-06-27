@@ -845,6 +845,17 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := nowSQL()
+	if req.TaskType == "weekly_book" {
+		existingID, err := a.findExistingWeeklyBookCheckin(groupID, u.ID, req.TaskID, req.WeekID, req.Part, req.Detail)
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"id": existingID})
+			return
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "checkin_lookup_failed")
+			return
+		}
+	}
 	res, err := a.db.Exec(`INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, groupID, u.ID, nullableID(req.TaskID), nullableID(req.WeekID), req.LogicalDate, now, req.TaskType, "done", req.IsRetro, req.Detail, req.Note, truncate(req.Part, 64), "web", u.ID, now, now)
 	if err != nil {
@@ -853,6 +864,37 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := res.LastInsertId()
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+func (a *app) findExistingWeeklyBookCheckin(groupID, userID, taskID, weekID uint64, part, detail string) (uint64, error) {
+	if taskID > 0 {
+		var id uint64
+		err := a.db.QueryRow(`SELECT id FROM checkin_records
+			WHERE group_id=? AND user_id=? AND task_id=? AND task_type='weekly_book' AND deleted_at IS NULL
+			ORDER BY logical_date,id LIMIT 1`, groupID, userID, taskID).Scan(&id)
+		if err == nil || !errors.Is(err, sql.ErrNoRows) {
+			return id, err
+		}
+	}
+	if weekID == 0 {
+		return 0, sql.ErrNoRows
+	}
+	title := strings.TrimSpace(firstNonEmpty(part, detail))
+	if title == "" {
+		return 0, sql.ErrNoRows
+	}
+	var start, end time.Time
+	if err := a.db.QueryRow(`SELECT start_date,end_date FROM study_weeks WHERE group_id=? AND id=?`, groupID, weekID).Scan(&start, &end); err != nil {
+		return 0, err
+	}
+	var id uint64
+	err := a.db.QueryRow(`SELECT id FROM checkin_records
+		WHERE group_id=? AND user_id=? AND task_type='weekly_book'
+		  AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL
+		  AND (part=? OR detail=?)
+		ORDER BY logical_date,id LIMIT 1`,
+		groupID, userID, start.Format("2006-01-02"), end.Format("2006-01-02"), title, title).Scan(&id)
+	return id, err
 }
 
 func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {
@@ -895,7 +937,7 @@ func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {
 	from := queryDate(r, "from", time.Now().In(a.location).AddDate(0, 0, -30))
 	to := queryDate(r, "to", time.Now().In(a.location))
 	userID, _ := strconv.ParseUint(r.URL.Query().Get("user_id"), 10, 64)
-	limit := clampInt(queryInt(r, "page_size", 50), 1, 200)
+	limit := clampInt(queryInt(r, "page_size", 50), 1, 1000)
 	args := []any{groupID, from, to}
 	where := "group_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL"
 	if userID > 0 {
@@ -903,7 +945,7 @@ func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {
 		args = append(args, userID)
 	}
 	args = append(args, limit)
-	rows, err := a.db.Query(`SELECT id,user_id,logical_date,checkin_time,task_type,part,detail,note FROM checkin_records WHERE `+where+` ORDER BY logical_date DESC, id DESC LIMIT ?`, args...)
+	rows, err := a.db.Query(`SELECT id,user_id,task_id,week_id,logical_date,checkin_time,task_type,part,detail,note FROM checkin_records WHERE `+where+` ORDER BY logical_date DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "checkins_failed")
 		return
@@ -912,11 +954,23 @@ func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {
 	var items []map[string]any
 	for rows.Next() {
 		var id, uid uint64
+		var taskID, weekID sql.NullInt64
 		var d, ts time.Time
 		var tt, part, detail string
 		var note sql.NullString
-		_ = rows.Scan(&id, &uid, &d, &ts, &tt, &part, &detail, &note)
-		items = append(items, map[string]any{"id": id, "user_id": uid, "logical_date": d.Format("2006-01-02"), "checkin_time": ts.Format(time.RFC3339), "task_type": tt, "part": part, "detail": detail, "note": note.String})
+		_ = rows.Scan(&id, &uid, &taskID, &weekID, &d, &ts, &tt, &part, &detail, &note)
+		items = append(items, map[string]any{
+			"id":           id,
+			"user_id":      uid,
+			"task_id":      nullableUint64(taskID),
+			"week_id":      nullableUint64(weekID),
+			"logical_date": d.Format("2006-01-02"),
+			"checkin_time": ts.Format(time.RFC3339),
+			"task_type":    tt,
+			"part":         part,
+			"detail":       detail,
+			"note":         note.String,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
