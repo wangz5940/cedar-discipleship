@@ -711,6 +711,7 @@ async function selectCalendarDate(day) {
 
       <div class="mobile-tabs">
         <button v-for="item in navItems" :key="item[0]" :class="{ active: tab === item[0] }" type="button" @click="setTab(item[0])">{{ item[1] }}</button>
+        <button class="mobile-logout" type="button" @click="logout">退出</button>
       </div>
     </main>
   </div>

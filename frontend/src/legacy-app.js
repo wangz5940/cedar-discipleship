@@ -581,11 +581,14 @@ function layout(content) {
           groupControls ? el('div', { class: 'toolbar-card' }, [groupControls]) : null,
         ]),
         el('div', { class: 'content-shell' }, [content]),
-        el('div', { class: 'mobile-tabs' }, visibleNavItems().map(([id, label]) => el('button', {
-          class: state.tab === id ? 'active' : '',
-          text: label,
-          onclick: () => setTab(id),
-        }))),
+        el('div', { class: 'mobile-tabs' }, [
+          ...visibleNavItems().map(([id, label]) => el('button', {
+            class: state.tab === id ? 'active' : '',
+            text: label,
+            onclick: () => setTab(id),
+          })),
+          el('button', { class: 'mobile-logout', text: '退出', onclick: logout }),
+        ]),
         state.calendar ? calendarModal() : null,
         state.toast ? el('div', { class: 'toast', text: state.toast }) : null,
       ]),

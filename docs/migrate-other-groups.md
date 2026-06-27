@@ -103,6 +103,25 @@ EXECUTE_IMPORT=true \
 1. dry-run
 2. 正式导入
 
+### 5. 已启动环境实例：导入 agape-a
+
+如果服务已经通过 `docker compose -f deploy/docker-compose.separated.yml up -d backend frontend`
+启动，但没有显式使用 `-p agp`，脚本会尝试从正在运行的 `agp-mysql` 容器读取实际
+`COMPOSE_PROJECT_NAME`，避免迁移脚本报 `service "mysql" is not running`：
+
+```bash
+GROUP_CODE=agape-a \
+GROUP_NAME="AGAPE A组" \
+CONFIG_PATH=./config.json \
+RECORDS_PATH=./data/records.json \
+GROUP_DEFAULT_PASSWORD='Abc12345' \
+EXECUTE_IMPORT=true \
+GOPROXY=https://goproxy.cn,direct \
+./scripts/migrate-group.sh
+```
+
+注意每行末尾的 `\` 后面不能再跟空格。
+
 ## 推荐的批量迁移节奏
 
 不要多个组并发导入。建议串行：

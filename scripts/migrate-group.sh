@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/deploy/docker-compose.separated.yml}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect agp-mysql --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agp}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-agp}"

@@ -2865,40 +2865,57 @@ textarea:focus {
   padding: 8px 16px;
 }
 
+.mobile-tabs .mobile-logout {
+  color: #8b5326;
+}
+
 @media (max-width: 980px) {
   .main-panel {
-    padding: 24px 20px 100px;
+    padding: 18px 14px 96px;
+  }
+
+  .page-chrome {
+    gap: 12px;
+    margin-bottom: 18px;
   }
   
   .page-title-card {
-    padding: 24px;
+    padding: 18px 20px;
   }
   
   .card, .today-hero {
-    padding: 24px;
+    padding: 18px;
   }
 
   .today-hero {
-    grid-template-columns: 1fr;
-    gap: 20px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px 14px;
   }
 
   .today-copy h2 {
-    font-size: clamp(28px, 7vw, 42px);
+    font-size: clamp(24px, 6vw, 34px);
   }
 
   .today-copy p {
-    font-size: 14px;
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.35;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
   .today-meta-pills {
     gap: 6px;
+    margin-top: 2px;
   }
 
   .date-controls {
     order: 3;
+    grid-column: 1 / -1;
     grid-template-columns: 44px minmax(0, 1fr) 44px;
-    padding: 12px;
+    gap: 8px;
+    padding: 8px;
   }
 
   .date-controls input {
@@ -2912,19 +2929,20 @@ textarea:focus {
   .today-score {
     order: 2;
     min-height: auto;
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 16px;
-    padding: 16px 20px;
+    min-width: 78px;
+    align-self: stretch;
+    gap: 4px;
+    padding: 10px 12px;
   }
 
   .today-score strong {
-    font-size: 36px;
+    font-size: 28px;
   }
 
   .today-score span {
     margin-top: 0;
-    font-size: 12px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
   }
 
   .task-board {
@@ -2933,9 +2951,9 @@ textarea:focus {
   }
 
   .task-option {
-    min-height: 160px;
-    padding: 18px;
-    gap: 12px;
+    min-height: 140px;
+    padding: 16px;
+    gap: 10px;
   }
 
   .task-title {
@@ -3036,7 +3054,97 @@ textarea:focus {
   }
   
   .mobile-tabs {
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
     padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+}
+
+@media (max-width: 430px) {
+  .main-panel {
+    padding: 12px 10px 88px;
+  }
+
+  .page-chrome {
+    margin-bottom: 12px;
+  }
+
+  .page-title-card {
+    padding: 14px 16px;
+  }
+
+  .page-title-card .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  .page-title-card h1 {
+    font-size: 24px;
+  }
+
+  .page-title-subtitle {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+
+  .today-hero {
+    padding: 14px;
+    gap: 10px;
+    border-radius: 22px;
+  }
+
+  .today-copy {
+    gap: 5px;
+  }
+
+  .today-copy h2 {
+    font-size: 24px;
+  }
+
+  .today-copy p {
+    font-size: 12px;
+  }
+
+  .today-meta-pills .pill {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .date-controls {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+  }
+
+  .date-controls button,
+  .date-controls input {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .today-score {
+    min-width: 70px;
+    padding: 8px 10px;
+  }
+
+  .today-score strong {
+    font-size: 24px;
+  }
+
+  .task-board {
+    gap: 10px;
+  }
+
+  .task-option {
+    min-height: 126px;
+    padding: 14px;
+  }
+
+  .mobile-tabs {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .mobile-tabs button {
+    min-height: 44px;
+    padding: 6px 3px;
+    font-size: 12px;
   }
 }
 
