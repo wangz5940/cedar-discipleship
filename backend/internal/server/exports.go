@@ -16,10 +16,6 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-type localBackupMember = backupdomain.Member
-type localBackupCheckin = backupdomain.Checkin
-type localBackupFeedback = backupdomain.Feedback
-type localBackupAsset = backupdomain.Asset
 type localBackupPayload = backupdomain.Payload
 
 func writeAttachmentHeaders(w http.ResponseWriter, filename, contentType string) {
@@ -66,8 +62,28 @@ func weekKey(startDate, endDate string) string {
 	return strings.TrimSpace(startDate) + "|" + strings.TrimSpace(endDate)
 }
 
-func (a *app) listStudyWeekInputs(groupID uint64) ([]studyWeekInput, error) {
-	return a.learning.ListWeekInputs(context.Background(), groupID)
+func (a *app) listStudyWeekInputs(ctx context.Context, groupID uint64) ([]studyWeekInput, error) {
+	return a.learning.ListWeekInputs(ctx, groupID)
+}
+
+func safeCSVCell(value string) string {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if trimmed == "" {
+		return value
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		return "'" + value
+	default:
+		return value
+	}
+}
+
+func safeCSVRow(values ...string) []string {
+	for index := range values {
+		values[index] = safeCSVCell(values[index])
+	}
+	return values
 }
 
 func (a *app) handleAdminExportCheckinsCSV(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +101,7 @@ func (a *app) handleAdminExportCheckinsCSV(w http.ResponseWriter, r *http.Reques
 	writer := csv.NewWriter(&buf)
 	_ = writer.Write([]string{"记录ID", "打卡日期", "打卡时间", "账号", "成员姓名", "任务类型", "子项", "详情", "备注", "是否补卡"})
 	for _, item := range items {
-		_ = writer.Write([]string{
+		_ = writer.Write(safeCSVRow(
 			strconv.FormatUint(item.ID, 10),
 			item.LogicalDate,
 			item.CheckinTime,
@@ -96,7 +112,7 @@ func (a *app) handleAdminExportCheckinsCSV(w http.ResponseWriter, r *http.Reques
 			item.Detail,
 			item.Note,
 			boolString(item.IsRetro),
-		})
+		))
 	}
 	writer.Flush()
 	if err := writer.Error(); err != nil {
@@ -153,7 +169,7 @@ func (a *app) handleAdminExportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 	if groupID == 0 {
 		return
 	}
-	weeks, err := a.listStudyWeekInputs(groupID)
+	weeks, err := a.listStudyWeekInputs(r.Context(), groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "export_study_weeks_failed")
 		return
@@ -363,7 +379,7 @@ func (a *app) handleAdminExportFeedbacksCSV(w http.ResponseWriter, r *http.Reque
 	writer := csv.NewWriter(&buf)
 	_ = writer.Write([]string{"提交时间", "账号", "姓名", "联系方式", "页面", "反馈内容", "User-Agent"})
 	for _, item := range items {
-		_ = writer.Write([]string{
+		_ = writer.Write(safeCSVRow(
 			item.CreatedAt,
 			item.Username,
 			item.Name,
@@ -371,7 +387,7 @@ func (a *app) handleAdminExportFeedbacksCSV(w http.ResponseWriter, r *http.Reque
 			item.Page,
 			item.Message,
 			item.UserAgent,
-		})
+		))
 	}
 	writer.Flush()
 	if err := writer.Error(); err != nil {
@@ -388,12 +404,12 @@ func (a *app) handleAdminExportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 	if groupID == 0 {
 		return
 	}
-	settings, err := a.groupLearningConfig(groupID)
+	settings, err := a.groupLearningConfig(r.Context(), groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "export_backup_failed")
 		return
 	}
-	weeks, err := a.listStudyWeekInputs(groupID)
+	weeks, err := a.listStudyWeekInputs(r.Context(), groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "export_backup_failed")
 		return
@@ -423,7 +439,7 @@ func (a *app) handleAdminImportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var payload localBackupPayload
-	if !readJSON(w, r, &payload) {
+	if !readJSONWithLimit(w, r, &payload, backupJSONBodyLimit) {
 		return
 	}
 	nowTime := time.Now().In(a.location)

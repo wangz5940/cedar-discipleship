@@ -6,7 +6,32 @@ COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/deploy/docker-compose.separated.yml}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect agp-mysql --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agp}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
+
+env_file_value() {
+  local env_name="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  (
+    set +u
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    printf '%s' "${!env_name:-}"
+  )
+}
+
+for env_name in \
+  MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD \
+  GROUP_CODE GROUP_NAME CONFIG_PATH RECORDS_PATH GROUP_DEFAULT_PASSWORD REPORT_DIR \
+  ALLOW_DUPLICATE_AS_DELETED FAIL_ON_GENERATED_USERNAMES EXECUTE_IMPORT \
+  GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY; do
+  if [ -z "${!env_name:-}" ]; then
+    printf -v "$env_name" '%s' "$(env_file_value "$env_name")"
+  fi
+done
+
 MYSQL_DATABASE="${MYSQL_DATABASE:-agp}"
+MYSQL_USER="${MYSQL_USER:-agp}"
+MYSQL_PASSWORD="${MYSQL_PASSWORD:-agp}"
 GOPROXY="${GOPROXY:-}"
 GOSUMDB="${GOSUMDB:-}"
 GOPRIVATE="${GOPRIVATE:-}"
@@ -72,6 +97,7 @@ abs_path() {
 
 validate() {
   [ -n "$GROUP_CODE" ] || { echo "缺少 GROUP_CODE" >&2; usage; exit 1; }
+  [[ "$GROUP_CODE" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "GROUP_CODE 只能包含字母、数字、点、下划线和连字符" >&2; exit 1; }
   [ -n "$GROUP_NAME" ] || { echo "缺少 GROUP_NAME" >&2; usage; exit 1; }
   [ -n "$CONFIG_PATH" ] || { echo "缺少 CONFIG_PATH" >&2; usage; exit 1; }
   [ -n "$RECORDS_PATH" ] || { echo "缺少 RECORDS_PATH" >&2; usage; exit 1; }
@@ -83,30 +109,29 @@ validate() {
 }
 
 prepare_inputs() {
-  TMP_INPUT_DIR="$ROOT_DIR/.tmp/migration-inputs-${GROUP_CODE}"
-  rm -rf "$TMP_INPUT_DIR"
-  mkdir -p "$TMP_INPUT_DIR"
+  mkdir -p "$ROOT_DIR/.tmp"
+  TMP_INPUT_DIR="$(mktemp -d "$ROOT_DIR/.tmp/migration-inputs.XXXXXX")"
   cp "$(abs_path "$CONFIG_PATH")" "$TMP_INPUT_DIR/config.json"
   cp "$(abs_path "$RECORDS_PATH")" "$TMP_INPUT_DIR/records.json"
-  CONFIG_IN_CONTAINER="/workspace/.tmp/migration-inputs-${GROUP_CODE}/config.json"
-  RECORDS_IN_CONTAINER="/workspace/.tmp/migration-inputs-${GROUP_CODE}/records.json"
+  CONFIG_IN_CONTAINER="/workspace/${TMP_INPUT_DIR#"$ROOT_DIR"/}/config.json"
+  RECORDS_IN_CONTAINER="/workspace/${TMP_INPUT_DIR#"$ROOT_DIR"/}/records.json"
 }
 
 cleanup() {
-  if [ -n "$TMP_INPUT_DIR" ] && [ -d "$TMP_INPUT_DIR" ]; then
+  if [[ "$TMP_INPUT_DIR" == "$ROOT_DIR/.tmp/"* ]] && [ -d "$TMP_INPUT_DIR" ]; then
     rm -rf "$TMP_INPUT_DIR"
   fi
 }
 
 ensure_mysql() {
   compose ps mysql >/dev/null
-  compose exec -T mysql mysqladmin ping -h 127.0.0.1 -uagp -pagp >/dev/null
+  compose exec -T mysql mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" >/dev/null
 }
 
 run_cli() {
   local dry_run="$1"
   local network_name="${COMPOSE_PROJECT_NAME}_default"
-  local dsn="agp:agp@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
+  local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
   local docker_run_args=(--rm --network "$network_name")
   local docker_env_args=()
   local args=(

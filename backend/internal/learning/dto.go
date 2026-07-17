@@ -1,6 +1,7 @@
 package learning
 
 type TaskBinding struct {
+	TaskID  uint64 `json:"task_id,omitempty"`
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Type    string `json:"type"`
@@ -8,6 +9,7 @@ type TaskBinding struct {
 }
 
 type WeekInput struct {
+	ID             uint64        `json:"id,omitempty"`
 	StartDate      string        `json:"start_date"`
 	EndDate        string        `json:"end_date"`
 	Title          string        `json:"title"`

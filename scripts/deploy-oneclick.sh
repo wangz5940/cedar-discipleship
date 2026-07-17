@@ -7,12 +7,38 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect agp-mysql --forma
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agp}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 
+env_file_value() {
+  local env_name="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  (
+    set +u
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    printf '%s' "${!env_name:-}"
+  )
+}
+
+for env_name in \
+  MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD \
+  AGP_WEB_PORT AGP_MYSQL_PORT AGP_JWT_SECRET AGP_TOKEN_TTL \
+  BOOTSTRAP_SUPERADMIN_USERNAME BOOTSTRAP_SUPERADMIN_PASSWORD BOOTSTRAP_SUPERADMIN_DISPLAY_NAME \
+  PRIMARY_GROUP_CODE PRIMARY_GROUP_NAME PRIMARY_GROUP_DEFAULT_PASSWORD PRIMARY_CONFIG_PATH PRIMARY_RECORDS_PATH \
+  MIGRATION_REPORT_DIR RUN_PRIMARY_MIGRATION PRIMARY_ALLOW_DUPLICATE_AS_DELETED \
+  PRIMARY_FAIL_ON_GENERATED_USERNAMES PRIMARY_DRY_RUN_ONLY \
+  GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY; do
+  if [ -z "${!env_name:-}" ]; then
+    printf -v "$env_name" '%s' "$(env_file_value "$env_name")"
+  fi
+done
+
 MYSQL_DATABASE="${MYSQL_DATABASE:-agp}"
 MYSQL_USER="${MYSQL_USER:-agp}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-agp}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-agp-root}"
 AGP_WEB_PORT="${AGP_WEB_PORT:-5114}"
 AGP_MYSQL_PORT="${AGP_MYSQL_PORT:-3307}"
+AGP_TOKEN_TTL="${AGP_TOKEN_TTL:-}"
 GOPROXY="${GOPROXY:-}"
 GOSUMDB="${GOSUMDB:-}"
 GOPRIVATE="${GOPRIVATE:-}"
@@ -99,24 +125,23 @@ abs_path() {
 }
 
 prepare_migration_inputs() {
-  TMP_INPUT_DIR="$ROOT_DIR/.tmp/migration-inputs"
-  rm -rf "$TMP_INPUT_DIR"
-  mkdir -p "$TMP_INPUT_DIR"
+  mkdir -p "$ROOT_DIR/.tmp"
+  TMP_INPUT_DIR="$(mktemp -d "$ROOT_DIR/.tmp/migration-inputs.XXXXXX")"
   cp "$(abs_path "$PRIMARY_CONFIG_PATH")" "$TMP_INPUT_DIR/config.json"
   cp "$(abs_path "$PRIMARY_RECORDS_PATH")" "$TMP_INPUT_DIR/records.json"
-  MIGRATION_CONFIG_IN_CONTAINER="/workspace/.tmp/migration-inputs/config.json"
-  MIGRATION_RECORDS_IN_CONTAINER="/workspace/.tmp/migration-inputs/records.json"
+  MIGRATION_CONFIG_IN_CONTAINER="/workspace/${TMP_INPUT_DIR#"$ROOT_DIR"/}/config.json"
+  MIGRATION_RECORDS_IN_CONTAINER="/workspace/${TMP_INPUT_DIR#"$ROOT_DIR"/}/records.json"
 }
 
 cleanup() {
-  if [ -n "$TMP_INPUT_DIR" ] && [ -d "$TMP_INPUT_DIR" ]; then
+  if [[ "$TMP_INPUT_DIR" == "$ROOT_DIR/.tmp/"* ]] && [ -d "$TMP_INPUT_DIR" ]; then
     rm -rf "$TMP_INPUT_DIR"
   fi
 }
 
 run_migrate_json() {
   local dry_run="$1"
-  local dsn="agp:agp@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
+  local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
   local network_name="${COMPOSE_PROJECT_NAME}_default"
   local docker_run_args=(--rm --network "$network_name")
   local docker_env_args=()
@@ -194,7 +219,7 @@ if should_run_primary_migration; then
 fi
 
 export COMPOSE_PROJECT_NAME MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD
-export AGP_WEB_PORT AGP_MYSQL_PORT AGP_JWT_SECRET BOOTSTRAP_SUPERADMIN_USERNAME BOOTSTRAP_SUPERADMIN_PASSWORD BOOTSTRAP_SUPERADMIN_DISPLAY_NAME
+export AGP_WEB_PORT AGP_MYSQL_PORT AGP_JWT_SECRET AGP_TOKEN_TTL BOOTSTRAP_SUPERADMIN_USERNAME BOOTSTRAP_SUPERADMIN_PASSWORD BOOTSTRAP_SUPERADMIN_DISPLAY_NAME
 export GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY
 
 log "启动 Cedar Discipleship 服务栈"

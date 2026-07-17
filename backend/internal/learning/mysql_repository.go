@@ -162,9 +162,19 @@ func (r *MySQLRepository) SaveWeek(ctx context.Context, groupID, weekID uint64, 
 		if err != nil {
 			return 0, err
 		}
-	} else if _, err := tx.ExecContext(ctx, `UPDATE study_weeks SET start_date=?,end_date=?,title=?,verse_ref=?,recite_text=?,book_enabled=?,video_enabled=?,verse_enabled=?,outline_enabled=?,updated_at=? WHERE id=? AND group_id=?`,
-		input.StartDate, input.EndDate, input.Title, input.VerseRef, input.ReciteText, input.BookEnabled, input.VideoEnabled, input.VerseEnabled, input.OutlineEnabled, now, id, groupID); err != nil {
-		return 0, err
+	} else {
+		var existingID uint64
+		err := tx.QueryRowContext(ctx, `SELECT id FROM study_weeks WHERE id=? AND group_id=? FOR UPDATE`, id, groupID).Scan(&existingID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrWeekNotFound
+		}
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE study_weeks SET start_date=?,end_date=?,title=?,verse_ref=?,recite_text=?,book_enabled=?,video_enabled=?,verse_enabled=?,outline_enabled=?,updated_at=? WHERE id=? AND group_id=?`,
+			input.StartDate, input.EndDate, input.Title, input.VerseRef, input.ReciteText, input.BookEnabled, input.VideoEnabled, input.VerseEnabled, input.OutlineEnabled, now, id, groupID); err != nil {
+			return 0, err
+		}
 	}
 	if err := ReplaceWeekTasksTx(ctx, tx, groupID, id, tasks, now); err != nil {
 		return 0, err
@@ -197,8 +207,7 @@ func InsertWeekTx(ctx context.Context, tx *sql.Tx, groupID uint64, input WeekInp
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
-	return uint64(id), nil
+	return insertedID(res)
 }
 
 func (r *MySQLRepository) taskAssets(ctx context.Context, groupID, taskID uint64) ([]TaskAsset, error) {
@@ -263,21 +272,34 @@ func DeleteWeekTasksTx(ctx context.Context, tx *sql.Tx, groupID, weekID uint64) 
 }
 
 func ReplaceWeekTasksTx(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, tasks []TaskDraft, now time.Time) error {
+	_, err := ReplaceWeekTasksWithIDsTx(ctx, tx, groupID, weekID, tasks, now)
+	return err
+}
+
+func ReplaceWeekTasksWithIDsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, weekID uint64,
+	tasks []TaskDraft,
+	now time.Time,
+) ([]uint64, error) {
 	if err := DeleteWeekTasksTx(ctx, tx, groupID, weekID); err != nil {
-		return err
+		return nil, err
 	}
+	taskIDs := make([]uint64, 0, len(tasks))
 	for _, task := range tasks {
 		taskID, err := insertStudyTaskTx(ctx, tx, groupID, weekID, task, now)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		taskIDs = append(taskIDs, taskID)
 		if task.AssetID > 0 {
 			if err := linkTaskAssetTx(ctx, tx, groupID, taskID, task.AssetID, task.UsageType, task.SortOrder, now); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return taskIDs, nil
 }
 
 func insertStudyTaskTx(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, task TaskDraft, now time.Time) (uint64, error) {
@@ -286,8 +308,7 @@ func insertStudyTaskTx(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, 
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
-	return uint64(id), nil
+	return insertedID(res)
 }
 
 func linkTaskAssetTx(ctx context.Context, tx *sql.Tx, groupID, taskID, assetID uint64, usageType string, sortOrder int, now time.Time) error {
@@ -313,4 +334,15 @@ func nullableUint64Ptr(v sql.NullInt64) *uint64 {
 
 func nowSQL() string {
 	return time.Now().UTC().Format("2006-01-02 15:04:05.000")
+}
+
+func insertedID(result sql.Result) (uint64, error) {
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, errors.New("invalid_insert_id")
+	}
+	return uint64(id), nil
 }

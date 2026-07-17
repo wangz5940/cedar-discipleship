@@ -60,7 +60,7 @@ async function exportRankingChart() {
   const bottom = 120;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
-  const items = ranking.value.slice(0, 16);
+  const items = ranking.value;
   const colors = {
     daily_devotion: '#0a84ff',
     weekly_book: '#8b5cf6',
@@ -252,16 +252,16 @@ async function exportRankingChart() {
       <section class="stats-center">
         <div class="stats-center-head">
           <div>
-            <div class="eyebrow">Statistics Center</div>
-            <h2>📊 香柏木数据统计中心</h2>
+            <div class="eyebrow">月度统计</div>
+            <h2>香柏木数据统计中心</h2>
             <p class="muted">{{ monthLabel }}分项总榜按灵修、书籍、视频累计打卡次数排序。</p>
           </div>
           <div class="stats-center-tags">
             <button class="secondary" type="button" @click="exportRankingChart">导出柱状图 PNG</button>
-            <span class="stats-tag active">🏆 分项总榜</span>
-            <span class="stats-tag">🗓 统计范围 {{ monthLabel }}</span>
-            <span class="stats-tag">🔥 活跃成员 {{ activeCount }}人</span>
-            <span class="stats-tag">🎨 灵修 / 书籍 / 视频</span>
+            <span class="stats-tag active">分项总榜</span>
+            <span class="stats-tag">统计范围 {{ monthLabel }}</span>
+            <span class="stats-tag">活跃成员 {{ activeCount }}人</span>
+            <span class="stats-tag">灵修 / 书籍 / 视频</span>
           </div>
         </div>
 

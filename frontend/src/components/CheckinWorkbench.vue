@@ -23,20 +23,18 @@ function taskLocked(task) {
   return Boolean(isFuture.value && !task.ownRecord);
 }
 
-function taskStatus(task) {
-  if (task.ownRecord) return '已完成';
-  if (taskLocked(task)) return '未开始';
-  return isToday.value ? '待学习' : '待补学';
+function taskStatusLabel(task) {
+  return task.ownRecord ? '已打卡' : '未打卡';
 }
 
 function actionText(task) {
   if (task.ownRecord) return '取消完成';
-  if (taskLocked(task)) return '未开始';
+  if (taskLocked(task)) return '未打卡';
   return isToday.value ? '完成学习' : '补学完成';
 }
 
 function taskSubtitle(task) {
-  return task.ownRecord ? `已完成学习：${task.detail || task.title}` : (task.summary || '打开内容学习后可记录完成');
+  return task.ownRecord ? (task.detail || task.title) : (task.summary || '打开内容学习后可记录完成');
 }
 </script>
 
@@ -75,11 +73,13 @@ function taskSubtitle(task) {
           v-for="task in tasks"
           :key="`${task.type}:${task.part || ''}:${task.title}`"
           class="task-option"
-          :class="{ done: task.ownRecord }"
+          :class="{ done: task.ownRecord, pending: !task.ownRecord }"
         >
           <div class="task-head">
             <span class="task-icon">{{ task.ownRecord ? '✓' : task.icon }}</span>
-            <span class="task-state-badge" :class="{ done: task.ownRecord }">{{ taskStatus(task) }}</span>
+            <span class="task-state-badge" :class="{ done: task.ownRecord, pending: !task.ownRecord }">
+              {{ taskStatusLabel(task) }}
+            </span>
           </div>
 
           <button

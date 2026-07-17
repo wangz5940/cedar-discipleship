@@ -48,3 +48,13 @@ type UserListItem struct {
 	IsSuperAdmin bool
 	Status       int
 }
+
+type LoginLog struct {
+	UserID        uint64
+	GroupID       uint64
+	Username      string
+	Success       bool
+	FailureReason string
+	IP            string
+	UserAgent     string
+}

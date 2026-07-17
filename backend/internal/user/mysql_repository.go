@@ -57,8 +57,7 @@ func (r *MySQLRepository) CreateGroup(ctx context.Context, code, name, descripti
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
-	return uint64(id), nil
+	return insertedID(res)
 }
 
 func (r *MySQLRepository) ListUsers(ctx context.Context, limit int) ([]UserListItem, error) {
@@ -264,8 +263,45 @@ func (r *MySQLRepository) BootstrapSuperAdmin(ctx context.Context, username, dis
 	return err
 }
 
-func (r *MySQLRepository) CreateUserWithHash(ctx context.Context, username, displayName, namePinyin, passwordHash string, isSuperAdmin bool, actorID uint64, at time.Time) (uint64, error) {
-	return createUserWithHash(ctx, r.db, username, displayName, namePinyin, passwordHash, isSuperAdmin, actorID, at)
+func (r *MySQLRepository) CreateUserWithMembership(
+	ctx context.Context,
+	username, displayName, namePinyin, passwordHash string,
+	isSuperAdmin bool,
+	groupID uint64,
+	role string,
+	actorID uint64,
+	at time.Time,
+) (uint64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if groupID > 0 {
+		var existingGroupID uint64
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE id=?`, groupID).Scan(&existingGroupID); err != nil {
+			return 0, err
+		}
+	}
+	id, err := createUserWithHashTx(ctx, tx, username, displayName, namePinyin, passwordHash, isSuperAdmin, actorID, at)
+	if err != nil {
+		return 0, err
+	}
+	if groupID > 0 {
+		if err := addMemberTx(ctx, tx, groupID, id, displayName, actorID, at); err != nil {
+			return 0, err
+		}
+		if role != "" {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)`, groupID, id, role, at); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func (r *MySQLRepository) AddMember(ctx context.Context, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {
@@ -274,6 +310,22 @@ func (r *MySQLRepository) AddMember(ctx context.Context, groupID, userID uint64,
 
 func (r *MySQLRepository) UpdateLastLogin(ctx context.Context, userID uint64, at time.Time) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE users SET last_login_at = ? WHERE id = ?`, at, userID)
+	return err
+}
+
+func (r *MySQLRepository) CreateLoginLog(ctx context.Context, log LoginLog, at time.Time) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO login_logs
+		(user_id, group_id, username, success, failure_reason, ip, user_agent, created_at)
+		VALUES (?,?,?,?,?,?,?,?)`,
+		nullableID(log.UserID),
+		nullableID(log.GroupID),
+		log.Username,
+		log.Success,
+		log.FailureReason,
+		log.IP,
+		log.UserAgent,
+		at,
+	)
 	return err
 }
 
@@ -295,10 +347,6 @@ func (r *MySQLRepository) PasswordHash(ctx context.Context, userID uint64) (stri
 func (r *MySQLRepository) UpdatePassword(ctx context.Context, userID uint64, passwordHash string, at time.Time) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = ?`, passwordHash, at, userID)
 	return err
-}
-
-func (r *MySQLRepository) Save(ctx context.Context, user *User) error {
-	return nil
 }
 
 func (r *MySQLRepository) allGroups(ctx context.Context) ([]Group, error) {
@@ -341,8 +389,7 @@ func createUserWithHash(ctx context.Context, execer execer, username, displayNam
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
-	return uint64(id), nil
+	return insertedID(res)
 }
 
 func addMemberTx(ctx context.Context, tx *sql.Tx, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {
@@ -352,4 +399,22 @@ func addMemberTx(ctx context.Context, tx *sql.Tx, groupID, userID uint64, member
 func addMember(ctx context.Context, execer execer, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {
 	_, err := execer.ExecContext(ctx, `INSERT INTO group_members (group_id,user_id,member_name,joined_at,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=1, updated_at=VALUES(updated_at)`, groupID, userID, memberName, at, actorID, at, at)
 	return err
+}
+
+func nullableID(id uint64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
+}
+
+func insertedID(result sql.Result) (uint64, error) {
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, fmt.Errorf("invalid insert id %d", id)
+	}
+	return uint64(id), nil
 }

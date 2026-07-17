@@ -61,3 +61,20 @@ func TestMatchingTodayRecordDailyDevotionStillRequiresDate(t *testing.T) {
 		t.Fatalf("matchingTodayRecord returned record ID %d, want nil for daily task on another date", record.ID)
 	}
 }
+
+func TestDailyTaskEnabled(t *testing.T) {
+	settings := map[string]any{
+		"task_sections": map[string]any{
+			"daily": map[string]any{
+				"devotion":  map[string]any{"enabled": false},
+				"scripture": map[string]any{"enabled": false},
+			},
+		},
+	}
+	if DailyTaskEnabled(settings) {
+		t.Fatal("DailyTaskEnabled = true when both daily sections are disabled")
+	}
+	if tasks := buildTodayTasks("2026-07-17", nil, nil, settings, nil); len(tasks) != 0 {
+		t.Fatalf("buildTodayTasks returned %d tasks, want none", len(tasks))
+	}
+}

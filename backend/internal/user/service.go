@@ -21,6 +21,7 @@ var ErrCannotManageGroupLeader = errors.New("cannot_manage_group_leader")
 var ErrGroupDefaultPasswordMissing = errors.New("group_default_password_missing")
 var ErrUserCreateFailed = errors.New("user_create_failed")
 var ErrMemberAddFailed = errors.New("member_add_failed")
+var ErrInvalidRole = errors.New("invalid_role")
 
 type Service struct {
 	repo Repository
@@ -115,13 +116,7 @@ func (s *Service) ListUsers(ctx context.Context, limit int) ([]UserListItemVO, e
 	}
 	out := make([]UserListItemVO, 0, len(items))
 	for _, item := range items {
-		out = append(out, UserListItemVO{
-			ID:           item.ID,
-			Username:     item.Username,
-			DisplayName:  item.DisplayName,
-			IsSuperAdmin: item.IsSuperAdmin,
-			Status:       item.Status,
-		})
+		out = append(out, UserListItemVO(item))
 	}
 	return out, nil
 }
@@ -203,12 +198,34 @@ func (s *Service) EnsureBootstrapSuperAdmin(ctx context.Context, username, displ
 	return s.repo.BootstrapSuperAdmin(ctx, username, displayName, username, passwordHash, at)
 }
 
-func (s *Service) CreateUserWithHash(ctx context.Context, username, displayName, namePinyin, passwordHash string, isSuperAdmin bool, actorID uint64, at time.Time) (uint64, error) {
+func (s *Service) CreateUserWithMembership(
+	ctx context.Context,
+	username, displayName, namePinyin, passwordHash string,
+	isSuperAdmin bool,
+	groupID uint64,
+	role string,
+	actorID uint64,
+	at time.Time,
+) (uint64, error) {
 	username = normalizeUsername(firstNonEmpty(username, namePinyin, displayName))
 	if username == "" || strings.TrimSpace(displayName) == "" {
 		return 0, ErrUsernameDisplayNameRequired
 	}
-	return s.repo.CreateUserWithHash(ctx, username, displayName, firstNonEmpty(namePinyin, username), passwordHash, isSuperAdmin, actorID, at)
+	if role != "" && role != RoleGroupAdmin && role != RoleGroupLeader {
+		return 0, ErrInvalidRole
+	}
+	return s.repo.CreateUserWithMembership(
+		ctx,
+		username,
+		displayName,
+		firstNonEmpty(namePinyin, username),
+		passwordHash,
+		isSuperAdmin,
+		groupID,
+		role,
+		actorID,
+		at,
+	)
 }
 
 func (s *Service) AddMember(ctx context.Context, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {
@@ -217,6 +234,11 @@ func (s *Service) AddMember(ctx context.Context, groupID, userID uint64, memberN
 
 func (s *Service) RecordLogin(ctx context.Context, userID uint64, at time.Time) error {
 	return s.repo.UpdateLastLogin(ctx, userID, at)
+}
+
+func (s *Service) RecordLoginLog(ctx context.Context, input LoginLog, at time.Time) error {
+	input.Username = normalizeUsername(input.Username)
+	return s.repo.CreateLoginLog(ctx, input, at)
 }
 
 func (s *Service) SetDefaultGroup(ctx context.Context, userID, groupID uint64, at time.Time) error {

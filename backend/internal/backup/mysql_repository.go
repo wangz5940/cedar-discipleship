@@ -142,7 +142,7 @@ func (r *MySQLRepository) BackupMembers(ctx context.Context, groupID uint64) ([]
 }
 
 func (r *MySQLRepository) BackupCheckins(ctx context.Context, groupID uint64) ([]Checkin, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT u.username,c.logical_date,c.checkin_time,c.task_type,c.part,c.detail,COALESCE(c.note,''),c.is_retro
+	rows, err := r.db.QueryContext(ctx, `SELECT u.username,c.task_id,c.week_id,c.logical_date,c.checkin_time,c.task_type,c.part,c.detail,COALESCE(c.note,''),c.is_retro
 		FROM checkin_records c JOIN users u ON u.id=c.user_id
 		WHERE c.group_id=? AND c.deleted_at IS NULL
 		ORDER BY c.logical_date,c.id`, groupID)
@@ -153,9 +153,16 @@ func (r *MySQLRepository) BackupCheckins(ctx context.Context, groupID uint64) ([
 	var items []Checkin
 	for rows.Next() {
 		var item Checkin
+		var taskID, weekID sql.NullInt64
 		var checkinTime time.Time
-		if err := rows.Scan(&item.Username, &item.LogicalDate, &checkinTime, &item.TaskType, &item.Part, &item.Detail, &item.Note, &item.IsRetro); err != nil {
+		if err := rows.Scan(&item.Username, &taskID, &weekID, &item.LogicalDate, &checkinTime, &item.TaskType, &item.Part, &item.Detail, &item.Note, &item.IsRetro); err != nil {
 			return nil, err
+		}
+		if taskID.Valid && taskID.Int64 > 0 {
+			item.TaskID = uint64(taskID.Int64)
+		}
+		if weekID.Valid && weekID.Int64 > 0 {
+			item.WeekID = uint64(weekID.Int64)
 		}
 		item.CheckinTime = checkinTime.Format(time.RFC3339)
 		items = append(items, item)
@@ -188,7 +195,7 @@ func (r *MySQLRepository) BackupFeedbacks(ctx context.Context, groupID uint64) (
 }
 
 func (r *MySQLRepository) BackupAssets(ctx context.Context, groupID uint64) ([]Asset, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT category,title,original_name,storage_path,mime_type,file_size FROM assets WHERE group_id=? ORDER BY category,title,id`, groupID)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,category,title,original_name,storage_path,mime_type,file_size FROM assets WHERE group_id=? ORDER BY category,title,id`, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +203,7 @@ func (r *MySQLRepository) BackupAssets(ctx context.Context, groupID uint64) ([]A
 	var items []Asset
 	for rows.Next() {
 		var item Asset
-		if err := rows.Scan(&item.Category, &item.Title, &item.OriginalName, &item.StoragePath, &item.MimeType, &item.FileSize); err != nil {
+		if err := rows.Scan(&item.ID, &item.Category, &item.Title, &item.OriginalName, &item.StoragePath, &item.MimeType, &item.FileSize); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -241,29 +248,238 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 	if err := r.replaceRolesTx(ctx, tx, groupID, roleAssignments, now); err != nil {
 		return err
 	}
+	assetIDs, err := r.importBackupAssetsTx(ctx, tx, groupID, actorID, payload.Assets, now)
+	if err != nil {
+		return err
+	}
 	if err := learning.DeleteAllWeeksTx(ctx, tx, groupID); err != nil {
 		return err
 	}
-	for _, week := range payload.Weeks {
+	weekIDs := make(map[uint64]uint64, len(payload.Weeks))
+	taskIDs := make(map[uint64]uint64)
+	for _, originalWeek := range payload.Weeks {
+		week, err := r.remapWeekAssetsTx(ctx, tx, groupID, originalWeek, assetIDs)
+		if err != nil {
+			return err
+		}
 		weekID, err := learning.InsertWeekTx(ctx, tx, groupID, week, now)
 		if err != nil {
 			return err
 		}
-		if err := learning.ReplaceWeekTasksTx(ctx, tx, groupID, weekID, learning.BuildTaskDrafts(week, ""), now); err != nil {
+		if originalWeek.ID > 0 {
+			weekIDs[originalWeek.ID] = weekID
+		}
+		drafts := learning.BuildTaskDrafts(week, "")
+		newTaskIDs, err := learning.ReplaceWeekTasksWithIDsTx(ctx, tx, groupID, weekID, drafts, now)
+		if err != nil {
 			return err
 		}
+		mapBackupTaskIDs(originalWeek, drafts, newTaskIDs, taskIDs)
 	}
 	userIDs, err := r.usernameMapFromRolesTx(ctx, tx, roleAssignments)
 	if err != nil {
 		return err
 	}
-	if err := r.replaceCheckinsTx(ctx, tx, groupID, actorID, userIDs, payload.Checkins, now); err != nil {
+	if err := r.replaceCheckinsTx(ctx, tx, groupID, actorID, userIDs, weekIDs, taskIDs, payload.Checkins, now); err != nil {
 		return err
 	}
 	if err := r.replaceFeedbacksTx(ctx, tx, groupID, userIDs, payload.Feedbacks, now); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func mapBackupTaskIDs(
+	week learning.WeekInput,
+	drafts []learning.TaskDraft,
+	newTaskIDs []uint64,
+	taskIDs map[uint64]uint64,
+) {
+	used := make([]bool, len(drafts))
+	mapBinding := func(binding learning.TaskBinding, taskType string) {
+		if binding.TaskID == 0 {
+			return
+		}
+		for index, draft := range drafts {
+			if used[index] || draft.TaskType != taskType || draft.Title != binding.Title {
+				continue
+			}
+			if index < len(newTaskIDs) {
+				taskIDs[binding.TaskID] = newTaskIDs[index]
+			}
+			used[index] = true
+			return
+		}
+	}
+	for _, reading := range week.Readings {
+		mapBinding(reading, "weekly_book")
+	}
+	for _, video := range week.Videos {
+		mapBinding(video, "weekly_video")
+	}
+}
+
+func (r *MySQLRepository) importBackupAssetsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, actorID uint64,
+	assets []Asset,
+	now time.Time,
+) (map[uint64]uint64, error) {
+	assetIDs := make(map[uint64]uint64, len(assets))
+	for _, item := range assets {
+		storagePath := strings.TrimSpace(item.StoragePath)
+		if storagePath == "" {
+			continue
+		}
+		var id uint64
+		err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM assets
+			WHERE group_id=? AND storage_path=?
+			ORDER BY id
+			LIMIT 1`,
+			groupID,
+			storagePath,
+		).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			res, insertErr := tx.ExecContext(ctx, `
+				INSERT INTO assets
+				(group_id,category,title,original_name,storage_path,mime_type,
+				 file_size,visibility,created_by,created_at,updated_at)
+				VALUES (?,?,?,?,?,?,?,'group',?,?,?)`,
+				groupID,
+				item.Category,
+				item.Title,
+				item.OriginalName,
+				storagePath,
+				item.MimeType,
+				item.FileSize,
+				actorID,
+				now,
+				now,
+			)
+			if insertErr != nil {
+				return nil, insertErr
+			}
+			newID, insertErr := res.LastInsertId()
+			if insertErr != nil {
+				return nil, insertErr
+			}
+			if newID <= 0 {
+				return nil, errors.New("invalid_insert_id")
+			}
+			id = uint64(newID)
+		} else if err != nil {
+			return nil, err
+		} else {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE assets
+				SET category=?,title=?,original_name=?,mime_type=?,
+				    file_size=?,updated_at=?
+				WHERE id=? AND group_id=?`,
+				item.Category,
+				item.Title,
+				item.OriginalName,
+				item.MimeType,
+				item.FileSize,
+				now,
+				id,
+				groupID,
+			); err != nil {
+				return nil, err
+			}
+		}
+		if item.ID > 0 {
+			assetIDs[item.ID] = id
+		}
+	}
+	return assetIDs, nil
+}
+
+func (r *MySQLRepository) remapWeekAssetsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID uint64,
+	week learning.WeekInput,
+	assetIDs map[uint64]uint64,
+) (learning.WeekInput, error) {
+	for index := range week.Readings {
+		id, err := remapAssetIDTx(
+			ctx,
+			tx,
+			groupID,
+			week.Readings[index].AssetID,
+			week.Readings[index].Title,
+			assetIDs,
+		)
+		if err != nil {
+			return learning.WeekInput{}, err
+		}
+		week.Readings[index].AssetID = id
+	}
+	for index := range week.Videos {
+		id, err := remapAssetIDTx(
+			ctx,
+			tx,
+			groupID,
+			week.Videos[index].AssetID,
+			week.Videos[index].Title,
+			assetIDs,
+		)
+		if err != nil {
+			return learning.WeekInput{}, err
+		}
+		week.Videos[index].AssetID = id
+	}
+	id, err := remapAssetIDTx(
+		ctx,
+		tx,
+		groupID,
+		week.Outline.AssetID,
+		week.Outline.Title,
+		assetIDs,
+	)
+	if err != nil {
+		return learning.WeekInput{}, err
+	}
+	week.Outline.AssetID = id
+	return week, nil
+}
+
+func remapAssetIDTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, oldID uint64,
+	title string,
+	assetIDs map[uint64]uint64,
+) (uint64, error) {
+	if oldID == 0 {
+		return 0, nil
+	}
+	if id := assetIDs[oldID]; id > 0 {
+		return id, nil
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return 0, nil
+	}
+	var id uint64
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(MIN(id),0),COUNT(*)
+		FROM assets
+		WHERE group_id=? AND (title=? OR original_name=?)`,
+		groupID,
+		title,
+		title,
+	).Scan(&id, &count); err != nil {
+		return 0, err
+	}
+	if count != 1 {
+		return 0, nil
+	}
+	return id, nil
 }
 
 func (r *MySQLRepository) memberRoleMap(ctx context.Context, groupID uint64) (map[string][]string, error) {
@@ -317,7 +533,13 @@ func ensureGroupMemberUserTx(ctx context.Context, tx *sql.Tx, groupID uint64, me
 		if err != nil {
 			return 0, err
 		}
-		id64, _ := res.LastInsertId()
+		id64, err := res.LastInsertId()
+		if err != nil {
+			return 0, err
+		}
+		if id64 <= 0 {
+			return 0, errors.New("invalid_insert_id")
+		}
 		userID = uint64(id64)
 	} else if err != nil {
 		return 0, err
@@ -362,7 +584,16 @@ func (r *MySQLRepository) usernameMapFromRolesTx(ctx context.Context, tx *sql.Tx
 	return userIDs, nil
 }
 
-func (r *MySQLRepository) replaceCheckinsTx(ctx context.Context, tx *sql.Tx, groupID, actorID uint64, userIDs map[string]uint64, checkins []Checkin, now time.Time) error {
+func (r *MySQLRepository) replaceCheckinsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, actorID uint64,
+	userIDs map[string]uint64,
+	weekIDs map[uint64]uint64,
+	taskIDs map[uint64]uint64,
+	checkins []Checkin,
+	now time.Time,
+) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE group_id=? AND deleted_at IS NULL`, nowSQL(), nowSQL(), groupID); err != nil {
 		return err
 	}
@@ -372,13 +603,103 @@ func (r *MySQLRepository) replaceCheckinsTx(ctx context.Context, tx *sql.Tx, gro
 			continue
 		}
 		checkinTime := parseTimeOrNow(checkin.CheckinTime, now)
+		taskID, weekID, err := resolveCheckinTargetTx(ctx, tx, groupID, weekIDs, taskIDs, checkin)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
 			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			groupID, userID, nil, nil, checkin.LogicalDate, checkinTime, checkin.TaskType, "done", checkin.IsRetro, checkin.Detail, checkin.Note, truncate(checkin.Part, 64), "import", actorID, checkinTime, checkinTime); err != nil {
+			groupID, userID, taskID, weekID, checkin.LogicalDate, checkinTime, checkin.TaskType, "done", checkin.IsRetro, checkin.Detail, checkin.Note, truncate(checkin.Part, 64), "import", actorID, checkinTime, checkinTime); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func resolveCheckinTargetTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID uint64,
+	weekIDs map[uint64]uint64,
+	taskIDs map[uint64]uint64,
+	checkin Checkin,
+) (any, any, error) {
+	if checkin.TaskType == "daily_devotion" {
+		return nil, nil, nil
+	}
+	weekID := weekIDs[checkin.WeekID]
+	if taskID := taskIDs[checkin.TaskID]; taskID > 0 && weekID > 0 {
+		var validatedTaskID uint64
+		err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM study_tasks
+			WHERE id=? AND group_id=? AND week_id=? AND task_type=?
+			LIMIT 1`,
+			taskID,
+			groupID,
+			weekID,
+			checkin.TaskType,
+		).Scan(&validatedTaskID)
+		if err == nil {
+			return validatedTaskID, weekID, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, err
+		}
+	}
+	if weekID == 0 {
+		err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM study_weeks
+			WHERE group_id=? AND start_date<=? AND end_date>=?
+			ORDER BY start_date DESC
+			LIMIT 1`,
+			groupID,
+			checkin.LogicalDate,
+			checkin.LogicalDate,
+		).Scan(&weekID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, nil
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	var taskID uint64
+	title := strings.TrimSpace(firstNonEmpty(checkin.Part, checkin.Detail))
+	var err error
+	if checkin.TaskType == "weekly_book" && title != "" {
+		err = tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM study_tasks
+			WHERE group_id=? AND week_id=? AND task_type=? AND title=?
+			ORDER BY sort_order,id
+			LIMIT 1`,
+			groupID,
+			weekID,
+			checkin.TaskType,
+			title,
+		).Scan(&taskID)
+	} else {
+		err = tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM study_tasks
+			WHERE group_id=? AND week_id=? AND task_type=?
+			ORDER BY sort_order,id
+			LIMIT 1`,
+			groupID,
+			weekID,
+			checkin.TaskType,
+		).Scan(&taskID)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, weekID, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return taskID, weekID, nil
 }
 
 func (r *MySQLRepository) replaceFeedbacksTx(ctx context.Context, tx *sql.Tx, groupID uint64, userIDs map[string]uint64, feedbacks []Feedback, now time.Time) error {

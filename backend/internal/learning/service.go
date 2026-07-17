@@ -13,6 +13,8 @@ import (
 	"agp/backend/internal/progress"
 )
 
+var ErrWeekNotFound = errors.New("week_not_found")
+
 type Service struct {
 	repo     Repository
 	progress *progress.Service
@@ -48,6 +50,7 @@ func (s *Service) ListWeekInputs(ctx context.Context, groupID uint64) ([]WeekInp
 	inputs := make([]WeekInput, 0, len(weeks))
 	for _, week := range weeks {
 		inputs = append(inputs, WeekInput{
+			ID:             week.ID,
 			StartDate:      week.Start,
 			EndDate:        week.End,
 			Title:          week.Title,
@@ -287,8 +290,9 @@ func TaskMaps(tasks []Task) []map[string]any {
 
 func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any, settings map[string]any, records []TodayRecord) []TodayTaskVO {
 	weekID := mapUint64(week, "id")
-	tasks := []TodayTaskVO{
-		{
+	var tasks []TodayTaskVO
+	if DailyTaskEnabled(settings) {
+		tasks = append(tasks, TodayTaskVO{
 			ID:       "daily_devotion",
 			Type:     "daily_devotion",
 			Kind:     "devotion",
@@ -297,7 +301,7 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 			Detail:   nestedString(settings, []string{"task_sections", "daily", "label"}, "每日灵修"),
 			Required: true,
 			Status:   "pending",
-		},
+		})
 	}
 
 	if week != nil {
@@ -337,21 +341,6 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 			})
 		}
 
-		if mapBool(week, "verse_enabled", true) && !hasTodayTaskType(tasks, "weekly_verse") {
-			if verse := firstNonEmpty(asString(week["verse_ref"]), asString(week["recite_text"])); verse != "" {
-				tasks = append(tasks, TodayTaskVO{
-					ID:       "weekly_verse",
-					Type:     "weekly_verse",
-					Kind:     "verse",
-					Title:    verse,
-					Summary:  todayTaskSummary("weekly_verse"),
-					WeekID:   weekID,
-					Detail:   verse,
-					Required: true,
-					Status:   "pending",
-				})
-			}
-		}
 	}
 
 	for index := range tasks {
@@ -362,6 +351,18 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 		}
 	}
 	return tasks
+}
+
+func DailyTaskEnabled(settings map[string]any) bool {
+	daily, ok := nestedMap(settings, "task_sections", "daily")
+	if !ok {
+		return true
+	}
+	devotion, devotionExists := nestedMap(daily, "devotion")
+	scripture, scriptureExists := nestedMap(daily, "scripture")
+	devotionEnabled := !devotionExists || mapBool(devotion, "enabled", true)
+	scriptureEnabled := !scriptureExists || mapBool(scripture, "enabled", true)
+	return devotionEnabled || scriptureEnabled
 }
 
 func todayTaskID(taskType string, taskID uint64, title string) string {
@@ -442,15 +443,6 @@ func todayTaskAssets(raw any) []map[string]any {
 	}
 }
 
-func hasTodayTaskType(tasks []TodayTaskVO, taskType string) bool {
-	for _, task := range tasks {
-		if task.Type == taskType {
-			return true
-		}
-	}
-	return false
-}
-
 func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *TodayRecord {
 	for i := range records {
 		record := &records[i]
@@ -515,9 +507,10 @@ func weekVO(week Week, readings, videos []TaskBinding, outline TaskBinding) Week
 
 func taskBindingFromMap(task map[string]any) TaskBinding {
 	binding := TaskBinding{
-		Title: asString(task["title"]),
-		URL:   asString(task["content"]),
-		Type:  InferTaskBindingType(asString(task["task_type"]), asString(task["content"]), ""),
+		TaskID: mapUint64(task, "id"),
+		Title:  asString(task["title"]),
+		URL:    asString(task["content"]),
+		Type:   InferTaskBindingType(asString(task["task_type"]), asString(task["content"]), ""),
 	}
 	if asset := firstTaskAsset(task["assets"]); asset != nil {
 		if id, ok := asset["id"].(uint64); ok {
@@ -642,6 +635,22 @@ func mapBool(m map[string]any, key string, fallback bool) bool {
 		}
 	}
 	return fallback
+}
+
+func nestedMap(root map[string]any, path ...string) (map[string]any, bool) {
+	var current any = root
+	for _, key := range path {
+		values, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = values[key]
+		if !ok {
+			return nil, false
+		}
+	}
+	values, ok := current.(map[string]any)
+	return values, ok
 }
 
 func nestedString(root map[string]any, path []string, fallback string) string {

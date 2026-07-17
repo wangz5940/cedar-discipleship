@@ -11,6 +11,8 @@ type Member struct {
 
 type Checkin struct {
 	Username    string `json:"username"`
+	TaskID      uint64 `json:"task_id,omitempty"`
+	WeekID      uint64 `json:"week_id,omitempty"`
 	LogicalDate string `json:"logical_date"`
 	CheckinTime string `json:"checkin_time"`
 	TaskType    string `json:"task_type"`
@@ -31,6 +33,7 @@ type Feedback struct {
 }
 
 type Asset struct {
+	ID           uint64 `json:"id,omitempty"`
 	Category     string `json:"category"`
 	Title        string `json:"title"`
 	OriginalName string `json:"original_name"`

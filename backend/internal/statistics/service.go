@@ -109,7 +109,7 @@ func (s *Service) MemberCalendar(ctx context.Context, groupID, userID uint64, mo
 	}
 	out := make([]CalendarItemVO, 0, len(items))
 	for _, item := range items {
-		out = append(out, CalendarItemVO{Date: item.Date, TaskType: item.TaskType, Part: item.Part})
+		out = append(out, CalendarItemVO(item))
 	}
 	return MemberCalendarVO{Items: out}, nil
 }

@@ -46,6 +46,7 @@ type options struct {
 	skipConfig               bool
 	skipRecords              bool
 	failOnGeneratedUsernames bool
+	forceOverwrite           bool
 }
 
 type oldConfig struct {
@@ -182,6 +183,89 @@ type plannedAssetLink struct {
 	UsageType string
 }
 
+type migratedReadingMetadata struct {
+	BookName    string `json:"book_name"`
+	PageStart   int    `json:"page_start,omitempty"`
+	PageEnd     int    `json:"page_end,omitempty"`
+	ReadingNote string `json:"reading_note,omitempty"`
+	SourceTitle string `json:"source_title"`
+}
+
+type scriptureBook struct {
+	Book     string
+	BookID   string
+	Chapters int
+}
+
+var bibleBooks = []scriptureBook{
+	{Book: "创世记", BookID: "1", Chapters: 50},
+	{Book: "出埃及记", BookID: "2", Chapters: 40},
+	{Book: "利未记", BookID: "3", Chapters: 27},
+	{Book: "民数记", BookID: "4", Chapters: 36},
+	{Book: "申命记", BookID: "5", Chapters: 34},
+	{Book: "约书亚记", BookID: "6", Chapters: 24},
+	{Book: "士师记", BookID: "7", Chapters: 21},
+	{Book: "路得记", BookID: "8", Chapters: 4},
+	{Book: "撒母耳记上", BookID: "9", Chapters: 31},
+	{Book: "撒母耳记下", BookID: "10", Chapters: 24},
+	{Book: "列王纪上", BookID: "11", Chapters: 22},
+	{Book: "列王纪下", BookID: "12", Chapters: 25},
+	{Book: "历代志上", BookID: "13", Chapters: 29},
+	{Book: "历代志下", BookID: "14", Chapters: 36},
+	{Book: "以斯拉记", BookID: "15", Chapters: 10},
+	{Book: "尼希米记", BookID: "16", Chapters: 13},
+	{Book: "以斯帖记", BookID: "17", Chapters: 10},
+	{Book: "约伯记", BookID: "18", Chapters: 42},
+	{Book: "诗篇", BookID: "19", Chapters: 150},
+	{Book: "箴言", BookID: "20", Chapters: 31},
+	{Book: "传道书", BookID: "21", Chapters: 12},
+	{Book: "雅歌", BookID: "22", Chapters: 8},
+	{Book: "以赛亚书", BookID: "23", Chapters: 66},
+	{Book: "耶利米书", BookID: "24", Chapters: 52},
+	{Book: "耶利米哀歌", BookID: "25", Chapters: 5},
+	{Book: "以西结书", BookID: "26", Chapters: 48},
+	{Book: "但以理书", BookID: "27", Chapters: 12},
+	{Book: "何西阿书", BookID: "28", Chapters: 14},
+	{Book: "约珥书", BookID: "29", Chapters: 3},
+	{Book: "阿摩司书", BookID: "30", Chapters: 9},
+	{Book: "俄巴底亚书", BookID: "31", Chapters: 1},
+	{Book: "约拿书", BookID: "32", Chapters: 4},
+	{Book: "弥迦书", BookID: "33", Chapters: 7},
+	{Book: "那鸿书", BookID: "34", Chapters: 3},
+	{Book: "哈巴谷书", BookID: "35", Chapters: 3},
+	{Book: "西番雅书", BookID: "36", Chapters: 3},
+	{Book: "哈该书", BookID: "37", Chapters: 2},
+	{Book: "撒迦利亚书", BookID: "38", Chapters: 14},
+	{Book: "玛拉基书", BookID: "39", Chapters: 4},
+	{Book: "马太福音", BookID: "40", Chapters: 28},
+	{Book: "马可福音", BookID: "41", Chapters: 16},
+	{Book: "路加福音", BookID: "42", Chapters: 24},
+	{Book: "约翰福音", BookID: "43", Chapters: 21},
+	{Book: "使徒行传", BookID: "44", Chapters: 28},
+	{Book: "罗马书", BookID: "45", Chapters: 16},
+	{Book: "哥林多前书", BookID: "46", Chapters: 16},
+	{Book: "哥林多后书", BookID: "47", Chapters: 13},
+	{Book: "加拉太书", BookID: "48", Chapters: 6},
+	{Book: "以弗所书", BookID: "49", Chapters: 6},
+	{Book: "腓立比书", BookID: "50", Chapters: 4},
+	{Book: "歌罗西书", BookID: "51", Chapters: 4},
+	{Book: "帖撒罗尼迦前书", BookID: "52", Chapters: 5},
+	{Book: "帖撒罗尼迦后书", BookID: "53", Chapters: 3},
+	{Book: "提摩太前书", BookID: "54", Chapters: 6},
+	{Book: "提摩太后书", BookID: "55", Chapters: 4},
+	{Book: "提多书", BookID: "56", Chapters: 3},
+	{Book: "腓利门书", BookID: "57", Chapters: 1},
+	{Book: "希伯来书", BookID: "58", Chapters: 13},
+	{Book: "雅各书", BookID: "59", Chapters: 5},
+	{Book: "彼得前书", BookID: "60", Chapters: 5},
+	{Book: "彼得后书", BookID: "61", Chapters: 3},
+	{Book: "约翰一书", BookID: "62", Chapters: 5},
+	{Book: "约翰二书", BookID: "63", Chapters: 1},
+	{Book: "约翰三书", BookID: "64", Chapters: 1},
+	{Book: "犹大书", BookID: "65", Chapters: 1},
+	{Book: "启示录", BookID: "66", Chapters: 22},
+}
+
 func main() {
 	var opt options
 	flag.StringVar(&opt.dsn, "dsn", env("AGP_DSN", ""), "MySQL DSN")
@@ -197,6 +281,7 @@ func main() {
 	flag.BoolVar(&opt.skipConfig, "skip-config", false, "skip config import")
 	flag.BoolVar(&opt.skipRecords, "skip-records", false, "skip records import")
 	flag.BoolVar(&opt.failOnGeneratedUsernames, "fail-on-generated-usernames", false, "fail members whose usernames must be auto-generated")
+	flag.BoolVar(&opt.forceOverwrite, "force-overwrite", false, "overwrite existing group settings and study weeks")
 	flag.Parse()
 
 	if err := run(opt); err != nil {
@@ -364,15 +449,27 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 
 	settingsJSON := map[string]json.RawMessage{}
 	if len(cfg.TaskSections) > 0 {
-		settingsJSON["task_sections"] = cfg.TaskSections
+		taskSections, err := normalizeTaskSections(cfg.TaskSections)
+		if err != nil {
+			return err
+		}
+		settingsJSON["task_sections"] = taskSections
 	}
 	if len(cfg.MountedFiles) > 0 {
 		settingsJSON["mounted_files"] = cfg.MountedFiles
 	}
 	settingsBytes, _ := json.Marshal(settingsJSON)
 	buttonLabels := extractButtonLabels(cfg.TaskSections)
-	if err := upsertGroupSettings(ctx, tx, groupID, cfg.SiteInfo, buttonLabels, settingsBytes, now); err != nil {
+	settingsExist, err := groupSettingsExist(ctx, tx, groupID)
+	if err != nil {
 		return err
+	}
+	if created || !settingsExist || opt.forceOverwrite {
+		if err := upsertGroupSettings(ctx, tx, groupID, cfg.SiteInfo, buttonLabels, settingsBytes, now); err != nil {
+			return err
+		}
+	} else {
+		report.Warnings = append(report.Warnings, "existing group settings preserved; use --force-overwrite to replace them")
 	}
 
 	report.Members.Parsed = len(cfg.Members)
@@ -411,7 +508,7 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 
 	report.Weeks.Parsed = len(cfg.WeeklySchedule)
 	for _, week := range cfg.WeeklySchedule {
-		weekID, created, err := ensureWeek(ctx, tx, groupID, week, now)
+		weekID, created, err := ensureWeek(ctx, tx, groupID, week, now, opt.forceOverwrite)
 		if err != nil {
 			report.Weeks.Failed++
 			report.Failures = append(report.Failures, failure{Scope: "study_week", Key: week.Start + ":" + week.End, Message: err.Error()})
@@ -422,6 +519,14 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 			report.Weeks.Created++
 		} else {
 			report.Weeks.Reused++
+		}
+		if !created && !opt.forceOverwrite {
+			continue
+		}
+		if !created {
+			if err := deleteWeekTasks(ctx, tx, groupID, weekID); err != nil {
+				return err
+			}
 		}
 		for _, task := range tasksForWeek(week) {
 			report.Tasks.Parsed++
@@ -504,7 +609,10 @@ func importRecords(ctx context.Context, tx *sql.Tx, records []oldRecord, opt opt
 			report.Failures = append(report.Failures, failure{Scope: "record", Key: recordKey(rec), Message: "invalid logical_date"})
 			continue
 		}
-		weekID, _ := findWeekID(ctx, tx, state.groupID, rec.LogicalDate)
+		weekID, err := findWeekID(ctx, tx, state.groupID, rec.LogicalDate)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		for _, row := range checkinRowsForRecord(rec) {
 			report.Checkins.RowsPlanned++
 			status, err := insertCheckin(ctx, tx, state.groupID, userID, weekID, rec, row, checkinTime, opt.allowDuplicateAsDeleted)
@@ -562,7 +670,9 @@ func ensureGroup(ctx context.Context, tx *sql.Tx, code, name, hash, now string) 
 	var id uint64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM study_groups WHERE code=?", code).Scan(&id)
 	if err == nil {
-		_, _ = tx.ExecContext(ctx, "UPDATE study_groups SET name=?, updated_at=? WHERE id=?", name, now, id)
+		if _, err := tx.ExecContext(ctx, "UPDATE study_groups SET name=?, updated_at=? WHERE id=?", name, now, id); err != nil {
+			return 0, false, err
+		}
 		return id, false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -572,14 +682,22 @@ func ensureGroup(ctx context.Context, tx *sql.Tx, code, name, hash, now string) 
 	if err != nil {
 		return 0, false, err
 	}
-	newID, _ := res.LastInsertId()
-	return uint64(newID), true, nil
+	newID, err := insertedID(res)
+	return newID, true, err
 }
 
 func lookupGroupID(ctx context.Context, tx *sql.Tx, code string) (uint64, error) {
 	var id uint64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM study_groups WHERE code=?", code).Scan(&id)
 	return id, err
+}
+
+func groupSettingsExist(ctx context.Context, tx *sql.Tx, groupID uint64) (bool, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM group_settings WHERE group_id=?", groupID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func upsertGroupSettings(ctx context.Context, tx *sql.Tx, groupID uint64, info siteInfo, buttonLabels any, settings []byte, now string) error {
@@ -599,7 +717,9 @@ func ensureUser(ctx context.Context, tx *sql.Tx, username, displayName, hash, no
 	var id uint64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM users WHERE username=?", username).Scan(&id)
 	if err == nil {
-		_, _ = tx.ExecContext(ctx, "UPDATE users SET display_name=?, name_pinyin=?, updated_at=? WHERE id=?", displayName, username, now, id)
+		if _, err := tx.ExecContext(ctx, "UPDATE users SET display_name=?, name_pinyin=?, updated_at=? WHERE id=?", displayName, username, now, id); err != nil {
+			return 0, false, err
+		}
 		return id, false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -611,8 +731,8 @@ func ensureUser(ctx context.Context, tx *sql.Tx, username, displayName, hash, no
 	if err != nil {
 		return 0, false, err
 	}
-	newID, _ := res.LastInsertId()
-	return uint64(newID), true, nil
+	newID, err := insertedID(res)
+	return newID, true, err
 }
 
 func ensureMember(ctx context.Context, tx *sql.Tx, groupID, userID uint64, name, now string) error {
@@ -629,7 +749,7 @@ func ensureRole(ctx context.Context, tx *sql.Tx, groupID, userID uint64, role, n
 	return err
 }
 
-func ensureWeek(ctx context.Context, tx *sql.Tx, groupID uint64, week oldWeek, now string) (uint64, bool, error) {
+func ensureWeek(ctx context.Context, tx *sql.Tx, groupID uint64, week oldWeek, now string, forceOverwrite bool) (uint64, bool, error) {
 	title := strings.Join(titleList(week.Title), "\n")
 	_, err := time.Parse("2006-01-02", week.Start)
 	if err != nil {
@@ -642,6 +762,9 @@ func ensureWeek(ctx context.Context, tx *sql.Tx, groupID uint64, week oldWeek, n
 	var id uint64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM study_weeks WHERE group_id=? AND start_date=? AND end_date=?", groupID, week.Start, week.End).Scan(&id)
 	if err == nil {
+		if !forceOverwrite {
+			return id, false, nil
+		}
 		_, err = tx.ExecContext(ctx, `UPDATE study_weeks SET title=?, verse_ref=?, recite_text=?, book_enabled=?, video_enabled=?, verse_enabled=?, outline_enabled=?, sort_order=?, updated_at=? WHERE id=?`,
 			title, week.Verse, nullString(week.ReciteText), boolInt(defaultBool(week.BookEnabled, true)), boolInt(defaultBool(week.VideoEnabled, true)), boolInt(defaultBool(week.VerseEnabled, true)), boolInt(defaultBool(week.OutlineEnabled, true)), week.SortOrder, now, id)
 		return id, false, err
@@ -657,8 +780,8 @@ func ensureWeek(ctx context.Context, tx *sql.Tx, groupID uint64, week oldWeek, n
 	if err != nil {
 		return 0, false, err
 	}
-	newID, _ := res.LastInsertId()
-	return uint64(newID), true, nil
+	newID, err := insertedID(res)
+	return newID, true, err
 }
 
 func ensureTask(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, task plannedTask, now string) (uint64, bool, error) {
@@ -678,8 +801,8 @@ func ensureTask(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, task pl
 	if err != nil {
 		return 0, false, err
 	}
-	newID, _ := res.LastInsertId()
-	return uint64(newID), true, nil
+	newID, err := insertedID(res)
+	return newID, true, err
 }
 
 func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRef, category, now string) (uint64, bool, error) {
@@ -704,8 +827,8 @@ func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRe
 	if err != nil {
 		return 0, false, err
 	}
-	newID, _ := res.LastInsertId()
-	return uint64(newID), true, nil
+	newID, err := insertedID(res)
+	return newID, true, err
 }
 
 func ensureTaskAsset(ctx context.Context, tx *sql.Tx, groupID, taskID, assetID uint64, usageType, now string) (bool, error) {
@@ -715,6 +838,16 @@ func ensureTaskAsset(ctx context.Context, tx *sql.Tx, groupID, taskID, assetID u
 	}
 	affected, _ := res.RowsAffected()
 	return affected > 0, nil
+}
+
+func deleteWeekTasks(ctx context.Context, tx *sql.Tx, groupID, weekID uint64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE ta FROM task_assets ta
+		JOIN study_tasks st ON st.id=ta.task_id
+		WHERE st.group_id=? AND st.week_id=?`, groupID, weekID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, "DELETE FROM study_tasks WHERE group_id=? AND week_id=?", groupID, weekID)
+	return err
 }
 
 func loadMembers(ctx context.Context, tx *sql.Tx, groupID uint64, out map[string]uint64) error {
@@ -750,6 +883,7 @@ func insertCheckin(ctx context.Context, tx *sql.Tx, groupID, userID, weekID uint
 		if !allowDuplicateAsDeleted {
 			return "duplicate", nil
 		}
+		// #nosec G115 -- maxInt64 guarantees a positive int64, which is representable as uint64.
 		activeKey = uint64(maxInt64(rec.ID, 1))
 		deletedAt = nowSQL()
 		status = "deleted"
@@ -793,7 +927,7 @@ func tasksForWeek(week oldWeek) []plannedTask {
 	tasks = append(tasks, plannedTask{Type: "weekly_video", Title: videoTitle, Enabled: defaultBool(week.VideoEnabled, true), Assets: videoAssets})
 	tasks = append(tasks, plannedTask{Type: "weekly_verse", Title: firstNonEmpty(week.Verse, "背经"), Content: week.ReciteText, Enabled: defaultBool(week.VerseEnabled, true)})
 	if week.OutlineImage != "" {
-		tasks = append(tasks, plannedTask{Type: "outline", Title: "提纲背诵", Enabled: defaultBool(week.OutlineEnabled, true), Assets: []plannedAssetLink{{Ref: oldAssetRef{Title: "提纲图片", URL: week.OutlineImage}, Category: "outline", UsageType: "outline"}}})
+		tasks = append(tasks, plannedTask{Type: "weekly_outline", Title: "提纲背诵", Enabled: defaultBool(week.OutlineEnabled, true), Assets: []plannedAssetLink{{Ref: oldAssetRef{Title: "提纲图片", URL: week.OutlineImage}, Category: "outline", UsageType: "outline"}}})
 	}
 	for _, ref := range week.Shares {
 		tasks = append(tasks, plannedTask{Type: "share", Title: firstNonEmpty(ref.Title, "课代表分享"), Enabled: true, Assets: []plannedAssetLink{{Ref: ref, Category: "share", UsageType: "share"}}})
@@ -832,6 +966,7 @@ func readingTasksForWeek(week oldWeek) []plannedTask {
 		task := plannedTask{
 			Type:    "weekly_book",
 			Title:   title,
+			Content: migratedReadingContent(title),
 			Enabled: enabled,
 		}
 		if hasRef && (strings.TrimSpace(ref.URL) != "" || strings.TrimSpace(ref.Title) != "") {
@@ -846,6 +981,62 @@ func readingTasksForWeek(week oldWeek) []plannedTask {
 	return tasks
 }
 
+func migratedReadingContent(title string) string {
+	metadata := parseReadingMetadata(title)
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func parseReadingMetadata(title string) migratedReadingMetadata {
+	sourceTitle := strings.TrimSpace(title)
+	metadata := migratedReadingMetadata{SourceTitle: sourceTitle}
+	if sourceTitle == "" {
+		return metadata
+	}
+
+	metadata.BookName = sourceTitle
+	if strings.HasPrefix(sourceTitle, "《") {
+		inner := strings.TrimPrefix(sourceTitle, "《")
+		if end := strings.Index(inner, "》"); end > 0 {
+			metadata.BookName = strings.TrimSpace(inner[:end])
+		}
+	}
+
+	pagePattern := regexp.MustCompile(`([0-9]+)\s*[-—~至]\s*([0-9]+)\s*页`)
+	pageMatch := pagePattern.FindStringSubmatch(sourceTitle)
+	pageIndex := pagePattern.FindStringIndex(sourceTitle)
+	if len(pageMatch) == 3 {
+		metadata.PageStart = atoiOrZero(pageMatch[1])
+		metadata.PageEnd = atoiOrZero(pageMatch[2])
+	}
+
+	if len(pageIndex) == 2 {
+		note := strings.TrimSpace(sourceTitle[pageIndex[1]:])
+		note = strings.TrimSpace(strings.TrimSuffix(note, "）"))
+		note = strings.TrimSpace(strings.TrimPrefix(note, "页"))
+		note = strings.TrimSpace(strings.TrimPrefix(note, "，"))
+		note = strings.TrimSpace(strings.TrimPrefix(note, ","))
+		note = strings.Trim(note, "（()")
+		note = strings.TrimSpace(strings.TrimPrefix(note, "，"))
+		note = strings.TrimSpace(strings.TrimPrefix(note, ","))
+		if note != "" && note != "页" {
+			metadata.ReadingNote = note
+		}
+	}
+	return metadata
+}
+
+func atoiOrZero(value string) int {
+	var result int
+	if _, err := fmt.Sscanf(value, "%d", &result); err != nil {
+		return 0
+	}
+	return result
+}
+
 func titleAt(items []string, index int) string {
 	if index < 0 || index >= len(items) {
 		return ""
@@ -858,6 +1049,7 @@ func loadConfig(path string, skip bool) (oldConfig, error) {
 		return oldConfig{}, nil
 	}
 	var cfg oldConfig
+	// #nosec G304 -- path is an explicit operator-provided CLI input.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return cfg, err
@@ -872,6 +1064,7 @@ func loadRecords(path string, skip bool) ([]oldRecord, error) {
 	if skip {
 		return nil, nil
 	}
+	// #nosec G304 -- path is an explicit operator-provided CLI input.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -909,8 +1102,19 @@ func defaultUsernameMap() map[string]string {
 	}
 }
 
+func insertedID(result sql.Result) (uint64, error) {
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, errors.New("invalid_insert_id")
+	}
+	return uint64(id), nil
+}
+
 func writeAndPrintReport(opt options, report migrationReport) error {
-	if err := os.MkdirAll(opt.reportDir, 0o755); err != nil {
+	if err := os.MkdirAll(opt.reportDir, 0o750); err != nil {
 		return err
 	}
 	file := filepath.Join(opt.reportDir, fmt.Sprintf("%s-%s.json", sanitizeFilename(opt.groupCode), time.Now().Format("20060102-150405")))
@@ -918,7 +1122,7 @@ func writeAndPrintReport(opt options, report migrationReport) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(file, data, 0o644); err != nil {
+	if err := os.WriteFile(file, data, 0o600); err != nil {
 		return err
 	}
 	fmt.Printf("migration report: %s\n", file)
@@ -936,6 +1140,141 @@ func extractButtonLabels(raw json.RawMessage) any {
 		return nil
 	}
 	return v["buttons"]
+}
+
+func normalizeTaskSections(raw json.RawMessage) (json.RawMessage, error) {
+	var sections map[string]any
+	if err := json.Unmarshal(raw, &sections); err != nil {
+		return nil, err
+	}
+	if sections == nil {
+		sections = map[string]any{}
+	}
+
+	daily := mapValue(sections, "daily")
+	if daily == nil {
+		daily = map[string]any{}
+		sections["daily"] = daily
+	}
+	dailyPath := stringValue(daily["path"])
+
+	devotion := mapValue(daily, "devotion")
+	if devotion == nil {
+		devotion = map[string]any{}
+		daily["devotion"] = devotion
+	}
+	if _, ok := devotion["path"]; !ok && dailyPath != "" {
+		devotion["path"] = dailyPath
+	}
+	if _, ok := devotion["numbered_start_date"]; !ok {
+		if startDate := stringValue(devotion["start_date"]); startDate != "" {
+			devotion["numbered_start_date"] = startDate
+		}
+	}
+	if _, ok := devotion["numbered_start"]; !ok {
+		if start := numberValue(devotion["start_section"]); start > 0 {
+			devotion["numbered_start"] = start
+		}
+	}
+	if _, ok := devotion["mode"]; !ok {
+		devotion["mode"] = "numbered"
+	}
+	if _, ok := devotion["type"]; !ok {
+		devotion["type"] = "markdown"
+	}
+
+	scripture := mapValue(daily, "scripture")
+	if scripture == nil {
+		scripture = map[string]any{}
+		daily["scripture"] = scripture
+	}
+	sequence, hasSequence := scripture["sequence"].([]any)
+	if !hasSequence || len(sequence) == 0 {
+		book := stringValue(scripture["book"])
+		bookID := stringValue(scripture["book_id"])
+		chapters := numberValue(scripture["max_chapters"])
+		if book != "" || bookID != "" || chapters > 0 {
+			scripture["sequence"] = bibleBookSequence(book, bookID)
+		}
+	} else {
+		first := mapValue(sequence[0], "")
+		if first != nil {
+			if stringValue(scripture["book"]) == "" {
+				scripture["book"] = stringValue(first["book"])
+			}
+			if stringValue(scripture["book_id"]) == "" {
+				scripture["book_id"] = stringValue(first["book_id"])
+			}
+			if numberValue(scripture["max_chapters"]) == 0 {
+				scripture["max_chapters"] = numberValue(first["chapters"])
+			}
+		}
+	}
+	if _, ok := scripture["start_chapter"]; !ok {
+		scripture["start_chapter"] = 1
+	}
+	if _, ok := scripture["type"]; !ok {
+		scripture["type"] = "iframe"
+	}
+	if _, ok := scripture["url_template"]; !ok {
+		scripture["url_template"] = "https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm"
+	}
+
+	return json.Marshal(sections)
+}
+
+func bibleBookSequence(startBook, startBookID string) []any {
+	startIndex := 0
+	for index, book := range bibleBooks {
+		if book.BookID == startBookID || book.Book == startBook {
+			startIndex = index
+			break
+		}
+	}
+	sequence := make([]any, 0, len(bibleBooks)-startIndex)
+	for _, book := range bibleBooks[startIndex:] {
+		sequence = append(sequence, map[string]any{
+			"book":     book.Book,
+			"book_id":  book.BookID,
+			"chapters": book.Chapters,
+		})
+	}
+	return sequence
+}
+
+func mapValue(value any, key string) map[string]any {
+	if key != "" {
+		if object, ok := value.(map[string]any); ok {
+			if nested, ok := object[key].(map[string]any); ok {
+				return nested
+			}
+		}
+		return nil
+	}
+	object, _ := value.(map[string]any)
+	return object
+}
+
+func stringValue(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+func numberValue(value any) int {
+	switch value := value.(type) {
+	case float64:
+		return int(value)
+	case int:
+		return value
+	case json.Number:
+		number, _ := value.Int64()
+		return int(number)
+	default:
+		return 0
+	}
 }
 
 func titleList(raw json.RawMessage) []string {

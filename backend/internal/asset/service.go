@@ -90,6 +90,10 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 	}
 	id, err := s.repo.Create(ctx, item, req.ActorID)
 	if err != nil {
+		cleanupErr := s.storage.Delete(context.WithoutCancel(ctx), stored.StoragePath)
+		if cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+			return nil, errors.Join(err, fmt.Errorf("remove stored upload: %w", cleanupErr))
+		}
 		return nil, err
 	}
 	item.ID = id
@@ -97,24 +101,11 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 	return &vo, nil
 }
 
-func (s *Service) CreateMetadata(ctx context.Context, req CreateRequest) (uint64, error) {
-	item := &Asset{
-		GroupID:      req.GroupID,
-		Category:     req.Category,
-		Title:        req.Title,
-		OriginalName: filepath.Base(req.StoragePath),
-		StoragePath:  req.StoragePath,
-		MimeType:     req.MimeType,
-		FileSize:     req.FileSize,
-		Visibility:   "group",
-	}
-	return s.repo.Create(ctx, item, req.ActorID)
-}
-
 func (s *Service) ResourceLibrary(ctx context.Context, groupID uint64) ([]LibrarySection, error) {
 	sections := []LibrarySection{
 		s.scanStaticLibrarySection("markdown", "Markdown 读物", "", "/", []string{".md"}),
 		s.scanStaticLibrarySection("book", "PDF 读物", "Book", "/Book", []string{".pdf"}),
+		s.scanStaticLibrarySection("passage", "读经 PDF", "Passage", "/Passage", []string{".pdf"}),
 		s.scanStaticLibrarySection("video", "视频文件", "Newtestament", "/Newtestament", []string{".mp4", ".webm", ".mov", ".m4v"}),
 		s.scanStaticLibrarySection("handout", "讲义 PDF", "PPT", "/PPT", []string{".pdf"}),
 	}
@@ -149,10 +140,7 @@ func (s *Service) scanStaticLibrarySection(key, label, subdir, publicPrefix stri
 		if len(allowed) > 0 && !allowed[ext] {
 			continue
 		}
-		title := strings.TrimSuffix(name, ext)
-		if strings.HasPrefix(title, "[B311]") {
-			title = strings.TrimPrefix(title, "[B311]")
-		}
+		title := strings.TrimPrefix(strings.TrimSuffix(name, ext), "[B311]")
 		urlPath := publicPrefix
 		if !strings.HasPrefix(urlPath, "/") {
 			urlPath = "/" + strings.TrimPrefix(urlPath, "/")

@@ -1,12 +1,171 @@
 package server
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	assetdomain "agp/backend/internal/asset"
 )
+
+func TestSignTokenPermanentByDefault(t *testing.T) {
+	a := &app{secret: []byte("test-secret")}
+
+	token, err := a.signToken(tokenClaims{UserID: 1})
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	claims, err := a.verifyToken(token)
+	if err != nil {
+		t.Fatalf("verify token: %v", err)
+	}
+	if claims.ExpiresAt != 0 {
+		t.Fatalf("token expiration = %d, want permanent token without exp", claims.ExpiresAt)
+	}
+}
+
+func TestSignTokenAddsConfiguredExpiration(t *testing.T) {
+	a := &app{
+		secret:   []byte("test-secret"),
+		tokenTTL: time.Hour,
+	}
+
+	token, err := a.signToken(tokenClaims{UserID: 1})
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	claims, err := a.verifyToken(token)
+	if err != nil {
+		t.Fatalf("verify token: %v", err)
+	}
+	if claims.ExpiresAt <= time.Now().Unix() {
+		t.Fatalf("token expiration = %d, want a future timestamp", claims.ExpiresAt)
+	}
+}
+
+func TestVerifyTokenRejectsExpiredToken(t *testing.T) {
+	a := &app{secret: []byte("test-secret")}
+
+	token, err := a.signToken(tokenClaims{
+		UserID:    1,
+		ExpiresAt: time.Now().Add(-time.Second).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	if _, err := a.verifyToken(token); err == nil {
+		t.Fatal("verify token succeeded for an expired token")
+	}
+}
+
+func TestLoginLimiterSupportsConcurrentRequests(t *testing.T) {
+	limiter := newLoginLimiter()
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			limiter.fail("127.0.0.1", "member")
+			_ = limiter.blocked("127.0.0.1", "member")
+		}()
+	}
+	wg.Wait()
+	if !limiter.blocked("127.0.0.1", "member") {
+		t.Fatal("limiter should block after repeated failed attempts")
+	}
+	limiter.success("127.0.0.1", "member")
+	if limiter.blocked("127.0.0.1", "member") {
+		t.Fatal("limiter should clear after a successful login")
+	}
+}
+
+func TestLoginLimiterBoundsFailureEntries(t *testing.T) {
+	limiter := newLoginLimiter()
+	for index := range maxLoginFailureEntries + 100 {
+		limiter.fail("127.0.0.1", strconv.Itoa(index))
+	}
+	if len(limiter.failures) > maxLoginFailureEntries {
+		t.Fatalf("failure entries = %d, want at most %d", len(limiter.failures), maxLoginFailureEntries)
+	}
+}
+
+func TestClientIPUsesLastForwardedAddress(t *testing.T) {
+	request := httptest.NewRequest("GET", "/", nil)
+	request.Header.Set("X-Forwarded-For", "203.0.113.10, 192.0.2.20")
+	if got := clientIP(request); got != "192.0.2.20" {
+		t.Fatalf("clientIP() = %q, want trusted proxy address", got)
+	}
+}
+
+func TestReadJSONWithLimitRejectsOversizedPayload(t *testing.T) {
+	request := httptest.NewRequest("POST", "/", bytes.NewBufferString(`{"value":"too large"}`))
+	recorder := httptest.NewRecorder()
+	var payload map[string]any
+	if readJSONWithLimit(recorder, request, &payload, 8) {
+		t.Fatal("readJSONWithLimit accepted oversized input")
+	}
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func TestSafeCSVCellEscapesFormulaPrefix(t *testing.T) {
+	for _, value := range []string{"=cmd()", "+1", "-1", "@SUM(A1:A2)", " \t=cmd()"} {
+		if got := safeCSVCell(value); !strings.HasPrefix(got, "'") {
+			t.Fatalf("safeCSVCell(%q) = %q, want apostrophe prefix", value, got)
+		}
+	}
+	if got := safeCSVCell("ordinary"); got != "ordinary" {
+		t.Fatalf("safeCSVCell(ordinary) = %q", got)
+	}
+}
+
+func TestValidateConfigRejectsWeakSecrets(t *testing.T) {
+	if err := validateConfig(config{
+		JWTSecret:         "short",
+		BootstrapPassword: "StrongPass123",
+	}); err == nil {
+		t.Fatal("validateConfig accepted a short JWT secret")
+	}
+	if err := validateConfig(config{
+		JWTSecret:         "12345678901234567890123456789012",
+		BootstrapPassword: "short",
+	}); err == nil {
+		t.Fatal("validateConfig accepted a short bootstrap password")
+	}
+	if err := validateConfig(config{
+		JWTSecret:         "12345678901234567890123456789012",
+		BootstrapPassword: "StrongPass123",
+		TokenTTL:          "bad",
+	}); err == nil {
+		t.Fatal("validateConfig accepted an invalid token TTL")
+	}
+	if err := validateConfig(config{
+		JWTSecret:         "12345678901234567890123456789012",
+		BootstrapPassword: "StrongPass123",
+		TokenTTL:          "24h",
+	}); err != nil {
+		t.Fatalf("validateConfig returned error: %v", err)
+	}
+}
+
+func TestValidCheckinTaskType(t *testing.T) {
+	for _, taskType := range []string{"daily_devotion", "weekly_book", "weekly_video", "weekly_verse"} {
+		if !validCheckinTaskType(taskType) {
+			t.Fatalf("validCheckinTaskType(%q) = false", taskType)
+		}
+	}
+	if validCheckinTaskType("reflection") {
+		t.Fatal("validCheckinTaskType accepted an unsupported task type")
+	}
+}
 
 func TestWeeklyVerseTaskTitle(t *testing.T) {
 	tests := []struct {

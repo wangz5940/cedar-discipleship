@@ -33,13 +33,20 @@ func (s *LocalStorage) Save(ctx context.Context, relativeDir, fileName string, s
 		return nil, fmt.Errorf("%w: %w", ErrStorageWrite, err)
 	}
 	relativePath = filepath.ToSlash(relativePath)
-	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o750); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrStorageDirectory, err)
 	}
+	// #nosec G304 -- ResolveFileInRoot verifies that absolutePath stays under s.root.
 	dst, err := os.Create(absolutePath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrStorageWrite, err)
 	}
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			_ = os.Remove(absolutePath)
+		}
+	}()
 	hasher := sha256.New()
 	size, copyErr := io.Copy(dst, io.TeeReader(src, hasher))
 	closeErr := dst.Close()
@@ -52,6 +59,10 @@ func (s *LocalStorage) Save(ctx context.Context, relativeDir, fileName string, s
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if size < 0 {
+		return nil, fmt.Errorf("%w: invalid file size", ErrStorageWrite)
+	}
+	keepFile = true
 	return &StoredObject{
 		StoragePath:    relativePath,
 		FileSize:       uint64(size),

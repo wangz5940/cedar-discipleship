@@ -1,9 +1,13 @@
 package server
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	userdomain "agp/backend/internal/user"
 )
 
 func (a *app) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -21,12 +25,28 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(strings.ToLower(req.Username))
 	remote := clientIP(r)
 	if a.loginLimiter.blocked(remote, username) {
+		a.recordLoginLog(r, userdomain.LoginLog{
+			Username:      username,
+			Success:       false,
+			FailureReason: "too_many_attempts",
+		})
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
 	user, groups, currentGroupID, err := a.users.LoginUser(r.Context(), username)
 	if err != nil || !verifyPassword(req.Password, user.PasswordHash) {
 		a.loginLimiter.fail(remote, username)
+		var userID uint64
+		if user != nil {
+			userID = user.ID
+		}
+		a.recordLoginLog(r, userdomain.LoginLog{
+			UserID:        userID,
+			GroupID:       currentGroupID,
+			Username:      username,
+			Success:       false,
+			FailureReason: "invalid_username_or_password",
+		})
 		writeError(w, http.StatusUnauthorized, "invalid_username_or_password")
 		return
 	}
@@ -37,6 +57,12 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.users.RecordLogin(r.Context(), user.ID, time.Now().UTC())
+	a.recordLoginLog(r, userdomain.LoginLog{
+		UserID:   user.ID,
+		GroupID:  currentGroupID,
+		Username: username,
+		Success:  true,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": token,
 		"user": map[string]any{
@@ -141,16 +167,32 @@ func (a *app) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	members, _ := a.listMembers(groupID)
+	members, err := a.listMembers(r.Context(), groupID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "bootstrap_failed")
+		return
+	}
 	date := queryDate(r, "date", time.Now().In(a.location))
-	week, _ := a.currentWeekAt(groupID, date)
+	week, err := a.currentWeekAt(r.Context(), groupID, date)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "bootstrap_failed")
+		return
+	}
 	var tasks []map[string]any
 	if week != nil {
 		if weekID, ok := week["id"].(uint64); ok {
-			tasks, _ = a.weekTasks(groupID, weekID)
+			tasks, err = a.weekTasks(r.Context(), groupID, weekID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "bootstrap_failed")
+				return
+			}
 		}
 	}
-	learningConfig, _ := a.groupLearningConfig(groupID)
+	learningConfig, err := a.groupLearningConfig(r.Context(), groupID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "bootstrap_failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":            u,
 		"members":         members,

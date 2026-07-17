@@ -10,16 +10,6 @@ type UploadRequest struct {
 	Reader   io.Reader
 }
 
-type CreateRequest struct {
-	GroupID     uint64
-	ActorID     uint64
-	Category    string
-	Title       string
-	StoragePath string
-	MimeType    string
-	FileSize    uint64
-}
-
 type AssetVO struct {
 	ID           uint64 `json:"id"`
 	Category     string `json:"category"`

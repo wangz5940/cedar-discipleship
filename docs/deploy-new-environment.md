@@ -41,6 +41,9 @@ export BOOTSTRAP_SUPERADMIN_USERNAME='admin'
 export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
 export BOOTSTRAP_SUPERADMIN_DISPLAY_NAME='超级管理员'
 
+# 可选：默认空值表示登录令牌永久有效；例如 24h 表示 24 小时过期
+export AGP_TOKEN_TTL=''
+
 # NAS 或受限网络环境建议提前设置
 export GOPROXY='https://goproxy.cn,direct'
 
@@ -73,6 +76,7 @@ cd /path/to/agp
 export AGP_JWT_SECRET='替换为长随机字符串'
 export BOOTSTRAP_SUPERADMIN_USERNAME='admin'
 export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
+export AGP_TOKEN_TTL=''
 
 export PRIMARY_GROUP_CODE='agape-a'
 export PRIMARY_GROUP_NAME='AGAPE A组'

@@ -3,6 +3,7 @@ package asset
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -59,7 +60,13 @@ func (r *MySQLRepository) Create(ctx context.Context, item *Asset, actorID uint6
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, errors.New("invalid_insert_id")
+	}
 	return uint64(id), nil
 }
 

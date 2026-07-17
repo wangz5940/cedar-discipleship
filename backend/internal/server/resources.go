@@ -127,12 +127,17 @@ func servePDFRange(w http.ResponseWriter, srcPath, original, pages string) error
 	if err != nil {
 		return err
 	}
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-	if err := pdfapi.TrimFile(srcPath, tmp.Name(), []string{pages}, nil); err != nil {
+	tmpName := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
 		return err
 	}
-	file, err := os.Open(tmp.Name())
+	defer os.Remove(tmpName)
+	if err := pdfapi.TrimFile(srcPath, tmpName, []string{pages}, nil); err != nil {
+		return err
+	}
+	// #nosec G304 -- tmpName is returned by os.CreateTemp in this function.
+	file, err := os.Open(tmpName)
 	if err != nil {
 		return err
 	}
@@ -219,36 +224,4 @@ func (a *app) handleResourceLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sections": sections})
-}
-
-func (a *app) handleAdminCreateAsset(w http.ResponseWriter, r *http.Request) {
-	u := mustUser(r)
-	groupID := requireGroupID(w, u)
-	if groupID == 0 {
-		return
-	}
-	var req struct {
-		Category    string `json:"category"`
-		Title       string `json:"title"`
-		StoragePath string `json:"storage_path"`
-		MimeType    string `json:"mime_type"`
-		FileSize    uint64 `json:"file_size"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	id, err := a.assets.CreateMetadata(r.Context(), assetdomain.CreateRequest{
-		GroupID:     groupID,
-		ActorID:     u.ID,
-		Category:    req.Category,
-		Title:       req.Title,
-		StoragePath: req.StoragePath,
-		MimeType:    req.MimeType,
-		FileSize:    req.FileSize,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "asset_save_failed")
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }

@@ -12,7 +12,7 @@ func (a *app) handleToday(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	date := queryDate(r, "date", time.Now().In(a.location))
-	settings, err := a.groupLearningConfig(groupID)
+	settings, err := a.groupLearningConfig(r.Context(), groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "today_failed")
 		return

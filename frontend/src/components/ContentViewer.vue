@@ -77,7 +77,7 @@ function openAdjacentItem(item) {
     <div class="viewer-modal" :class="{ 'viewer-modal-pdf': viewer.type === 'pdf' }">
       <div class="viewer-head">
         <div class="viewer-head-copy">
-          <div class="eyebrow">Content Viewer</div>
+          <div class="eyebrow">内容阅读</div>
           <h2>{{ viewer.title }}</h2>
           <p v-if="viewer.pageRange" class="muted viewer-note">
             当前阅读范围：{{ viewer.pageRange }}页

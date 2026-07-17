@@ -35,7 +35,7 @@ func (a *app) handleCurrentStudyWeek(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	week, err := a.currentWeek(groupID)
+	week, err := a.currentWeek(r.Context(), groupID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusInternalServerError, "week_failed")
 		return
@@ -85,7 +85,21 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		writeError(w, http.StatusBadRequest, "week_dates_required")
 		return
 	}
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_week_dates")
+		return
+	}
+	endDate, err := time.Parse("2006-01-02", req.EndDate)
+	if err != nil || endDate.Before(startDate) {
+		writeError(w, http.StatusBadRequest, "invalid_week_dates")
+		return
+	}
 	savedID, err := a.learning.SaveWeek(r.Context(), groupID, id, req, time.Now().In(a.location))
+	if errors.Is(err, learningdomain.ErrWeekNotFound) {
+		writeError(w, http.StatusNotFound, "week_not_found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "week_task_save_failed")
 		return
@@ -95,25 +109,17 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
 }
 
-func (a *app) currentWeek(groupID uint64) (map[string]any, error) {
+func (a *app) currentWeek(ctx context.Context, groupID uint64) (map[string]any, error) {
 	today := time.Now().In(a.location).Format("2006-01-02")
-	return a.currentWeekAt(groupID, today)
+	return a.currentWeekAt(ctx, groupID, today)
 }
 
-func splitWeekTaskBindings(tasks []map[string]any) ([]weekTaskBinding, []weekTaskBinding, weekTaskBinding) {
-	return learningdomain.SplitWeekTaskBindings(tasks)
+func (a *app) currentWeekAt(ctx context.Context, groupID uint64, date string) (map[string]any, error) {
+	return a.learning.CurrentWeek(ctx, groupID, date)
 }
 
-func inferTaskBindingType(taskType, urlValue, fileName string) string {
-	return learningdomain.InferTaskBindingType(taskType, urlValue, fileName)
-}
-
-func (a *app) currentWeekAt(groupID uint64, date string) (map[string]any, error) {
-	return a.learning.CurrentWeek(context.Background(), groupID, date)
-}
-
-func (a *app) weekTasks(groupID, weekID uint64) ([]map[string]any, error) {
-	return a.learning.WeekTasks(context.Background(), groupID, weekID)
+func (a *app) weekTasks(ctx context.Context, groupID, weekID uint64) ([]map[string]any, error) {
+	return a.learning.WeekTasks(ctx, groupID, weekID)
 }
 
 func weeklyVerseTaskTitle(req studyWeekInput, existingTitle string) string {

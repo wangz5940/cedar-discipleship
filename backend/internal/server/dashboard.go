@@ -49,7 +49,7 @@ func (a *app) handleMembers(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	members, err := a.listMembers(groupID)
+	members, err := a.listMembers(r.Context(), groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "members_failed")
 		return

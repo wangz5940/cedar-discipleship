@@ -30,6 +30,22 @@ CREATE TABLE IF NOT EXISTS users (
   KEY idx_pinyin (name_pinyin)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS login_logs (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NULL,
+  group_id BIGINT UNSIGNED NULL,
+  username VARCHAR(64) NOT NULL DEFAULT '',
+  success TINYINT NOT NULL DEFAULT 0,
+  failure_reason VARCHAR(64) NOT NULL DEFAULT '',
+  ip VARCHAR(64) NOT NULL DEFAULT '',
+  user_agent VARCHAR(512) NOT NULL DEFAULT '',
+  created_at DATETIME(3) NOT NULL,
+  KEY idx_user_created (user_id, created_at),
+  KEY idx_group_created (group_id, created_at),
+  KEY idx_username_created (username, created_at),
+  KEY idx_success_created (success, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS group_members (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   group_id BIGINT UNSIGNED NOT NULL,

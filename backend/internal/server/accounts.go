@@ -13,9 +13,11 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	auditdomain "agp/backend/internal/audit"
+	userdomain "agp/backend/internal/user"
 )
 
 func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -26,7 +28,7 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		u, err := a.loadCurrentUser(claims.UserID, claims.CurrentGroupID)
+		u, err := a.loadCurrentUser(r.Context(), claims.UserID, claims.CurrentGroupID)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -60,24 +62,8 @@ func mustUser(r *http.Request) currentUser {
 	return r.Context().Value(currentUserKey).(currentUser)
 }
 
-func (a *app) loadCurrentUser(userID, currentGroupID uint64) (currentUser, error) {
-	return a.users.CurrentUser(context.Background(), userID, currentGroupID)
-}
-
-func (a *app) visibleGroups(userID uint64, isSuperAdmin bool) ([]group, error) {
-	return a.users.VisibleGroups(context.Background(), userID, isSuperAdmin)
-}
-
-func (a *app) allGroups() ([]group, error) {
-	return a.users.VisibleGroups(context.Background(), 0, true)
-}
-
-func (a *app) userGroups(userID uint64) ([]group, error) {
-	return a.users.VisibleGroups(context.Background(), userID, false)
-}
-
-func (a *app) userRoles(userID, groupID uint64) ([]string, error) {
-	return a.users.Roles(context.Background(), userID, groupID)
+func (a *app) loadCurrentUser(ctx context.Context, userID, currentGroupID uint64) (currentUser, error) {
+	return a.users.CurrentUser(ctx, userID, currentGroupID)
 }
 
 func requireGroupID(w http.ResponseWriter, u currentUser) uint64 {
@@ -88,8 +74,8 @@ func requireGroupID(w http.ResponseWriter, u currentUser) uint64 {
 	return u.CurrentGroupID
 }
 
-func (a *app) listMembers(groupID uint64) ([]map[string]any, error) {
-	members, err := a.users.Members(context.Background(), groupID)
+func (a *app) listMembers(ctx context.Context, groupID uint64) ([]map[string]any, error) {
+	members, err := a.users.Members(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,12 +94,12 @@ func (a *app) listMembers(groupID uint64) ([]map[string]any, error) {
 	return out, nil
 }
 
-func (a *app) groupLearningConfig(groupID uint64) (map[string]any, error) {
-	return a.learning.LearningConfig(context.Background(), groupID)
+func (a *app) groupLearningConfig(ctx context.Context, groupID uint64) (map[string]any, error) {
+	return a.learning.LearningConfig(ctx, groupID)
 }
 
-func (a *app) upsertGroupLearningConfig(groupID uint64, settings map[string]any) error {
-	return a.learning.SaveLearningConfig(context.Background(), groupID, settings)
+func (a *app) upsertGroupLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
+	return a.learning.SaveLearningConfig(ctx, groupID, settings)
 }
 
 func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLeaders bool, actorID uint64, r *http.Request) (int64, error) {
@@ -124,7 +110,7 @@ func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLe
 	if err != nil {
 		return 0, err
 	}
-	affected, err := a.users.SetGroupDefaultPassword(context.Background(), groupID, hash, time.Now().UTC())
+	affected, err := a.users.SetGroupDefaultPassword(r.Context(), groupID, hash, time.Now().UTC())
 	if err != nil {
 		return 0, err
 	}
@@ -132,16 +118,12 @@ func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLe
 	return affected, nil
 }
 
-func (a *app) groupDefaultPasswordHash(groupID uint64) (string, error) {
-	return a.users.GroupDefaultPasswordHash(context.Background(), groupID)
+func (a *app) groupDefaultPasswordHash(ctx context.Context, groupID uint64) (string, error) {
+	return a.users.GroupDefaultPasswordHash(ctx, groupID)
 }
 
-func (a *app) createUserWithHash(username, displayName, namePinyin, hash string, isSuper bool, actorID uint64) (uint64, error) {
-	return a.users.CreateUserWithHash(context.Background(), username, displayName, namePinyin, hash, isSuper, actorID, time.Now().UTC())
-}
-
-func (a *app) addMember(groupID, userID uint64, memberName string, actorID uint64) error {
-	return a.users.AddMember(context.Background(), groupID, userID, memberName, actorID, time.Now().UTC())
+func (a *app) addMember(ctx context.Context, groupID, userID uint64, memberName string, actorID uint64) error {
+	return a.users.AddMember(ctx, groupID, userID, memberName, actorID, time.Now().UTC())
 }
 
 func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID uint64, before, after any, r *http.Request) {
@@ -159,6 +141,9 @@ func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID
 }
 
 func (a *app) signToken(c tokenClaims) (string, error) {
+	if c.ExpiresAt == 0 && a.tokenTTL > 0 {
+		c.ExpiresAt = time.Now().Add(a.tokenTTL).Unix()
+	}
 	body, err := json.Marshal(c)
 	if err != nil {
 		return "", err
@@ -255,13 +240,18 @@ func pbkdf2Key(password, salt []byte, iter, keyLen int, h func() hash.Hash) []by
 }
 
 type loginLimiter struct {
+	mu       sync.Mutex
 	failures map[string]loginFailure
 }
 
 type loginFailure struct {
 	Count     int
 	BlockedTo time.Time
+	LastSeen  time.Time
 }
+
+const maxLoginFailureEntries = 10_000
+const loginFailureTTL = 10 * time.Minute
 
 func newLoginLimiter() *loginLimiter {
 	return &loginLimiter{failures: map[string]loginFailure{}}
@@ -272,20 +262,62 @@ func (l *loginLimiter) key(ip, username string) string {
 }
 
 func (l *loginLimiter) blocked(ip, username string) bool {
-	item := l.failures[l.key(ip, username)]
-	return item.BlockedTo.After(time.Now())
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := l.key(ip, username)
+	item, ok := l.failures[key]
+	if !ok {
+		return false
+	}
+	now := time.Now()
+	if !item.BlockedTo.After(now) && now.Sub(item.LastSeen) >= loginFailureTTL {
+		delete(l.failures, key)
+		return false
+	}
+	return item.BlockedTo.After(now)
 }
 
 func (l *loginLimiter) fail(ip, username string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
 	key := l.key(ip, username)
-	item := l.failures[key]
+	item, exists := l.failures[key]
+	if exists && !item.BlockedTo.After(now) && now.Sub(item.LastSeen) >= loginFailureTTL {
+		item = loginFailure{}
+	}
+	if !exists && len(l.failures) >= maxLoginFailureEntries {
+		l.evictOneLocked(now)
+	}
 	item.Count++
+	item.LastSeen = now
 	if item.Count >= 8 {
-		item.BlockedTo = time.Now().Add(10 * time.Minute)
+		item.BlockedTo = now.Add(loginFailureTTL)
 	}
 	l.failures[key] = item
 }
 
+func (l *loginLimiter) evictOneLocked(now time.Time) {
+	for key, item := range l.failures {
+		if !item.BlockedTo.After(now) && now.Sub(item.LastSeen) >= loginFailureTTL {
+			delete(l.failures, key)
+			return
+		}
+	}
+	for key := range l.failures {
+		delete(l.failures, key)
+		return
+	}
+}
+
 func (l *loginLimiter) success(ip, username string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	delete(l.failures, l.key(ip, username))
+}
+
+func (a *app) recordLoginLog(r *http.Request, input userdomain.LoginLog) {
+	input.IP = clientIP(r)
+	input.UserAgent = r.UserAgent()
+	_ = a.users.RecordLoginLog(r.Context(), input, time.Now().UTC())
 }

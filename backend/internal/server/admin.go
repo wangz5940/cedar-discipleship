@@ -15,7 +15,7 @@ func (a *app) handleAdminLearningConfig(w http.ResponseWriter, r *http.Request) 
 	if groupID == 0 {
 		return
 	}
-	settings, err := a.groupLearningConfig(groupID)
+	settings, err := a.groupLearningConfig(r.Context(), groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "learning_config_failed")
 		return
@@ -36,16 +36,12 @@ func (a *app) handleAdminSaveLearningConfig(w http.ResponseWriter, r *http.Reque
 	if settings == nil {
 		settings = map[string]any{}
 	}
-	if err := a.upsertGroupLearningConfig(groupID, settings); err != nil {
+	if err := a.upsertGroupLearningConfig(r.Context(), groupID, settings); err != nil {
 		writeError(w, http.StatusInternalServerError, "learning_config_save_failed")
 		return
 	}
 	a.audit(groupID, u.ID, "save_learning_config", "group_settings", groupID, nil, map[string]any{"keys": len(settings)}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "settings": settings})
-}
-
-func (a *app) handleAdminMembers(w http.ResponseWriter, r *http.Request) {
-	a.handleMembers(w, r)
 }
 
 func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {

@@ -23,11 +23,11 @@ type Repository interface {
 	GroupDefaultPasswordHash(ctx context.Context, groupID uint64) (string, error)
 	HasSuperAdmin(ctx context.Context) (bool, error)
 	BootstrapSuperAdmin(ctx context.Context, username, displayName, namePinyin, passwordHash string, at time.Time) error
-	CreateUserWithHash(ctx context.Context, username, displayName, namePinyin, passwordHash string, isSuperAdmin bool, actorID uint64, at time.Time) (uint64, error)
+	CreateUserWithMembership(ctx context.Context, username, displayName, namePinyin, passwordHash string, isSuperAdmin bool, groupID uint64, role string, actorID uint64, at time.Time) (uint64, error)
 	AddMember(ctx context.Context, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error
 	UpdateLastLogin(ctx context.Context, userID uint64, at time.Time) error
+	CreateLoginLog(ctx context.Context, log LoginLog, at time.Time) error
 	UpdateDefaultGroup(ctx context.Context, userID uint64, groupID uint64, updatedAt time.Time) error
 	PasswordHash(ctx context.Context, userID uint64) (string, error)
 	UpdatePassword(ctx context.Context, userID uint64, passwordHash string, updatedAt time.Time) error
-	Save(ctx context.Context, user *User) error
 }

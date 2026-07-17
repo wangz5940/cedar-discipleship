@@ -16,6 +16,29 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+func (r *MySQLRepository) ValidateWeeklyTarget(
+	ctx context.Context,
+	groupID, taskID, weekID uint64,
+	taskType, logicalDate string,
+) error {
+	var found int
+	return r.db.QueryRowContext(ctx, `
+		SELECT 1
+		FROM study_tasks t
+		JOIN study_weeks w
+		  ON w.id=t.week_id AND w.group_id=t.group_id
+		WHERE t.id=? AND t.group_id=? AND t.week_id=?
+		  AND t.task_type=? AND t.enabled=1
+		  AND ? BETWEEN w.start_date AND w.end_date
+		LIMIT 1`,
+		taskID,
+		groupID,
+		weekID,
+		taskType,
+		logicalDate,
+	).Scan(&found)
+}
+
 func (r *MySQLRepository) FindExistingWeeklyBook(ctx context.Context, groupID, userID, taskID, weekID uint64, part, detail string) (uint64, error) {
 	if taskID > 0 {
 		var id uint64
@@ -79,7 +102,13 @@ func (r *MySQLRepository) Create(ctx context.Context, record *Record, actorID ui
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, errors.New("invalid_insert_id")
+	}
 	return uint64(id), nil
 }
 

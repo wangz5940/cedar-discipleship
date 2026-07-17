@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -81,61 +82,51 @@ func (a *app) handleSuperCreateUser(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	password := req.Password
-	if password == "" && req.GroupID > 0 {
-		hash, err := a.groupDefaultPasswordHash(req.GroupID)
+	var hash string
+	initialPassword := ""
+	if req.Password == "" && req.GroupID > 0 {
+		var err error
+		hash, err = a.groupDefaultPasswordHash(r.Context(), req.GroupID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "password_required")
 			return
 		}
-		returnedID, err := a.createUserWithHash(req.Username, req.DisplayName, req.NamePinyin, hash, req.IsSuperAdmin, u.ID)
+	} else {
+		password := req.Password
+		if password == "" {
+			password = randomPassword(8)
+			initialPassword = password
+		}
+		var err error
+		hash, err = hashPassword(password)
 		if err != nil {
-			writeError(w, http.StatusConflict, "user_create_failed")
+			writeError(w, http.StatusInternalServerError, "password_failed")
 			return
 		}
-		if req.GroupID > 0 {
-			if err := a.addMember(req.GroupID, returnedID, req.DisplayName, u.ID); err != nil {
-				writeError(w, http.StatusConflict, "member_add_failed")
-				return
-			}
-			if req.Role != "" {
-				if err := a.users.SetUserRole(r.Context(), req.GroupID, returnedID, req.Role, true, time.Now().UTC()); err != nil {
-					writeError(w, http.StatusInternalServerError, "role_save_failed")
-					return
-				}
-			}
-		}
-		writeJSON(w, http.StatusCreated, map[string]any{"id": returnedID})
+	}
+	id, err := a.users.CreateUserWithMembership(
+		r.Context(),
+		req.Username,
+		req.DisplayName,
+		req.NamePinyin,
+		hash,
+		req.IsSuperAdmin,
+		req.GroupID,
+		req.Role,
+		u.ID,
+		time.Now().UTC(),
+	)
+	if errors.Is(err, userdomain.ErrUsernameDisplayNameRequired) || errors.Is(err, userdomain.ErrInvalidRole) {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if password == "" {
-		password = randomPassword(8)
-	}
-	hash, err := hashPassword(password)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "password_failed")
-		return
-	}
-	id, err := a.createUserWithHash(req.Username, req.DisplayName, req.NamePinyin, hash, req.IsSuperAdmin, u.ID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "user_create_failed")
 		return
 	}
-	if req.GroupID > 0 {
-		if err := a.addMember(req.GroupID, id, req.DisplayName, u.ID); err != nil {
-			writeError(w, http.StatusConflict, "member_add_failed")
-			return
-		}
-		if req.Role != "" {
-			if err := a.users.SetUserRole(r.Context(), req.GroupID, id, req.Role, true, time.Now().UTC()); err != nil {
-				writeError(w, http.StatusInternalServerError, "role_save_failed")
-				return
-			}
-		}
-	}
 	resp := map[string]any{"id": id}
-	if req.Password == "" {
-		resp["initial_password"] = password
+	if initialPassword != "" {
+		resp["initial_password"] = initialPassword
 	}
 	writeJSON(w, http.StatusCreated, resp)
 }
@@ -153,7 +144,11 @@ func (a *app) handleSuperResetAllPasswords(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "confirmation_required")
 		return
 	}
-	hash, _ := hashPassword(req.Password)
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "password_failed")
+		return
+	}
 	affected, err := a.users.ResetNonSuperPasswords(r.Context(), hash, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "reset_failed")
@@ -173,7 +168,7 @@ func (a *app) handleSuperAddGroupMember(w http.ResponseWriter, r *http.Request) 
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := a.addMember(groupID, req.UserID, req.MemberName, u.ID); err != nil {
+	if err := a.addMember(r.Context(), groupID, req.UserID, req.MemberName, u.ID); err != nil {
 		writeError(w, http.StatusConflict, "member_add_failed")
 		return
 	}

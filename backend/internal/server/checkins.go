@@ -1,11 +1,13 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	checkindomain "agp/backend/internal/checkin"
+	learningdomain "agp/backend/internal/learning"
 )
 
 func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
@@ -31,13 +33,37 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "task_type_required")
 		return
 	}
+	if !validCheckinTaskType(req.TaskType) {
+		writeError(w, http.StatusBadRequest, "invalid_task_type")
+		return
+	}
 	if req.LogicalDate == "" {
 		req.LogicalDate = time.Now().In(a.location).Format("2006-01-02")
 	}
-	today := time.Now().In(a.location).Format("2006-01-02")
-	if req.LogicalDate > today {
+	logicalDate, err := time.ParseInLocation("2006-01-02", req.LogicalDate, a.location)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_logical_date")
+		return
+	}
+	today := time.Now().In(a.location)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, a.location)
+	if logicalDate.After(today) {
 		writeError(w, http.StatusBadRequest, "future_checkin_not_allowed")
 		return
+	}
+	if req.TaskType == "daily_devotion" {
+		settings, err := a.groupLearningConfig(r.Context(), groupID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "checkin_save_failed")
+			return
+		}
+		if !learningdomain.DailyTaskEnabled(settings) {
+			writeError(w, http.StatusBadRequest, "daily_task_disabled")
+			return
+		}
+		req.Part = ""
+		req.TaskID = 0
+		req.WeekID = 0
 	}
 	id, existing, err := a.checkins.Create(r.Context(), &checkindomain.Record{
 		GroupID:     groupID,
@@ -51,6 +77,10 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		Note:        req.Note,
 		IsRetro:     req.IsRetro,
 	}, u.ID)
+	if errors.Is(err, checkindomain.ErrInvalidWeeklyTarget) {
+		writeError(w, http.StatusBadRequest, "invalid_checkin_target")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusConflict, "checkin_save_failed")
 		return
@@ -60,6 +90,15 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+func validCheckinTaskType(taskType string) bool {
+	switch taskType {
+	case "daily_devotion", "weekly_book", "weekly_video", "weekly_verse":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {

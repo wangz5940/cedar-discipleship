@@ -89,20 +89,16 @@ http://127.0.0.1:5114
 127.0.0.1:3307
 ```
 
-默认首个超级管理员：
-
-```text
-账号：admin
-密码：ChangeMe123
-```
-
-生产环境必须覆盖：
+首次超级管理员由环境变量创建。直接使用 Docker Compose 启动时必须提供：
 
 ```bash
 export AGP_JWT_SECRET='替换为长随机字符串'
 export BOOTSTRAP_SUPERADMIN_USERNAME='admin'
 export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
 export BOOTSTRAP_SUPERADMIN_DISPLAY_NAME='超级管理员'
+
+# 可选：默认空值表示登录令牌永久有效；例如 24h 表示 24 小时过期
+export AGP_TOKEN_TTL=''
 ```
 
 如果部署机器无法访问 `proxy.golang.org`，后端镜像构建会在 `go mod download` 阶段超时。NAS 或受限网络环境里，先设置 Go 模块代理再执行部署：

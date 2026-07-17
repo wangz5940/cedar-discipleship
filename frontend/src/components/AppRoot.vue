@@ -39,6 +39,7 @@ import {
   updateWeekBinding,
   updateWeekDraftField,
   uploadLibraryFile,
+  weekBindingSelectionValue,
 } from '../legacy-app';
 
 const app = useAppStateStore();
@@ -59,6 +60,7 @@ const {
   members,
   canAdmin,
   canEditLearning,
+  canEditStudyWeeks,
   adminLoading,
   learningConfig,
   weekDraft,
@@ -86,8 +88,22 @@ const settings = computed(() => learningConfig.value || {});
 const daily = computed(() => settings.value.task_sections?.daily || {});
 const devotion = computed(() => daily.value.devotion || {});
 const scripture = computed(() => daily.value.scripture || {});
-const weekly = computed(() => settings.value.task_sections?.weekly || {});
-const share = computed(() => settings.value.task_sections?.share || {});
+const bibleBooks = [
+  ['创世记', 50], ['出埃及记', 40], ['利未记', 27], ['民数记', 36], ['申命记', 34],
+  ['约书亚记', 24], ['士师记', 21], ['路得记', 4], ['撒母耳记上', 31], ['撒母耳记下', 24],
+  ['列王纪上', 22], ['列王纪下', 25], ['历代志上', 29], ['历代志下', 36], ['以斯拉记', 10],
+  ['尼希米记', 13], ['以斯帖记', 10], ['约伯记', 42], ['诗篇', 150], ['箴言', 31],
+  ['传道书', 12], ['雅歌', 8], ['以赛亚书', 66], ['耶利米书', 52], ['耶利米哀歌', 5],
+  ['以西结书', 48], ['但以理书', 12], ['何西阿书', 14], ['约珥书', 3], ['阿摩司书', 9],
+  ['俄巴底亚书', 1], ['约拿书', 4], ['弥迦书', 7], ['那鸿书', 3], ['哈巴谷书', 3],
+  ['西番雅书', 3], ['哈该书', 2], ['撒迦利亚书', 14], ['玛拉基书', 4], ['马太福音', 28],
+  ['马可福音', 16], ['路加福音', 24], ['约翰福音', 21], ['使徒行传', 28], ['罗马书', 16],
+  ['哥林多前书', 16], ['哥林多后书', 13], ['加拉太书', 6], ['以弗所书', 6], ['腓立比书', 4],
+  ['歌罗西书', 4], ['帖撒罗尼迦前书', 5], ['帖撒罗尼迦后书', 3], ['提摩太前书', 6], ['提摩太后书', 4],
+  ['提多书', 3], ['腓利门书', 1], ['希伯来书', 13], ['雅各书', 5], ['彼得前书', 5],
+  ['彼得后书', 3], ['约翰一书', 5], ['约翰二书', 1], ['约翰三书', 1], ['犹大书', 1], ['启示录', 22],
+].map(([book, chapters], index) => ({ book, book_id: String(index + 1), chapters }));
+const scriptureBookOptions = computed(() => bibleBooks);
 const libraryItems = computed(() => resourceLibrary.value.flatMap((section) => section.items || []));
 const markdownFileOptions = computed(() => {
   const seen = new Set();
@@ -97,13 +113,23 @@ const markdownFileOptions = computed(() => {
     return true;
   });
 });
-const readingOptions = computed(() => libraryItems.value.filter((item) => ['markdown', 'pdf'].includes(item.type)));
+const readingOptions = computed(() => libraryItems.value.filter((item) => (
+  ['book', 'passage'].includes(item.category) || ['pdf', 'reading'].includes(item.type)
+)));
 const videoOptions = computed(() => libraryItems.value.filter((item) => item.type === 'video'));
 const outlineOptions = computed(() => libraryItems.value.filter((item) => item.type === 'image'));
 const resourceCategoryCount = computed(() => new Set(resources.value.map((item) => item.category).filter(Boolean)).size);
 const resourcePrimaryCategory = computed(() => {
   const first = resources.value.find((item) => item.category);
-  return first?.category || '资料归档';
+  const labels = {
+    book: '读物',
+    markdown: '文字',
+    pdf: 'PDF',
+    handout: '讲义',
+    outline: '提纲',
+    video: '视频',
+  };
+  return labels[first?.category] || '资料归档';
 });
 const groupedResources = computed(() => {
   const buckets = [
@@ -115,7 +141,7 @@ const groupedResources = computed(() => {
   const map = Object.fromEntries(buckets.map((bucket) => [bucket.key, bucket]));
 
   for (const asset of resources.value) {
-    if (['book', 'markdown', 'pdf'].includes(asset.category)) {
+    if (['book', 'passage', 'markdown', 'pdf'].includes(asset.category)) {
       map.reading.items.push(asset);
     } else if (['handout', 'outline'].includes(asset.category)) {
       map.handout.items.push(asset);
@@ -138,7 +164,11 @@ function selectAdmin(section) {
 }
 
 async function submitLogin() {
-  await login(loginUsername.value, loginPassword.value);
+  try {
+    await login(loginUsername.value, loginPassword.value);
+  } catch (error) {
+    showToast(error.message === 'invalid_username_or_password' ? '账号或密码错误' : error.message);
+  }
 }
 
 async function createGroup() {
@@ -169,8 +199,17 @@ function updateLearning(path, value) {
   updateLearningValue(path, value);
 }
 
-function bindingOptions(kind) {
-  return kind === 'videos' ? videoOptions.value : readingOptions.value;
+function updateScriptureBook(bookID) {
+  const selected = scriptureBookOptions.value.find((item) => String(item.book_id) === String(bookID));
+  if (!selected) return;
+  const startIndex = bibleBooks.findIndex((item) => item.book_id === selected.book_id);
+  updateLearning(['task_sections', 'daily', 'scripture'], {
+    ...scripture.value,
+    book: selected.book || scripture.value.book || '',
+    book_id: selected.book_id || scripture.value.book_id || '',
+    max_chapters: Number(selected.chapters || scripture.value.max_chapters || 1),
+    sequence: bibleBooks.slice(startIndex),
+  });
 }
 
 function optionText(item) {
@@ -235,7 +274,7 @@ function openAsset(asset) {
 
 function resourceTypeLabel(asset) {
   if (asset.type === 'video' || asset.category === 'video') return '视频资料';
-  if (asset.category === 'book') return '读物 PDF';
+  if (asset.category === 'book' || asset.category === 'passage') return '读物 PDF';
   if (asset.category === 'handout') return '讲义 PDF';
   if (asset.type === 'markdown' || asset.category === 'markdown') return '文字材料';
   if (asset.type === 'image' || asset.category === 'outline') return '提纲图片';
@@ -284,13 +323,19 @@ async function selectCalendarDate(day) {
 <template>
   <div v-if="!authenticated" class="login-shell">
     <div class="login-card">
-      <div class="brand-mark">CD</div>
-      <div class="eyebrow">Discipleship Workspace</div>
-      <h1>打卡记录与小组管理</h1>
-      <p>一个安静、清晰的入口，管理每日打卡、学习资源和小组成员。</p>
+      <div class="brand-mark">知</div>
+      <div class="eyebrow">Cedar Discipleship</div>
+      <h1>继续今天的学习</h1>
+      <p>在一个安静、清晰的空间里，完成每日学习，回顾小组进度。</p>
       <div class="form-stack">
-        <input v-model="loginUsername" placeholder="账号，例如 zhangjiale" @keydown.enter="submitLogin" />
-        <input v-model="loginPassword" placeholder="密码" type="password" @keydown.enter="submitLogin" />
+        <label class="auth-field">
+          <span>账号</span>
+          <input v-model="loginUsername" autocomplete="username" placeholder="例如 zhangjiale" @keydown.enter="submitLogin" />
+        </label>
+        <label class="auth-field">
+          <span>密码</span>
+          <input v-model="loginPassword" autocomplete="current-password" placeholder="请输入密码" type="password" @keydown.enter="submitLogin" />
+        </label>
         <button type="button" @click="submitLogin">登录</button>
         <p class="muted">没有公开注册入口，请联系组长或超级管理员创建账号。</p>
       </div>
@@ -300,14 +345,20 @@ async function selectCalendarDate(day) {
   <div v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-topbar">
-        <button class="ghost sidebar-toggle" type="button" :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'" @click="toggleSidebar">
+        <button
+          class="ghost sidebar-toggle"
+          type="button"
+          :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+          :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+          @click="toggleSidebar"
+        >
           {{ sidebarCollapsed ? '›' : '‹' }}
         </button>
       </div>
       <div class="sidebar-logo">
-        <div class="brand-mark">CD</div>
+        <div class="brand-mark">知</div>
         <div>
-          <b>Cedar Discipleship</b>
+          <b>纸间知行</b>
           <div class="muted">{{ user?.display_name || '' }}</div>
         </div>
       </div>
@@ -337,7 +388,7 @@ async function selectCalendarDate(day) {
       <div class="page-chrome">
         <section class="page-title-card">
           <div>
-            <div class="eyebrow">Cedar Workspace</div>
+            <div class="eyebrow">学习工作台</div>
             <h1>{{ pageTitle }}</h1>
             <p class="page-title-subtitle">
               {{ activeGroup?.name || '当前工作区' }} · {{ user?.display_name || user?.username || '当前用户' }}
@@ -346,7 +397,7 @@ async function selectCalendarDate(day) {
         </section>
         <div v-if="groups.length > 1" class="toolbar-card toolbar-card-group">
           <div class="toolbar-card-label">
-            <span class="eyebrow">Group Switcher</span>
+            <span class="eyebrow">当前小组</span>
             <strong>{{ activeGroup?.name || '切换小组' }}</strong>
           </div>
           <div class="group-controls">
@@ -384,13 +435,12 @@ async function selectCalendarDate(day) {
 
         <div v-else-if="tab === 'home'" id="vue-checkin-workbench" class="vue-checkin-workbench-host"></div>
         <div v-else-if="tab === 'dashboard'" id="vue-dashboard" class="vue-dashboard-host"></div>
-
         <section v-else-if="tab === 'resources'">
           <div class="section-title"><h2>资料文件</h2></div>
           <div v-if="resources.length" class="grid">
             <section class="resource-library-hero">
               <div class="resource-library-copy">
-                <div class="eyebrow">Knowledge Library</div>
+                <div class="eyebrow">学习资料</div>
                 <h3>当前小组资料库</h3>
                 <p>读物、讲义和视频统一收进一处，按资料卡片直接进入阅读或播放。</p>
               </div>
@@ -417,7 +467,7 @@ async function selectCalendarDate(day) {
             >
               <div class="resource-group-head">
                 <div>
-                  <div class="eyebrow">Resource Group</div>
+                  <div class="eyebrow">资料分类</div>
                   <h3>{{ section.label }}</h3>
                   <p class="muted">{{ section.description }}</p>
                 </div>
@@ -529,51 +579,41 @@ async function selectCalendarDate(day) {
 
             <section v-else-if="adminSection === 'learning'">
               <div class="section-title"><h2>学习内容管理</h2></div>
-              <div class="grid">
+              <div class="grid admin-learning-stack">
                 <div class="grid cols-2 admin-grid">
                   <div class="card">
                     <h2>每日学习配置</h2>
                     <div class="form-stack admin-form-grid">
-                      <label class="admin-field"><span class="admin-field-label">每日任务名称</span><input :value="daily.label || ''" @change="updateLearning(['task_sections','daily','label'], $event.target.value)" /></label>
-                      <label class="admin-field">
-                        <span class="admin-field-label">每日任务文件</span>
-                        <select :value="daily.path || ''" @change="updateLearning(['task_sections','daily','path'], $event.target.value)">
-                          <option value="">使用默认文件（/newtestament.md）</option>
-                          <option v-for="option in markdownOptionsWithCurrent(daily.path)" :key="option.url" :value="option.url">{{ fileOptionText(option) }}</option>
-                        </select>
-                      </label>
                       <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修入口</span></label>
-                      <label class="admin-field"><span class="admin-field-label">灵修标题</span><input :value="devotion.title || ''" @change="updateLearning(['task_sections','daily','devotion','title'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">阅读按钮文字</span><input :value="devotion.button_label || ''" @change="updateLearning(['task_sections','daily','devotion','button_label'], $event.target.value)" /></label>
                       <label class="admin-field">
-                        <span class="admin-field-label">每日任务文件</span>
+                        <span class="admin-field-label">灵修文件</span>
                         <select :value="devotion.path || ''" @change="updateLearning(['task_sections','daily','devotion','path'], $event.target.value)">
-                          <option value="">沿用上面的每日任务文件</option>
+                          <option value="">使用默认文件（/newtestament.md）</option>
                           <option v-for="option in markdownOptionsWithCurrent(devotion.path || daily.path)" :key="option.url" :value="option.url">{{ fileOptionText(option) }}</option>
                         </select>
                       </label>
                       <label class="admin-field"><span class="admin-field-label">第 1 篇对应日期</span><input type="date" :value="devotion.numbered_start_date || ''" @change="updateLearning(['task_sections','daily','devotion','numbered_start_date'], $event.target.value)" /></label>
                       <label class="admin-field"><span class="admin-field-label">起始篇号</span><input type="number" min="1" :value="devotion.numbered_start || 1" @change="updateLearning(['task_sections','daily','devotion','numbered_start'], Number($event.target.value || 1))" /></label>
+                      <div class="form-actions"><button :class="canEditLearning ? '' : 'secondary'" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存学习配置</button></div>
                     </div>
                   </div>
                   <div class="card">
-                    <h2>每日读经与栏目标题</h2>
+                    <h2>每日读经配置</h2>
                     <div class="form-stack admin-form-grid">
                       <label class="admin-toggle"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
-                      <label class="admin-field"><span class="admin-field-label">读经名称</span><input :value="scripture.label || ''" @change="updateLearning(['task_sections','daily','scripture','label'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">书卷名称</span><input :value="scripture.book || ''" @change="updateLearning(['task_sections','daily','scripture','book'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">书卷编号</span><input :value="scripture.book_id || ''" @change="updateLearning(['task_sections','daily','scripture','book_id'], $event.target.value)" /></label>
+                      <label class="admin-field">
+                        <span class="admin-field-label">起始书卷</span>
+                        <select :value="scripture.book_id || ''" @change="updateScriptureBook($event.target.value)">
+                          <option v-for="book in scriptureBookOptions" :key="book.book_id || book.book" :value="book.book_id">{{ book.book }}（共 {{ book.chapters }} 章）</option>
+                        </select>
+                      </label>
                       <label class="admin-field"><span class="admin-field-label">读经起始日期</span><input type="date" :value="scripture.start_date || ''" @change="updateLearning(['task_sections','daily','scripture','start_date'], $event.target.value)" /></label>
                       <label class="admin-field"><span class="admin-field-label">起始章</span><input type="number" min="1" :value="scripture.start_chapter || 1" @change="updateLearning(['task_sections','daily','scripture','start_chapter'], Number($event.target.value || 1))" /></label>
-                      <label class="admin-field"><span class="admin-field-label">最后一章</span><input type="number" min="1" :value="scripture.max_chapters || 1" @change="updateLearning(['task_sections','daily','scripture','max_chapters'], Number($event.target.value || 1))" /></label>
-                      <label class="admin-field"><span class="admin-field-label">周任务名称</span><input :value="weekly.label || ''" @change="updateLearning(['task_sections','weekly','label'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">周读物文件</span><input :value="weekly.reading_path || ''" @change="updateLearning(['task_sections','weekly','reading_path'], $event.target.value)" /></label>
-                      <label class="admin-field"><span class="admin-field-label">分享区名称</span><input :value="share.label || ''" @change="updateLearning(['task_sections','share','label'], $event.target.value)" /></label>
                       <div class="form-actions"><button :class="canEditLearning ? '' : 'secondary'" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存学习配置</button></div>
                     </div>
                   </div>
                 </div>
-                <div v-if="weekDraft" class="card">
+                <div v-if="weekDraft" class="card week-planner-card">
                   <div class="section-title">
                     <h2>周任务安排</h2>
                     <div class="inline-actions">
@@ -591,22 +631,20 @@ async function selectCalendarDate(day) {
                     <div class="admin-binding-list">
                       <div class="admin-field-label">读物挂载文件与页码</div>
                       <div v-for="(item, index) in weekDraft.readings || []" :key="`reading-${index}`" class="admin-binding-row reading-binding-row">
-                        <input :value="item.title || ''" placeholder="读物标题" @change="updateWeekBinding('readings', index, 'title', $event.target.value)" />
-                        <input type="number" min="1" inputmode="numeric" :value="item.page_start || ''" placeholder="起始页" @change="updateWeekBinding('readings', index, 'page_start', $event.target.value)" />
-                        <input type="number" min="1" inputmode="numeric" :value="item.page_end || ''" placeholder="结束页" @change="updateWeekBinding('readings', index, 'page_end', $event.target.value)" />
-                        <select :value="librarySelectionValue(item)" @change="applyBindingSelection('readings', index, $event.target.value)">
+                        <select :value="weekBindingSelectionValue(item, readingOptions)" @change="applyBindingSelection('readings', index, $event.target.value)">
                           <option value="">不挂载文件</option>
                           <option v-for="option in readingOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
                         </select>
+                        <input type="number" min="1" inputmode="numeric" :value="item.page_start || ''" placeholder="起始页" @change="updateWeekBinding('readings', index, 'page_start', $event.target.value)" />
+                        <input type="number" min="1" inputmode="numeric" :value="item.page_end || ''" placeholder="结束页" @change="updateWeekBinding('readings', index, 'page_end', $event.target.value)" />
                         <button class="ghost" type="button" @click="removeWeekBinding('readings', index)">删除</button>
                       </div>
                       <button class="secondary" type="button" @click="addWeekBinding('readings')">新增读物</button>
                     </div>
                     <div class="admin-binding-list">
                       <div class="admin-field-label">视频文件</div>
-                      <div v-for="(item, index) in weekDraft.videos || []" :key="`video-${index}`" class="admin-binding-row">
-                        <input :value="item.title || ''" placeholder="视频标题" @change="updateWeekBinding('videos', index, 'title', $event.target.value)" />
-                        <select :value="librarySelectionValue(item)" @change="applyBindingSelection('videos', index, $event.target.value)">
+                      <div v-for="(item, index) in weekDraft.videos || []" :key="`video-${index}`" class="admin-binding-row video-binding-row">
+                        <select :value="weekBindingSelectionValue(item, videoOptions)" @change="applyBindingSelection('videos', index, $event.target.value)">
                           <option value="">不挂载文件</option>
                           <option v-for="option in videoOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
                         </select>
@@ -630,9 +668,9 @@ async function selectCalendarDate(day) {
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.outline_enabled)" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>显示提纲背诵</span></label>
                     </div>
                     <div class="form-actions">
-                      <button :disabled="!canEditLearning" type="button" @click="saveWeekDraft">保存当前周</button>
-                      <button class="secondary" :disabled="!canEditLearning" type="button" @click="restoreWeekDraftDefaults">恢复默认周任务</button>
-                      <button class="danger" :disabled="!canEditLearning" type="button" @click="deleteWeekDraft">删除当前周</button>
+                      <button :disabled="!canEditStudyWeeks" type="button" @click="saveWeekDraft">保存当前周</button>
+                      <button class="secondary" :disabled="!canEditStudyWeeks" type="button" @click="restoreWeekDraftDefaults">恢复默认周任务</button>
+                      <button class="danger" :disabled="!canEditStudyWeeks" type="button" @click="deleteWeekDraft">删除当前周</button>
                     </div>
                   </div>
                 </div>
@@ -722,7 +760,7 @@ async function selectCalendarDate(day) {
     <div class="calendar-modal">
       <div class="calendar-head">
         <div>
-          <div class="eyebrow">Member Calendar</div>
+          <div class="eyebrow">学习日历</div>
           <h2>{{ calendar.member?.member_name || calendar.member?.display_name }}</h2>
           <p class="muted">{{ calendar.month }} 打卡月历</p>
         </div>

@@ -99,12 +99,39 @@ func TestServiceCreateWeeklyTaskReturnsLookupError(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRejectsInvalidWeeklyTarget(t *testing.T) {
+	repo := &fakeRepository{
+		validateWeeklyTargetErr: sql.ErrNoRows,
+	}
+	service := NewService(repo)
+
+	_, _, err := service.Create(context.Background(), &Record{
+		GroupID:     1,
+		UserID:      2,
+		TaskID:      3,
+		WeekID:      4,
+		LogicalDate: "2026-07-17",
+		TaskType:    "weekly_video",
+	}, 2)
+	if !errors.Is(err, ErrInvalidWeeklyTarget) {
+		t.Fatalf("err = %v, want %v", err, ErrInvalidWeeklyTarget)
+	}
+	if repo.createCalled {
+		t.Fatal("Create should not insert an invalid weekly target")
+	}
+}
+
 type fakeRepository struct {
-	existingWeeklyTaskID  uint64
-	existingWeeklyTaskErr error
-	weeklyTaskType        string
-	createID              uint64
-	createCalled          bool
+	validateWeeklyTargetErr error
+	existingWeeklyTaskID    uint64
+	existingWeeklyTaskErr   error
+	weeklyTaskType          string
+	createID                uint64
+	createCalled            bool
+}
+
+func (r *fakeRepository) ValidateWeeklyTarget(ctx context.Context, groupID, taskID, weekID uint64, taskType, logicalDate string) error {
+	return r.validateWeeklyTargetErr
 }
 
 func (r *fakeRepository) FindExistingWeeklyBook(ctx context.Context, groupID, userID, taskID, weekID uint64, part, detail string) (uint64, error) {
