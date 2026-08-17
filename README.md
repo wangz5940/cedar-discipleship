@@ -170,6 +170,39 @@ EXECUTE_IMPORT=true \
 
 默认建议先只做 dry-run，检查迁移报告里的 `generated_usernames`、`warnings` 和 `failures` 后再导入。
 
+## 专项小组初始化
+
+专项小组是新功能，不涉及旧数据迁移。表结构由后端启动时的数据库建表流程创建；专项小组目录的独立初始化 SQL 在：
+
+```text
+backend/sql/init_ministry_groups.sql
+```
+
+这份 SQL 会为每个现有 `study_groups` 初始化以下专项小组，且可重复执行：
+
+```text
+领会组、主持组、伙食组、后勤组、整洁组、技术组、策划组、数点组、
+探望组、回报组、娃娃组、守望组、门训数点组、门训规划发布组、门训批改组
+```
+
+Docker Compose 部署环境下一键执行：
+
+```bash
+./scripts/init-ministry-groups.sh
+```
+
+如果需要直连本机或远端 MySQL：
+
+```bash
+USE_LOCAL_MYSQL=true \
+MYSQL_HOST=127.0.0.1 \
+MYSQL_PORT=3307 \
+MYSQL_DATABASE=agp \
+MYSQL_USER=agp \
+MYSQL_PASSWORD=agp \
+./scripts/init-ministry-groups.sh
+```
+
 ## 运行与运维
 
 常用命令：

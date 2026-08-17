@@ -2,6 +2,28 @@ import { useContentViewerStore } from './stores/contentViewer';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useDashboardStore } from './stores/dashboard';
 import { useAppStateStore } from './stores/appState';
+import {
+  currentCalendarWeekRange,
+  currentMonthString,
+  dayOffsetFrom,
+  formatLocalDate,
+  formatMonthLabel,
+  numberToChinese,
+  parseLocalDate,
+  todayString,
+  toChineseMonthDay,
+} from './runtime/date';
+import {
+  applyPdfPageRangeToTitle,
+  deepMerge,
+  enabledFlag,
+  extractPdfPageRange,
+  normalizePageField,
+  normalizeSearchText,
+  parsePdfPageRangeParts,
+} from './runtime/content';
+
+export { enabledFlag, extractPdfPageRange };
 
 const state = {
   token: localStorage.getItem('agp_token') || '',
@@ -51,17 +73,6 @@ function syncViewerStore() {
 
 function clonePlain(value) {
   return JSON.parse(JSON.stringify(value ?? null));
-}
-
-export function enabledFlag(value, fallback = true) {
-  if (value === undefined || value === null || value === '') return fallback;
-  if (value === false || value === 0) return false;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
-  }
-  return Boolean(value);
 }
 
 function canAdminAccess() {
@@ -214,15 +225,9 @@ function syncDashboardStore() {
 const navItems = [
   ['home', '今日', 'Today'],
   ['dashboard', '统计', 'Insights'],
+  ['groups', '小组', 'Teams'],
   ['resources', '资源', 'Library'],
   ['admin', '管理', 'Admin'],
-];
-
-const taskItems = [
-  ['daily_devotion', '每日灵修'],
-  ['weekly_book', '周读物'],
-  ['weekly_video', '周视频'],
-  ['weekly_verse', '背经'],
 ];
 
 const staticContentItems = [
@@ -233,24 +238,6 @@ const staticContentItems = [
   { title: '救赎史剧-2', keywords: ['救赎史剧'], url: '/Book/圣经救赎史剧综览-2.pdf', type: 'pdf', minPage: 1, maxPage: 108 },
   { title: '救赎史剧-3', keywords: ['救赎史剧'], url: '/Book/圣经救赎史剧综览-3.pdf', type: 'pdf', minPage: 109, maxPage: 9999 },
 ];
-
-const fontStackQuotes = '"Noto Serif SC", "Kaiti SC", STKaiti, "Songti SC", FangSong, STFangsong, serif';
-
-function el(tag, attrs = {}, children = []) {
-  const node = document.createElement(tag);
-  Object.entries(attrs || {}).forEach(([key, value]) => {
-    if (key === 'class') node.className = value;
-    else if (key === 'text') node.textContent = value;
-    else if (key === 'html') node.innerHTML = value;
-    else if (key.startsWith('on')) node.addEventListener(key.slice(2).toLowerCase(), value);
-    else if (value !== undefined && value !== null) node.setAttribute(key, value);
-  });
-  for (const child of Array.isArray(children) ? children : [children]) {
-    if (child === null || child === undefined) continue;
-    node.append(child.nodeType ? child : document.createTextNode(String(child)));
-  }
-  return node;
-}
 
 export async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -502,172 +489,14 @@ export async function openCalendarMonth(member, month) {
   return openMemberCalendar(member, month);
 }
 
-function loginView() {
-  const username = el('input', { placeholder: '账号，例如 zhangjiale', autocomplete: 'username' });
-  const password = el('input', { placeholder: '密码', type: 'password', autocomplete: 'current-password' });
-  const submit = async () => {
-    try {
-      const result = await api('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ username: username.value, password: password.value }),
-      });
-      state.token = result.token;
-      localStorage.setItem('agp_token', state.token);
-      await loadAll();
-      render();
-    } catch (error) {
-      toast('账号或密码错误');
-    }
-  };
-  password.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') submit();
-  });
-  return el('div', { class: 'login-shell' }, [
-    el('div', { class: 'login-card' }, [
-      el('div', { class: 'brand-mark', text: 'CD' }),
-      el('div', { class: 'eyebrow', text: 'Discipleship Workspace' }),
-      el('h1', { text: '打卡记录与小组管理' }),
-      el('p', { text: '一个安静、清晰的入口，管理每日打卡、学习资源和小组成员。' }),
-      el('div', { class: 'form-stack' }, [
-        username,
-        password,
-        el('button', { text: '登录', onclick: submit }),
-        el('p', { class: 'muted', text: '没有公开注册入口，请联系组长或超级管理员创建账号。' }),
-      ]),
-    ]),
-  ]);
-}
-
-function layout(content) {
-  const nav = visibleNavItems().map(([id, label, meta]) => el('button', {
-    class: state.tab === id ? 'active' : '',
-    title: label,
-    onclick: () => {
-      setTab(id);
-    },
-  }, [
-    el('span', { class: 'nav-label', text: state.sidebarCollapsed ? label.slice(0, 1) : label }),
-    !state.sidebarCollapsed ? el('span', { class: 'nav-meta', text: meta }) : null,
-  ]));
-  const groups = state.user?.study_groups || [];
-  const groupSelect = el('select', { class: 'group-select', onchange: (e) => e.target.value && switchGroup(e.target.value) }, [
-    groups.length > 1 && !state.user?.current_group_id ? el('option', { value: '', text: '请选择小组' }) : null,
-    ...groups.map((g) => {
-      const opt = el('option', { value: g.id, text: g.name });
-      if (g.id === state.user.current_group_id) opt.selected = true;
-      return opt;
-    }),
-  ]);
-  const defaultButton = state.user?.current_group_id
-    ? el('button', {
-        class: 'secondary',
-        text: state.user.default_group_id === state.user.current_group_id ? '默认小组' : '设为默认',
-        disabled: state.user.default_group_id === state.user.current_group_id ? 'disabled' : null,
-        onclick: () => setDefaultGroup(state.user.current_group_id),
-      })
-    : null;
-  const groupControls = groups.length > 1 ? el('div', { class: 'group-controls' }, [groupSelect, defaultButton]) : null;
-  return el('div', { class: `app-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}` }, [
-    el('aside', { class: `sidebar ${state.sidebarCollapsed ? 'collapsed' : ''}` }, [
-      el('div', { class: 'sidebar-topbar' }, [
-        el('button', {
-          class: 'ghost sidebar-toggle',
-          text: state.sidebarCollapsed ? '›' : '‹',
-          title: state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏',
-          onclick: () => {
-            state.sidebarCollapsed = !state.sidebarCollapsed;
-            render();
-          },
-        }),
-      ]),
-      el('div', { class: 'sidebar-logo' }, [
-        el('div', { class: 'brand-mark', text: 'CD' }),
-        el('div', {}, [
-          el('b', { text: 'Cedar Discipleship' }),
-          el('div', { class: 'muted', text: state.user?.display_name || '' }),
-        ]),
-      ]),
-      el('nav', { class: 'nav' }, nav),
-      el('div', { class: 'sidebar-footer' }, [
-        el('div', { class: 'user-chip' }, [
-          el('span', { class: 'avatar mini', text: (state.user?.display_name || '?').slice(0, 1) }),
-          !state.sidebarCollapsed ? el('span', { text: state.user?.username || '' }) : null,
-        ]),
-        el('button', { class: 'ghost', text: state.sidebarCollapsed ? '退' : '退出登录', title: '退出登录', onclick: logout }),
-      ]),
-    ]),
-      el('main', { class: 'main' }, [
-        el('div', { class: 'topbar' }, [
-          el('div', { class: 'page-title page-title-card' }, [
-            el('div', { class: 'eyebrow', text: 'Cedar Workspace' }),
-            el('h1', { text: pageTitle() }),
-          ]),
-          groupControls ? el('div', { class: 'toolbar-card' }, [groupControls]) : null,
-        ]),
-        el('div', { class: 'content-shell' }, [content]),
-        el('div', { class: 'mobile-tabs' }, [
-          ...visibleNavItems().map(([id, label]) => el('button', {
-            class: state.tab === id ? 'active' : '',
-            text: label,
-            onclick: () => setTab(id),
-          })),
-          el('button', { class: 'mobile-logout', text: '退出', onclick: logout }),
-        ]),
-        state.calendar ? calendarModal() : null,
-        state.toast ? el('div', { class: 'toast', text: state.toast }) : null,
-      ]),
-    ]);
-}
-
 function pageTitle() {
-  const titles = { home: '今日学习', dashboard: '统计中心', resources: '资源中心', admin: '管理后台' };
+  const titles = { home: '今日学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', admin: '管理后台' };
   if (state.tab === 'admin' && !canAdminAccess()) return titles.home;
   return titles[state.tab] || 'Cedar Discipleship';
 }
 
-function groupPickerView() {
-  const groups = state.user?.study_groups || [];
-  return section('选择小组', el('div', { class: 'grid cols-2' }, groups.map((g) => el('div', { class: 'card' }, [
-    el('h2', { text: g.name }),
-    el('p', { class: 'muted', text: g.code }),
-    el('div', { class: 'form-stack' }, [
-      el('button', { text: '进入小组', onclick: () => switchGroup(g.id) }),
-      el('button', { class: 'secondary', text: '设为默认', onclick: () => setDefaultGroup(g.id) }),
-    ]),
-  ]))));
-}
-
-function homeView() {
-  return el('div', { id: 'vue-checkin-workbench', class: 'vue-checkin-workbench-host' });
-}
-
-function section(title, content) {
-  return el('section', {}, [
-    el('div', { class: 'section-title' }, [el('h2', { text: title })]),
-    content,
-  ]);
-}
-
 function ownCheckinsForSelectedDate() {
   return state.checkins.filter((item) => item.user_id === state.user?.id && item.logical_date === state.selectedDate);
-}
-
-function dashboardView() {
-  return el('div', { id: 'vue-dashboard', class: 'vue-dashboard-host' });
-}
-
-function dateControls() {
-  return el('div', { class: 'date-controls' }, [
-    el('button', { class: 'secondary', text: '‹', onclick: () => shiftSelectedDate(-1) }),
-    el('input', {
-      type: 'date',
-      value: state.selectedDate,
-      max: todayString(),
-      onchange: (event) => setSelectedDate(event.target.value),
-    }),
-    el('button', { class: 'secondary', text: '›', disabled: isTodaySelected() ? 'disabled' : null, onclick: () => shiftSelectedDate(1) }),
-    !isTodaySelected() ? el('button', { class: 'ghost', text: '回到今天', onclick: () => setSelectedDate(todayString()) }) : null,
-  ]);
 }
 
 export async function setSelectedDate(date) {
@@ -730,13 +559,6 @@ function escapeHTML(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-}
-
-function normalizeSearchText(value) {
-  return String(value || '')
-    .replace(/[《》【】（）()：:·,\-—–_]/g, ' ')
-    .replace(/\s+/g, '')
-    .toLowerCase();
 }
 
 function normalizeResourceSeriesKey(value) {
@@ -868,25 +690,6 @@ export function sameViewerItem(item, viewer) {
   return normalizeSearchText(item?.title || '') === normalizeSearchText(viewer?.title || '');
 }
 
-function toChineseMonthDay(date) {
-  const current = parseLocalDate(date);
-  const months = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
-  return `${months[current.getMonth()]}月${numberToChinese(current.getDate())}号`;
-}
-
-function numberToChinese(num) {
-  const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-  const value = Number(num || 0);
-  if (value <= 10) return value === 10 ? '十' : digits[value];
-  if (value < 20) return `十${digits[value - 10]}`;
-  if (value < 100) {
-    const tens = Math.floor(value / 10);
-    const ones = value % 10;
-    return `${digits[tens]}十${ones ? digits[ones] : ''}`;
-  }
-  return String(value);
-}
-
 function markdownToHTML(content) {
   const contentLines = Array.isArray(content) ? content : String(content || '').replace(/\r/g, '').split('\n');
   function isNewBlockStart(str) {
@@ -949,52 +752,6 @@ function extractNumberedMarkdownSection(text, number) {
     content.push(rawLine);
   }
   return content;
-}
-
-export function extractPdfPageRange(text) {
-  const match = String(text || '').match(/(\d{1,4})\s*(?:[-~—–至到]\s*(\d{1,4}))?\s*页/);
-  if (!match) return '';
-  const start = Math.max(1, Number(match[1] || 1));
-  const end = Math.max(start, Number(match[2] || match[1] || start));
-  return `${start}-${end}`;
-}
-
-function parsePdfPageRangeParts(text) {
-  const pageRange = extractPdfPageRange(text);
-  if (!pageRange) return { pageStart: '', pageEnd: '' };
-  const [pageStart, pageEnd] = String(pageRange).split('-');
-  return {
-    pageStart: pageStart || '',
-    pageEnd: pageEnd || pageStart || '',
-  };
-}
-
-function normalizePageField(value) {
-  const parsed = Number(String(value ?? '').trim());
-  if (!Number.isFinite(parsed) || parsed < 1) return '';
-  return String(Math.floor(parsed));
-}
-
-function composePdfPageRange(startValue, endValue) {
-  const start = Number(normalizePageField(startValue));
-  if (!start) return '';
-  const end = Math.max(start, Number(normalizePageField(endValue) || start));
-  return `${start}-${end}`;
-}
-
-function applyPdfPageRangeToTitle(title, startValue, endValue) {
-  const source = String(title || '').trim();
-  const pageRange = composePdfPageRange(startValue, endValue);
-  const pageRegex = /(\d{1,4})\s*(?:[-~—–至到]\s*(\d{1,4}))?\s*页/;
-  const stripRegex = /\s*(\d{1,4})\s*(?:[-~—–至到]\s*(\d{1,4}))?\s*页/g;
-  if (!pageRange) {
-    return source.replace(stripRegex, ' ').replace(/\s{2,}/g, ' ').trim();
-  }
-  const nextRange = `${pageRange}页`;
-  if (pageRegex.test(source)) {
-    return source.replace(pageRegex, nextRange).replace(/\s{2,}/g, ' ').trim();
-  }
-  return source ? `${source} ${nextRange}`.trim() : nextRange;
 }
 
 function isTrimmedPDFSource(url) {
@@ -1529,23 +1286,6 @@ function shortTaskIcon(title) {
   return cleaned.slice(0, 2) || '书籍';
 }
 
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function deepMerge(base, override) {
-  if (Array.isArray(base)) return Array.isArray(override) ? override.slice() : base.slice();
-  if (!isPlainObject(base)) return isPlainObject(override) ? { ...override } : (override ?? base);
-  const result = { ...base };
-  Object.entries(override || {}).forEach(([key, value]) => {
-    if (Array.isArray(value)) result[key] = value.slice();
-    else if (isPlainObject(value) && isPlainObject(base[key])) result[key] = deepMerge(base[key], value);
-    else if (isPlainObject(value)) result[key] = deepMerge({}, value);
-    else result[key] = value;
-  });
-  return result;
-}
-
 function currentLearningSettings() {
   return deepMerge({
     task_sections: state.siteConfig?.task_sections || {},
@@ -1559,12 +1299,6 @@ function taskSectionsConfig() {
 
 function dailyTaskLabel() {
   return taskSectionsConfig().daily?.label || '每日灵修';
-}
-
-function dayOffsetFrom(startDate, date) {
-  const start = new Date(`${startDate}T12:00:00`);
-  const current = new Date(`${date}T12:00:00`);
-  return Math.floor((current - start) / 86400000);
 }
 
 function getDailyDevotionSectionNumber(date = state.selectedDate) {
@@ -1675,42 +1409,12 @@ function monthlyRankingItems() {
   return [...(state.monthlyRanking?.items || [])];
 }
 
-function currentMonthString() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatMonthLabel(month) {
-  const [year, mm] = String(month || currentMonthString()).split('-').map(Number);
-  return `${year}年${mm}月`;
-}
-
 function sortedMembers() {
   return [...state.members].sort((a, b) => {
     if (a.user_id === state.user?.id) return -1;
     if (b.user_id === state.user?.id) return 1;
     return String(a.member_name || a.display_name || '').localeCompare(String(b.member_name || b.display_name || ''), 'zh-CN');
   });
-}
-
-function todayString() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function currentCalendarWeekRange(date = todayString()) {
-  const start = parseLocalDate(date);
-  start.setDate(start.getDate() - start.getDay());
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { start: formatLocalDate(start), end: formatLocalDate(end) };
-}
-
-function todayDisplay() {
-  return new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
 }
 
 function selectedDateDisplay() {
@@ -1725,18 +1429,6 @@ function isFutureSelected() {
   return state.selectedDate > todayString();
 }
 
-function parseLocalDate(date) {
-  const [y, m, d] = String(date || todayString()).split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-}
-
-function formatLocalDate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export async function openMemberCalendar(member, month = state.selectedDate.slice(0, 7)) {
   try {
     const result = await api(`/members/${member.user_id}/calendar?month=${month}`);
@@ -1745,189 +1437,6 @@ export async function openMemberCalendar(member, month = state.selectedDate.slic
   } catch (error) {
     toast(error.message);
   }
-}
-
-function contentViewerModal() {
-  const viewer = state.viewer;
-  const relatedSidebar = Array.isArray(viewer.relatedSections) && viewer.relatedSections.length
-    ? el('aside', { class: 'viewer-sidebar' }, viewer.relatedSections.map((section) => el('div', { class: 'viewer-sidebar-section' }, [
-        el('div', { class: 'viewer-sidebar-title', text: section.label }),
-        ...section.items.map((item) => {
-          const active = sameViewerItem(item, viewer);
-          return el('div', { class: `viewer-sidebar-item ${active ? 'active' : ''}` }, [
-          el('div', { class: 'viewer-sidebar-copy' }, [
-            el('b', { text: item.title }),
-            active ? el('small', { text: '当前打开' }) : null,
-          ]),
-          el('div', { class: 'viewer-sidebar-actions' }, [
-            el('button', {
-              class: 'secondary',
-              text: section.actionLabel,
-              disabled: active ? 'disabled' : null,
-              onclick: () => openContentTarget({
-                title: item.title,
-                url: item.url,
-                type: item.type,
-                pageRange: item.pageRange || extractPdfPageRange(item.title || ''),
-                relatedSections: viewer.relatedSections,
-              }).catch((error) => toast(`打开失败：${error.message}`)),
-            }),
-            el('button', {
-              class: 'ghost',
-              text: '新窗口',
-              onclick: () => openViewerItemInNewWindow({
-                title: item.title,
-                url: item.url,
-                type: item.type,
-                pageRange: item.pageRange || extractPdfPageRange(item.title || ''),
-              }),
-            }),
-          ]),
-        ]);
-        }),
-      ])))
-    : null;
-  const body = (() => {
-    if (viewer.type === 'markdown') {
-      return el('div', { class: 'viewer-markdown', html: viewer.html });
-    }
-    if (viewer.type === 'image') {
-      return el('div', { class: 'viewer-image-wrap' }, [
-        el('img', { class: 'viewer-image', src: viewer.url, alt: viewer.title }),
-      ]);
-    }
-    if (viewer.type === 'video') {
-      return el('video', { class: 'viewer-video', src: viewer.url, controls: 'controls', playsinline: 'playsinline' });
-    }
-    return el('iframe', { class: 'viewer-frame', src: viewer.url, title: viewer.title });
-  })();
-  return el('div', { class: 'modal-backdrop', onclick: (event) => {
-    if (event.target.className === 'modal-backdrop') closeViewer();
-  } }, [
-    el('div', { class: 'viewer-modal' }, [
-      el('div', { class: 'viewer-head' }, [
-        el('div', {}, [
-          el('div', { class: 'eyebrow', text: 'Content Viewer' }),
-          el('h2', { text: viewer.title }),
-          viewer.pageRange ? el('p', { class: 'muted viewer-note', text: `当前阅读范围：${viewer.pageRange}页` }) : null,
-        ]),
-        el('div', { class: 'viewer-actions' }, [
-          viewer.externalURL ? el('a', {
-            class: 'secondary viewer-open-link',
-            href: viewer.externalURL,
-            target: '_blank',
-            rel: 'noopener',
-            text: '新窗口打开',
-          }) : null,
-          el('button', { class: 'ghost', text: '关闭', onclick: closeViewer }),
-        ]),
-      ]),
-      el('div', { class: `viewer-body ${relatedSidebar ? 'viewer-body-split' : ''}` }, [
-        relatedSidebar,
-        el('div', { class: 'viewer-main' }, [body]),
-      ]),
-    ]),
-  ]);
-}
-
-function calendarModal() {
-  const { member, month, items } = state.calendar;
-  const days = calendarDays(month);
-  const byDate = new Map();
-  for (const item of items) {
-    const list = byDate.get(item.date) || [];
-    list.push(item);
-    byDate.set(item.date, list);
-  }
-  return el('div', { class: 'modal-backdrop', onclick: (event) => {
-    if (event.target.className === 'modal-backdrop') closeCalendar();
-  } }, [
-    el('div', { class: 'calendar-modal' }, [
-      el('div', { class: 'calendar-head' }, [
-        el('div', {}, [
-          el('div', { class: 'eyebrow', text: 'Member Calendar' }),
-          el('h2', { text: member.member_name || member.display_name }),
-          el('p', { class: 'muted', text: `${month} 打卡月历` }),
-        ]),
-        el('button', { class: 'ghost', text: '关闭', onclick: closeCalendar }),
-      ]),
-      el('div', { class: 'calendar-switcher' }, [
-        el('button', { class: 'secondary', text: '‹ 上月', onclick: () => openMemberCalendar(member, shiftMonth(month, -1)) }),
-        el('strong', { text: month }),
-        el('button', { class: 'secondary', text: '下月 ›', onclick: () => openMemberCalendar(member, shiftMonth(month, 1)) }),
-      ]),
-      el('div', { class: 'calendar-weekdays' }, ['日', '一', '二', '三', '四', '五', '六'].map((x) => el('span', { text: x }))),
-      el('div', { class: 'calendar-grid' }, days.map((day) => {
-        if (!day) return el('span', { class: 'calendar-day empty-day' });
-        const date = `${month}-${String(day).padStart(2, '0')}`;
-        const count = (byDate.get(date) || []).length;
-        return el('button', {
-          class: `calendar-day ${date === state.selectedDate ? 'selected' : ''} ${count ? 'has-record' : ''}`,
-          onclick: async () => {
-            state.calendar = null;
-            await setSelectedDate(date);
-          },
-        }, [
-          el('b', { text: day }),
-          count ? el('small', { text: `${count}项` }) : el('small', { text: '未打卡' }),
-        ]);
-      })),
-    ]),
-  ]);
-}
-
-function calendarDays(month) {
-  const [y, m] = month.split('-').map(Number);
-  const first = new Date(y, m - 1, 1);
-  const total = new Date(y, m, 0).getDate();
-  const days = Array(first.getDay()).fill(null);
-  for (let day = 1; day <= total; day += 1) days.push(day);
-  return days;
-}
-
-function shiftMonth(month, delta) {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function recordsTable(items) {
-  if (!items.length) return el('div', { class: 'empty', text: '暂无记录' });
-  return el('table', { class: 'table' }, [
-    el('thead', {}, el('tr', {}, ['日期', '类型', '内容'].map((x) => el('th', { text: x })))),
-    el('tbody', {}, items.map((item) => el('tr', {}, [
-      el('td', { text: item.logical_date }),
-      el('td', { text: item.task_type }),
-      el('td', { text: item.detail || item.part || '-' }),
-    ]))),
-  ]);
-}
-
-function resourcesView() {
-  return section('资料文件', state.assets.length
-    ? el('div', { class: 'grid cols-2' }, state.assets.map((asset) => el('div', { class: 'card' }, [
-        el('span', { class: 'pill', text: asset.category }),
-        el('h3', { text: asset.title }),
-        el('p', { class: 'muted', text: asset.original_name }),
-        el('button', {
-          class: 'secondary',
-          text: '打开',
-          onclick: () => previewLibraryItem({
-            title: asset.title || asset.original_name || '资源预览',
-            original_name: asset.original_name || '',
-            url: `/api/assets/${asset.id}/download`,
-            type:
-              asset.category === 'video'
-                ? 'video'
-                : asset.category === 'outline'
-                  ? 'image'
-                  : asset.category === 'markdown'
-                    ? 'markdown'
-                    : 'pdf',
-          }),
-        }),
-      ])))
-    : el('div', { class: 'empty', text: '暂无资源，请在管理后台登记资料。' }));
 }
 
 function mergeResourceAssets(uploadedAssets, sections) {
@@ -1992,26 +1501,6 @@ export function canEditStudyWeeks() {
   );
 }
 
-function adminShell(title, content) {
-  return el('div', { class: 'grid' }, [
-    el('div', { class: 'admin-tabs' }, [
-      ...[
-        ['learning', '学习内容'],
-        ['members', '人员管理'],
-        ['library', '资源库'],
-      ].map(([key, label]) => el('button', {
-      class: state.adminSection === key ? 'active' : '',
-      text: label,
-      onclick: () => {
-        state.adminSection = key;
-        if (key !== 'members') loadAdminData();
-        render();
-      },
-    }))]),
-    section(title, content),
-  ]);
-}
-
 export function updateLearningValue(path, value) {
   const next = deepMerge(currentLearningSettings(), {});
   let target = next;
@@ -2041,13 +1530,6 @@ export async function saveLearningConfig() {
 
 function librarySections() {
   return Array.isArray(state.resourceLibrary) ? state.resourceLibrary : [];
-}
-
-function libraryItemsByType(types) {
-  const typeSet = new Set(types);
-  return librarySections().flatMap((section) => (section.items || []).filter((item) => (
-    typeSet.has(item.type) || typeSet.has(item.category)
-  )));
 }
 
 export function librarySelectionValue(item) {
@@ -2371,386 +1853,6 @@ export function previewLibraryItem(item) {
     url: item.url,
     type: item.type || inferResourceType(item.url),
   }).catch((error) => toast(`打开失败：${error.message}`));
-}
-
-function learningConfigCard() {
-  const settings = currentLearningSettings();
-  const daily = settings.task_sections?.daily || {};
-  const devotion = daily.devotion || {};
-  const scripture = daily.scripture || {};
-  const scriptureBookOptions = Array.isArray(scripture.sequence) && scripture.sequence.length
-    ? scripture.sequence
-    : [{ book: scripture.book || '马可福音', book_id: scripture.book_id || '41', chapters: Number(scripture.max_chapters || 16) }];
-  const scriptureBookSelect = el('select', {
-    onchange: (e) => {
-      const selected = scriptureBookOptions.find((item) => String(item.book_id) === String(e.target.value));
-      if (!selected) return;
-      updateLearningValue(['task_sections', 'daily', 'scripture'], {
-        ...scripture,
-        book: selected.book || scripture.book || '',
-        book_id: selected.book_id || scripture.book_id || '',
-        max_chapters: Number(selected.chapters || scripture.max_chapters || 1),
-      });
-    },
-  }, scriptureBookOptions.map((item) => {
-    const opt = el('option', { value: item.book_id || '', text: `${item.book || '未命名书卷'}（共 ${item.chapters || 1} 章）` });
-    if (String(item.book_id || '') === String(scripture.book_id || '')) opt.selected = true;
-    return opt;
-  }));
-  return el('div', { class: 'grid cols-2 admin-grid' }, [
-    el('div', { class: 'card' }, [
-      el('h2', { text: '每日学习配置' }),
-      el('div', { class: 'form-stack admin-form-grid' }, [
-        formField('每日任务名称', el('input', { value: daily.label || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'label'], e.target.value) })),
-        formField('每日任务文件', el('input', { value: daily.path || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'path'], e.target.value) })),
-        formToggle('显示灵修入口', devotion.enabled !== false, (checked) => updateLearningValue(['task_sections', 'daily', 'devotion', 'enabled'], checked)),
-        formField('灵修标题', el('input', { value: devotion.title || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'devotion', 'title'], e.target.value) })),
-        formField('阅读按钮文字', el('input', { value: devotion.button_label || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'devotion', 'button_label'], e.target.value) })),
-        formField('每日任务文件', el('input', { value: devotion.path || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'devotion', 'path'], e.target.value) })),
-        formField('第 1 篇对应日期', el('input', { type: 'date', value: devotion.numbered_start_date || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'devotion', 'numbered_start_date'], e.target.value) })),
-        formField('起始篇号', el('input', { type: 'number', min: '1', value: devotion.numbered_start || 1, onchange: (e) => updateLearningValue(['task_sections', 'daily', 'devotion', 'numbered_start'], Number(e.target.value || 1)) })),
-      ]),
-    ]),
-    el('div', { class: 'card' }, [
-      el('h2', { text: '每日读经配置' }),
-      el('div', { class: 'form-stack admin-form-grid' }, [
-        formToggle('显示每日读经', scripture.enabled !== false, (checked) => updateLearningValue(['task_sections', 'daily', 'scripture', 'enabled'], checked)),
-        formField('起始书卷', scriptureBookSelect),
-        formField('读经起始日期', el('input', { type: 'date', value: scripture.start_date || '', onchange: (e) => updateLearningValue(['task_sections', 'daily', 'scripture', 'start_date'], e.target.value) })),
-        formField('起始章', el('input', { type: 'number', min: '1', value: scripture.start_chapter || 1, onchange: (e) => updateLearningValue(['task_sections', 'daily', 'scripture', 'start_chapter'], Number(e.target.value || 1)) })),
-        el('div', { class: 'form-actions' }, [
-          el('button', { class: canEditLearning() ? '' : 'secondary', text: '保存学习配置', disabled: canEditLearning() ? null : 'disabled', onclick: saveLearningConfig }),
-        ]),
-      ]),
-    ]),
-  ]);
-}
-
-function formField(label, control) {
-  return el('label', { class: 'admin-field' }, [
-    el('span', { class: 'admin-field-label', text: label }),
-    control,
-  ]);
-}
-
-function formToggle(label, checked, onChange) {
-  return el('label', { class: 'admin-toggle' }, [
-    el('input', { type: 'checkbox', checked: checked ? 'checked' : null, onchange: (e) => onChange(Boolean(e.target.checked)) }),
-    el('span', { text: label }),
-  ]);
-}
-
-function weekBindingRow(kind, item, index, options) {
-  const controls = [];
-  const selectedValue = weekBindingSelectionValue(item, options);
-  controls.push(
-    el('select', {
-      value: selectedValue,
-      onchange: (e) => applyBindingSelection(kind, index, e.target.value),
-    }, [
-      (() => {
-        const opt = el('option', { value: '', text: '不挂载文件' });
-        if (!selectedValue) opt.selected = true;
-        return opt;
-      })(),
-      ...options.map((option) => {
-        const value = librarySelectionValue(option);
-        const opt = el('option', { value, text: option.title || option.original_name || '未命名资源' });
-        if (value && value === selectedValue) opt.selected = true;
-        return opt;
-      }),
-    ]),
-  );
-  if (kind === 'readings') {
-    controls.push(
-      el('input', {
-        type: 'number',
-        min: '1',
-        inputmode: 'numeric',
-        placeholder: '起始页',
-        value: item.page_start || '',
-        onchange: (e) => updateWeekBinding(kind, index, 'page_start', e.target.value),
-      }),
-      el('input', {
-        type: 'number',
-        min: '1',
-        inputmode: 'numeric',
-        placeholder: '结束页',
-        value: item.page_end || '',
-        onchange: (e) => updateWeekBinding(kind, index, 'page_end', e.target.value),
-      }),
-    );
-  }
-  controls.push(el('button', { class: 'ghost', text: '删除', onclick: () => removeWeekBinding(kind, index) }));
-  return el('div', { class: `admin-binding-row ${kind === 'videos' ? 'video-binding-row' : 'reading-binding-row'}` }, controls);
-}
-
-function weekPlannerCard() {
-  const draft = state.weekDraft || weekDraftFromWeek(currentWeekForDraft());
-  const readingOptions = libraryItemsByType(['book', 'passage', 'pdf', 'reading']);
-  const videoOptions = libraryItemsByType(['video']);
-  const outlineOptions = libraryItemsByType(['image']);
-  return el('div', { class: 'card' }, [
-    el('div', { class: 'section-title' }, [
-      el('h2', { text: '周任务安排' }),
-      el('div', { class: 'inline-actions' }, [
-        el('select', {
-          onchange: (e) => {
-            const selected = Number(e.target.value || 0);
-            selectWeekDraft(selected);
-          },
-        }, [
-          ...((state.weeks || []).map((week) => {
-            const opt = el('option', { value: week.id, text: `${week.start} - ${week.end}｜${week.title || '未命名周任务'}` });
-            if (Number(draft.id) === Number(week.id)) opt.selected = true;
-            return opt;
-          })),
-          (() => {
-            const opt = el('option', { value: '0', text: '新增一周' });
-            if (!draft.id) opt.selected = true;
-            return opt;
-          })(),
-        ]),
-        el('button', { class: 'secondary', text: '新增一周', onclick: () => selectWeekDraft(0) }),
-      ]),
-    ]),
-    el('div', { class: 'form-stack admin-form-grid' }, [
-      formField('开始日期', el('input', { type: 'date', value: draft.start || '', onchange: (e) => updateWeekDraftField('start', e.target.value) })),
-      formField('结束日期', el('input', { type: 'date', value: draft.end || '', onchange: (e) => updateWeekDraftField('end', e.target.value) })),
-      formField('读物标题（每行一本）', el('textarea', {
-        rows: '4',
-        value: (draft.readings || []).map((item) => item.title || '').join('\n'),
-        onchange: (e) => {
-          const titles = e.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-          const nextReadings = titles.length ? titles.map((title, index) => ({ ...(draft.readings?.[index] || {}), title })) : [{ title: '', url: '', type: 'pdf', asset_id: 0 }];
-          updateWeekDraftField('readings', nextReadings);
-        },
-      })),
-      el('div', { class: 'admin-binding-list' }, [
-        el('div', { class: 'admin-field-label', text: '读物挂载文件' }),
-        ...(draft.readings || []).map((item, index) => weekBindingRow('readings', item, index, readingOptions)),
-        el('button', { class: 'secondary', text: '新增读物', onclick: () => addWeekBinding('readings') }),
-      ]),
-      el('div', { class: 'admin-binding-list' }, [
-        el('div', { class: 'admin-field-label', text: '视频文件' }),
-        ...(draft.videos || []).map((item, index) => weekBindingRow('videos', item, index, videoOptions)),
-      ]),
-      formField('默写经文', el('input', { value: draft.verse_ref || '', placeholder: '例如：罗马书 8:1-5', onchange: (e) => updateWeekDraftField('verse_ref', e.target.value) })),
-      formField('默写原文', el('textarea', { rows: '4', value: draft.recite_text || '', onchange: (e) => updateWeekDraftField('recite_text', e.target.value) })),
-      el('div', { class: 'admin-binding-list' }, [
-        el('div', { class: 'admin-field-label', text: '提纲背诵图片' }),
-        el('div', { class: 'admin-binding-row' }, [
-          el('input', { value: draft.outline?.title || '', placeholder: '提纲图片标题', onchange: (e) => updateWeekDraftField('outline', { ...(draft.outline || {}), title: e.target.value }) }),
-          el('select', { onchange: (e) => applyOutlineSelection(e.target.value) }, [
-            (() => {
-              const opt = el('option', { value: '', text: '无提纲图片' });
-              if (!draft.outline?.asset_id && !draft.outline?.url) opt.selected = true;
-              return opt;
-            })(),
-            ...outlineOptions.map((item) => {
-              const value = librarySelectionValue(item);
-              const opt = el('option', { value, text: item.title || item.original_name || '未命名图片' });
-              if (value && value === librarySelectionValue(draft.outline)) opt.selected = true;
-              return opt;
-            }),
-          ]),
-        ]),
-      ]),
-      el('div', { class: 'admin-checkbox-row' }, [
-        formToggle('显示周读物', enabledFlag(draft.book_enabled), (checked) => updateWeekDraftField('book_enabled', checked)),
-        formToggle('显示视频', enabledFlag(draft.video_enabled), (checked) => updateWeekDraftField('video_enabled', checked)),
-        formToggle('显示背经', enabledFlag(draft.verse_enabled), (checked) => updateWeekDraftField('verse_enabled', checked)),
-        formToggle('显示提纲背诵', enabledFlag(draft.outline_enabled), (checked) => updateWeekDraftField('outline_enabled', checked)),
-      ]),
-      el('div', { class: 'form-actions' }, [
-        el('button', { text: '保存当前周', disabled: canEditLearning() ? null : 'disabled', onclick: saveWeekDraft }),
-        el('button', { class: 'secondary', text: '恢复默认周任务', disabled: canEditLearning() ? null : 'disabled', onclick: restoreWeekDraftDefaults }),
-        el('button', { class: 'danger', text: '删除当前周', disabled: canEditLearning() ? null : 'disabled', onclick: deleteWeekDraft }),
-      ]),
-    ]),
-  ]);
-}
-
-function resourceLibraryView() {
-  const fileInput = el('input', { type: 'file' });
-  const categorySelect = el('select', {}, [
-    ['markdown', 'Markdown 读物'],
-    ['book', 'PDF 读物'],
-    ['video', '视频文件'],
-    ['handout', '讲义 PDF'],
-    ['outline', '提纲图片'],
-  ].map(([value, label], index) => {
-    const opt = el('option', { value, text: label });
-    if (index === 0) opt.selected = true;
-    return opt;
-  }));
-  return el('div', { class: 'grid' }, [
-    el('div', { class: 'card' }, [
-      el('h2', { text: '资源库' }),
-      el('p', { class: 'muted', text: '上传后会自动刷新列表，随后即可在“周任务安排”里选择挂载。' }),
-      el('div', { class: 'form-stack admin-form-grid' }, [
-        formField('上传到', categorySelect),
-        formField('选择文件', fileInput),
-        el('div', { class: 'form-actions' }, [
-          el('button', { text: '上传到资源库', disabled: canEditLearning() ? null : 'disabled', onclick: () => uploadLibraryFile(fileInput, categorySelect.value) }),
-          el('button', { class: 'secondary', text: '刷新文件列表', onclick: () => loadAdminData(true) }),
-        ]),
-      ]),
-    ]),
-    ...librarySections().map((sectionData) => el('div', { class: 'card resource-section' }, [
-      el('div', { class: 'section-title' }, [
-        el('h2', { text: `${sectionData.label} · ${sectionData.count || 0}` }),
-      ]),
-      sectionData.items?.length
-        ? el('div', { class: 'resource-list' }, sectionData.items.map((item) => el('div', { class: 'resource-item' }, [
-            el('div', {}, [
-              el('b', { text: item.title || item.original_name || '未命名资源' }),
-              el('div', { class: 'muted', text: item.source === 'uploaded' ? '上传资源' : (item.original_name || '') }),
-            ]),
-            el('button', { class: 'secondary', text: '查看', onclick: () => previewLibraryItem(item) }),
-          ])))
-        : el('div', { class: 'empty', text: '当前分类暂无文件。' }),
-    ])),
-  ]);
-}
-
-function adminView() {
-  const canAdmin = state.user?.is_super_admin || state.user?.roles?.some((r) => ['group_admin', 'group_leader'].includes(r));
-  if (!canAdmin) return el('div', { class: 'empty', text: '当前账号没有管理权限。' });
-  if (state.adminSection !== 'members' && !state.resourceLibrary && !state.adminLoading) {
-    loadAdminData();
-    return el('div', { class: 'empty', text: '正在加载管理配置…' });
-  }
-  if (state.adminLoading && state.adminSection !== 'members') {
-    return el('div', { class: 'empty', text: '正在加载管理配置…' });
-  }
-  if (state.adminSection === 'learning') {
-    return adminShell('学习内容管理', el('div', { class: 'grid' }, [
-      learningConfigCard(),
-      weekPlannerCard(),
-    ]));
-  }
-  if (state.adminSection === 'library') {
-    return adminShell('资源库管理', resourceLibraryView());
-  }
-  const passwordInput = el('input', { placeholder: '新的本组默认密码（至少 8 位）', type: 'password' });
-  const cards = [];
-  if (state.user?.is_super_admin) cards.push(superCreateGroupCard());
-  if (state.user?.current_group_id) {
-    cards.push(el('div', { class: 'card' }, [
-      el('h2', { text: '修改本组默认密码' }),
-      el('p', { class: 'muted', text: '仅影响只属于本组、非组长、非超级管理员的成员。多小组成员不会被覆盖。' }),
-      el('div', { class: 'form-stack' }, [
-        passwordInput,
-        el('button', { text: '更新默认密码', onclick: () => updateGroupPassword(passwordInput.value) }),
-      ]),
-    ]));
-    cards.push(el('div', { class: 'card' }, [
-      el('h2', { text: '添加成员' }),
-      memberCreateForm(),
-    ]));
-  }
-  return adminShell('成员与权限管理', el('div', { class: 'grid' }, [
-    el('div', { class: 'grid cols-2' }, cards),
-    state.user?.current_group_id
-      ? el('div', {}, [
-          el('p', { class: 'muted admin-hint', text: '组长可以将普通成员设为本组管理员，也可以将普通成员从当前小组移除。' }),
-          el('div', { class: 'member-list admin-member-list' }, state.members.map(adminMemberCard)),
-        ])
-      : el('div', { class: 'empty', text: '请先创建小组，随后刷新或重新登录进入小组管理。' }),
-  ]));
-}
-
-function adminMemberCard(m) {
-  const roles = m.roles || [];
-  const isGroupAdmin = roles.includes('group_admin');
-  const isGroupLeader = roles.includes('group_leader');
-  const canManageRoles = state.user?.is_super_admin || state.user?.roles?.includes('group_leader') || state.user?.roles?.includes('group_admin');
-  const isSelf = m.user_id === state.user?.id;
-  const roleLabel = m.is_super_admin ? '超级管理员' : isGroupLeader ? '组长' : isGroupAdmin ? '小组管理员' : '成员';
-  const actions = [];
-  if (canManageRoles && !m.is_super_admin && !isGroupLeader) {
-    actions.push(el('button', {
-      class: isGroupAdmin ? 'secondary' : 'ok',
-      text: isGroupAdmin ? '取消管理员' : '设为管理员',
-      onclick: () => setMemberAdmin(m, !isGroupAdmin),
-    }));
-  }
-  if (canManageRoles && !isSelf && !m.is_super_admin && !isGroupLeader) {
-    actions.push(el('button', {
-      class: 'danger',
-      text: '删除人员',
-      onclick: () => removeMember(m),
-    }));
-  }
-  return el('div', { class: 'member-card admin-member-card' }, [
-    el('div', { class: 'member-main' }, [
-      el('div', { class: 'avatar', text: (m.member_name || m.display_name || '?').slice(0, 1) }),
-      el('div', {}, [
-        el('b', { text: m.member_name || m.display_name }),
-        el('div', { class: 'muted', text: m.username }),
-      ]),
-    ]),
-    el('div', { class: 'member-actions' }, [
-      el('span', { class: 'pill', text: roleLabel }),
-      ...actions,
-    ]),
-  ]);
-}
-
-function superCreateGroupCard() {
-  const code = el('input', { placeholder: '小组编码，例如 agape-a' });
-  const name = el('input', { placeholder: '小组名称' });
-  const description = el('textarea', { placeholder: '小组说明，可选', rows: '3' });
-  return el('div', { class: 'card' }, [
-    el('h2', { text: '超级管理员：创建小组' }),
-    el('p', { class: 'muted', text: '系统会生成 8 位默认密码，仅在创建结果中展示一次。' }),
-    el('div', { class: 'form-stack' }, [
-      code,
-      name,
-      description,
-      el('button', {
-        text: '创建小组',
-        onclick: async () => {
-          try {
-            const result = await api('/super-admin/groups', {
-              method: 'POST',
-              body: JSON.stringify({ code: code.value, name: name.value, description: description.value }),
-            });
-            toast(`小组已创建，默认密码：${result.default_password}`);
-            await switchGroup(result.id);
-          } catch (error) {
-            toast(error.message);
-          }
-        },
-      }),
-    ]),
-  ]);
-}
-
-function memberCreateForm() {
-  const name = el('input', { placeholder: '成员姓名' });
-  const username = el('input', { placeholder: '账号拼音，例如 zhangjiale' });
-  return el('div', { class: 'form-stack' }, [
-    name,
-    username,
-    el('button', {
-      text: '创建本组成员',
-      onclick: async () => {
-        try {
-          await api('/admin/members', {
-            method: 'POST',
-            body: JSON.stringify({ create_user: true, display_name: name.value, username: username.value, name_pinyin: username.value }),
-          });
-          toast('成员已创建，初始密码为本组当前默认密码');
-          await loadAll();
-          render();
-        } catch (error) {
-          toast(error.message);
-        }
-      },
-    }),
-  ]);
 }
 
 export async function updateGroupPassword(password) {

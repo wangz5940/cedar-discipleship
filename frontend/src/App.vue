@@ -4,6 +4,7 @@ import AppRoot from './components/AppRoot.vue';
 import CheckinWorkbench from './components/CheckinWorkbench.vue';
 import ContentViewer from './components/ContentViewer.vue';
 import Dashboard from './components/Dashboard.vue';
+import MinistryGroups from './components/MinistryGroups.vue';
 import { useAppShellStore } from './stores/appShell';
 import { disposeApp, initializeApp } from './legacy-app';
 const shell = useAppShellStore();
@@ -32,6 +33,7 @@ onBeforeUnmount(() => {
     <AppRoot />
     <CheckinWorkbench />
     <Dashboard />
+    <MinistryGroups />
     <ContentViewer />
   </main>
 </template>

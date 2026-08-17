@@ -435,6 +435,7 @@ async function selectCalendarDate(day) {
 
         <div v-else-if="tab === 'home'" id="vue-checkin-workbench" class="vue-checkin-workbench-host"></div>
         <div v-else-if="tab === 'dashboard'" id="vue-dashboard" class="vue-dashboard-host"></div>
+        <div v-else-if="tab === 'groups'" id="vue-ministry-groups" class="vue-ministry-groups-host"></div>
         <section v-else-if="tab === 'resources'">
           <div class="section-title"><h2>资料文件</h2></div>
           <div v-if="resources.length" class="grid">

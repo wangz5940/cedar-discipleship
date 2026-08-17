@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noEmit": true,
+    "lib": ["ES2022", "ESNext.Disposable", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.js"]
+}

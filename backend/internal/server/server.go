@@ -22,6 +22,7 @@ import (
 	backupdomain "agp/backend/internal/backup"
 	checkindomain "agp/backend/internal/checkin"
 	learningdomain "agp/backend/internal/learning"
+	ministrydomain "agp/backend/internal/ministry"
 	statisticsdomain "agp/backend/internal/statistics"
 	userdomain "agp/backend/internal/user"
 
@@ -47,6 +48,7 @@ type app struct {
 	backups       *backupdomain.Service
 	checkins      *checkindomain.Service
 	learning      *learningdomain.Service
+	ministry      *ministrydomain.Service
 	statistics    *statisticsdomain.Service
 	users         *userdomain.Service
 }
@@ -124,6 +126,7 @@ func Run() error {
 			nil,
 			checkinSvc,
 		),
+		ministry:   ministrydomain.NewService(ministrydomain.NewMySQLRepository(db)),
 		statistics: statisticsdomain.NewService(statisticsdomain.NewMySQLRepository(db)),
 		users:      userdomain.NewService(userdomain.NewMySQLRepository(db)),
 	}
@@ -214,6 +217,23 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/dashboard/monthly-ranking", a.auth(a.handleDashboardMonthlyRanking))
 	mux.HandleFunc("GET /api/members", a.auth(a.handleMembers))
 	mux.HandleFunc("GET /api/members/{id}/calendar", a.auth(a.handleMemberCalendar))
+
+	mux.HandleFunc("GET /api/ministry-groups", a.auth(a.handleMinistryGroups))
+	mux.HandleFunc("GET /api/ministry-groups/{id}", a.auth(a.handleMinistryGroup))
+	mux.HandleFunc("POST /api/ministry-groups/{id}/join-request", a.auth(a.handleMinistryJoinRequest))
+	mux.HandleFunc("POST /api/ministry-groups/{id}/leave", a.auth(a.handleMinistryLeave))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/identity", a.auth(a.handleMinistryIdentity))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/settings", a.auth(a.handleMinistrySettings))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/members/{user_id}/role", a.auth(a.handleMinistryMemberRole))
+	mux.HandleFunc("GET /api/ministry-requests", a.auth(a.handleMinistryRequests))
+	mux.HandleFunc("POST /api/ministry-requests/{id}/decision", a.auth(a.handleMinistryRequestDecision))
+	mux.HandleFunc("GET /api/ministry-notifications", a.auth(a.handleMinistryNotifications))
+	mux.HandleFunc("POST /api/ministry-notifications/{id}/read", a.auth(a.handleMinistryNotificationRead))
+	mux.HandleFunc("POST /api/ministry-groups/{id}/shares", a.auth(a.handleMinistryCreateShare))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/shares/{share_id}", a.auth(a.handleMinistryUpdateShare))
+	mux.HandleFunc("POST /api/ministry-groups/{id}/shares/{share_id}/decision", a.auth(a.handleMinistryShareDecision))
+	mux.HandleFunc("POST /api/ministry-groups/{id}/progress", a.auth(a.handleMinistryCreateProgress))
+	mux.HandleFunc("POST /api/ministry-groups/{id}/attachments", a.auth(a.handleMinistryAttachment))
 
 	mux.HandleFunc("GET /api/study-weeks", a.auth(a.handleStudyWeeks))
 	mux.HandleFunc("GET /api/study-weeks/current", a.auth(a.handleCurrentStudyWeek))
