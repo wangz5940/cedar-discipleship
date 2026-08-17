@@ -203,7 +203,8 @@ MYSQL_PASSWORD=agp \
 ./scripts/init-ministry-groups.sh
 ```
 
-如果现有 MySQL 数据卷里的应用账号密码与当前配置不一致，可提供 root 密码让脚本兜底执行：
+如果现有 MySQL 数据卷里的应用账号密码与当前配置不一致，脚本会尝试读取正在运行的
+`agp-mysql` 容器环境变量作为兜底；也可显式提供 root 密码：
 
 ```bash
 MYSQL_ROOT_PASSWORD=实际root密码 ./scripts/init-ministry-groups.sh

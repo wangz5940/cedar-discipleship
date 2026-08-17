@@ -73,22 +73,62 @@ compose() {
   docker compose "${args[@]}" -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
 }
 
+container_env_value() {
+  local env_name="$1"
+  docker inspect agp-mysql --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | awk -v key="$env_name" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }'
+}
+
+run_compose_sql() {
+  local user="$1"
+  local password="$2"
+  local database="$3"
+
+  if compose exec -T -e MYSQL_PWD="$password" mysql \
+    mysql -h 127.0.0.1 -u"$user" "$database" -e "SELECT 1" >/dev/null 2>&1; then
+    compose exec -T -e MYSQL_PWD="$password" mysql \
+      mysql -h 127.0.0.1 -u"$user" "$database" < "$SQL_FILE"
+    return 0
+  fi
+
+  return 1
+}
+
 run_with_compose() {
   require_cmd docker
   compose ps mysql >/dev/null
 
-  if compose exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql \
-    mysql -h 127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE" -e "SELECT 1" >/dev/null 2>&1; then
-    compose exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql \
-      mysql -h 127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE" < "$SQL_FILE"
+  if run_compose_sql "$MYSQL_USER" "$MYSQL_PASSWORD" "$MYSQL_DATABASE"; then
     return
   fi
 
+  local container_user
+  local container_password
+  container_user="$(container_env_value MYSQL_USER)"
+  container_password="$(container_env_value MYSQL_PASSWORD)"
+  if [ -n "$container_user" ] && [ -n "$container_password" ]; then
+    echo "当前应用数据库账号连接失败，尝试使用运行中 MySQL 容器的应用账号配置..." >&2
+    if run_compose_sql "$container_user" "$container_password" "$MYSQL_DATABASE"; then
+      return
+    fi
+  fi
+
   echo "应用数据库账号连接失败，尝试使用 root 账号执行 SQL..." >&2
-  compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
-    mysql -h 127.0.0.1 -uroot "$MYSQL_DATABASE" -e "SELECT 1" >/dev/null
-  compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
-    mysql -h 127.0.0.1 -uroot "$MYSQL_DATABASE" < "$SQL_FILE"
+  if run_compose_sql root "$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"; then
+    return
+  fi
+
+  local container_root_password
+  container_root_password="$(container_env_value MYSQL_ROOT_PASSWORD)"
+  if [ -n "$container_root_password" ]; then
+    echo "当前 root 密码连接失败，尝试使用运行中 MySQL 容器的 root 配置..." >&2
+    if run_compose_sql root "$container_root_password" "$MYSQL_DATABASE"; then
+      return
+    fi
+  fi
+
+  echo "数据库账号连接失败。请确认 MYSQL_PASSWORD 或 MYSQL_ROOT_PASSWORD 与现有 MySQL 数据卷一致。" >&2
+  exit 1
 }
 
 run_with_local_mysql() {
