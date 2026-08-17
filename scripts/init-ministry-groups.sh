@@ -21,7 +21,7 @@ env_file_value() {
   )
 }
 
-for env_name in MYSQL_HOST MYSQL_PORT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD; do
+for env_name in MYSQL_HOST MYSQL_PORT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
   if [ -z "${!env_name:-}" ]; then
     printf -v "$env_name" '%s' "$(env_file_value "$env_name")"
   fi
@@ -32,6 +32,7 @@ MYSQL_PORT="${MYSQL_PORT:-3307}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-agp}"
 MYSQL_USER="${MYSQL_USER:-agp}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-agp}"
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-agp-root}"
 
 usage() {
   cat <<EOF
@@ -49,6 +50,7 @@ usage() {
   MYSQL_DATABASE=agp \\
   MYSQL_USER=agp \\
   MYSQL_PASSWORD=agp \\
+  MYSQL_ROOT_PASSWORD=agp-root \\
   ./scripts/init-ministry-groups.sh
 
 可覆盖 SQL 文件:
@@ -74,8 +76,18 @@ compose() {
 run_with_compose() {
   require_cmd docker
   compose ps mysql >/dev/null
-  compose exec -T mysql mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" >/dev/null
-  compose exec -T mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < "$SQL_FILE"
+  if compose exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql \
+    mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" >/dev/null 2>&1; then
+    compose exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql \
+      mysql -h 127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE" < "$SQL_FILE"
+    return
+  fi
+
+  echo "应用数据库账号连接失败，尝试使用 root 账号执行 SQL..." >&2
+  compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
+    mysqladmin ping -h 127.0.0.1 -uroot >/dev/null
+  compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
+    mysql -h 127.0.0.1 -uroot "$MYSQL_DATABASE" < "$SQL_FILE"
 }
 
 run_with_local_mysql() {
