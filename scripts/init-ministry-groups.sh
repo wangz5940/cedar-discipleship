@@ -7,6 +7,7 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect agp-mysql --forma
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agp}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 SQL_FILE="${SQL_FILE:-$ROOT_DIR/backend/sql/init_ministry_groups.sql}"
+SCHEMA_FILE="${SCHEMA_FILE:-$ROOT_DIR/backend/migrations/003_ministry_groups.sql}"
 USE_LOCAL_MYSQL="${USE_LOCAL_MYSQL:-false}"
 
 env_file_value() {
@@ -55,6 +56,9 @@ usage() {
 
 可覆盖 SQL 文件:
   SQL_FILE=backend/sql/init_ministry_groups.sql ./scripts/init-ministry-groups.sh
+
+可覆盖建表 SQL 文件:
+  SCHEMA_FILE=backend/migrations/003_ministry_groups.sql ./scripts/init-ministry-groups.sh
 EOF
 }
 
@@ -79,16 +83,59 @@ container_env_value() {
     | awk -v key="$env_name" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }'
 }
 
-run_compose_sql() {
+probe_compose_login() {
   local user="$1"
   local password="$2"
   local database="$3"
 
-  if compose exec -T -e MYSQL_PWD="$password" mysql \
-    mysql -h 127.0.0.1 -u"$user" "$database" -e "SELECT 1" >/dev/null 2>&1; then
-    compose exec -T -e MYSQL_PWD="$password" mysql \
-      mysql -h 127.0.0.1 -u"$user" "$database" < "$SQL_FILE"
+  compose exec -T -e MYSQL_PWD="$password" mysql \
+    mysql -h 127.0.0.1 -u"$user" "$database" -e "SELECT 1" >/dev/null 2>&1
+}
+
+run_compose_mysql_file() {
+  local user="$1"
+  local password="$2"
+  local database="$3"
+  local file="$4"
+
+  compose exec -T -e MYSQL_PWD="$password" mysql \
+    mysql -h 127.0.0.1 -u"$user" "$database" < "$file"
+}
+
+run_compose_init() {
+  local user="$1"
+  local password="$2"
+  local database="$3"
+
+  if ! probe_compose_login "$user" "$password" "$database"; then
+    return 1
+  fi
+
+  if [ -f "$SCHEMA_FILE" ]; then
+    echo "执行建表 SQL: $SCHEMA_FILE"
+    if ! run_compose_mysql_file "$user" "$password" "$database" "$SCHEMA_FILE"; then
+      return 2
+    fi
+  fi
+
+  if ! run_compose_mysql_file "$user" "$password" "$database" "$SQL_FILE"; then
+    return 2
+  fi
+
+  return 0
+}
+
+try_compose_init() {
+  local status
+
+  run_compose_init "$@"
+  status=$?
+  if [ "$status" -eq 0 ]; then
     return 0
+  fi
+  if [ "$status" -ne 1 ]; then
+    echo "SQL 执行失败，专项小组初始化未完成。" >&2
+    exit "$status"
   fi
 
   return 1
@@ -98,7 +145,7 @@ run_with_compose() {
   require_cmd docker
   compose ps mysql >/dev/null
 
-  if run_compose_sql "$MYSQL_USER" "$MYSQL_PASSWORD" "$MYSQL_DATABASE"; then
+  if try_compose_init "$MYSQL_USER" "$MYSQL_PASSWORD" "$MYSQL_DATABASE"; then
     return
   fi
 
@@ -108,13 +155,13 @@ run_with_compose() {
   container_password="$(container_env_value MYSQL_PASSWORD)"
   if [ -n "$container_user" ] && [ -n "$container_password" ]; then
     echo "当前应用数据库账号连接失败，尝试使用运行中 MySQL 容器的应用账号配置..." >&2
-    if run_compose_sql "$container_user" "$container_password" "$MYSQL_DATABASE"; then
+    if try_compose_init "$container_user" "$container_password" "$MYSQL_DATABASE"; then
       return
     fi
   fi
 
   echo "应用数据库账号连接失败，尝试使用 root 账号执行 SQL..." >&2
-  if run_compose_sql root "$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"; then
+  if try_compose_init root "$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"; then
     return
   fi
 
@@ -122,7 +169,7 @@ run_with_compose() {
   container_root_password="$(container_env_value MYSQL_ROOT_PASSWORD)"
   if [ -n "$container_root_password" ]; then
     echo "当前 root 密码连接失败，尝试使用运行中 MySQL 容器的 root 配置..." >&2
-    if run_compose_sql root "$container_root_password" "$MYSQL_DATABASE"; then
+    if try_compose_init root "$container_root_password" "$MYSQL_DATABASE"; then
       return
     fi
   fi
@@ -133,6 +180,15 @@ run_with_compose() {
 
 run_with_local_mysql() {
   require_cmd mysql
+  if [ -f "$SCHEMA_FILE" ]; then
+    echo "执行建表 SQL: $SCHEMA_FILE"
+    MYSQL_PWD="$MYSQL_PASSWORD" mysql \
+      -h "$MYSQL_HOST" \
+      -P "$MYSQL_PORT" \
+      -u "$MYSQL_USER" \
+      "$MYSQL_DATABASE" < "$SCHEMA_FILE"
+  fi
+
   MYSQL_PWD="$MYSQL_PASSWORD" mysql \
     -h "$MYSQL_HOST" \
     -P "$MYSQL_PORT" \
@@ -152,7 +208,12 @@ fi
 
 echo ">>> 初始化专项小组"
 echo "SQL: $SQL_FILE"
+echo "Schema: $SCHEMA_FILE"
 echo "DB:  $MYSQL_DATABASE"
+
+if [ ! -f "$SCHEMA_FILE" ]; then
+  echo "建表 SQL 文件不存在，将仅执行初始化 SQL: $SCHEMA_FILE" >&2
+fi
 
 if [ "$USE_LOCAL_MYSQL" = "true" ]; then
   echo "连接: ${MYSQL_HOST}:${MYSQL_PORT}"
