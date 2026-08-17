@@ -76,8 +76,9 @@ compose() {
 run_with_compose() {
   require_cmd docker
   compose ps mysql >/dev/null
+
   if compose exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql \
-    mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" >/dev/null 2>&1; then
+    mysql -h 127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE" -e "SELECT 1" >/dev/null 2>&1; then
     compose exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql \
       mysql -h 127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE" < "$SQL_FILE"
     return
@@ -85,7 +86,7 @@ run_with_compose() {
 
   echo "应用数据库账号连接失败，尝试使用 root 账号执行 SQL..." >&2
   compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
-    mysqladmin ping -h 127.0.0.1 -uroot >/dev/null
+    mysql -h 127.0.0.1 -uroot "$MYSQL_DATABASE" -e "SELECT 1" >/dev/null
   compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
     mysql -h 127.0.0.1 -uroot "$MYSQL_DATABASE" < "$SQL_FILE"
 }

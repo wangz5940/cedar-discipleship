@@ -203,6 +203,12 @@ MYSQL_PASSWORD=agp \
 ./scripts/init-ministry-groups.sh
 ```
 
+如果现有 MySQL 数据卷里的应用账号密码与当前配置不一致，可提供 root 密码让脚本兜底执行：
+
+```bash
+MYSQL_ROOT_PASSWORD=实际root密码 ./scripts/init-ministry-groups.sh
+```
+
 ## 运行与运维
 
 常用命令：
