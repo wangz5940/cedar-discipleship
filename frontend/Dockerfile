@@ -5,8 +5,10 @@ WORKDIR /app
 ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
 
 COPY frontend/package*.json ./
-RUN npm ci \
-  --registry="$NPM_CONFIG_REGISTRY" \
+RUN clean_registry="$(printf '%s' "$NPM_CONFIG_REGISTRY" | tr -d '\047\042\140[:space:]')" \
+  && case "$clean_registry" in http://*|https://*) ;; *) echo "Invalid NPM_CONFIG_REGISTRY: $NPM_CONFIG_REGISTRY" >&2; exit 1 ;; esac \
+  && npm ci \
+  --registry="$clean_registry" \
   --fetch-retries=5 \
   --fetch-retry-mintimeout=20000 \
   --fetch-retry-maxtimeout=120000 \

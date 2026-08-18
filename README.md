@@ -126,6 +126,12 @@ export NPM_CONFIG_REGISTRY='https://registry.npmmirror.com'
 # export GOSUMDB='off'
 ```
 
+`.env` 中的 URL 不要带反引号。如果构建日志里出现 ``--registry="`https://...`"``，先修正：
+
+```bash
+sed -i 's|^NPM_CONFIG_REGISTRY=.*|NPM_CONFIG_REGISTRY=https://registry.npmmirror.com|' .env
+```
+
 这些变量会透传到 `backend`/`frontend` 镜像构建，以及迁移脚本内部启动的 `golang:1.25-bookworm` 容器。
 
 ### 2. 本地检查
