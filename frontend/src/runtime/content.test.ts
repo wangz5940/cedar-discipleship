@@ -5,6 +5,7 @@ import {
   enabledFlag,
   extractPdfPageRange,
   markdownToSafeHTML,
+  normalizeLegacyStaticAssetURL,
   normalizeSearchText,
   parsePdfPageRangeParts,
   shouldRenderWeeklyTask,
@@ -57,12 +58,18 @@ describe('content runtime helpers', () => {
 
   it('renders markdown while escaping raw HTML and unsafe links', () => {
     const html = markdownToSafeHTML(
-      '# 标题\n- **完成**\n<script>alert(1)</script>\n[安全](https://example.com)\n[危险](javascript:alert(1))',
+      '# 标题\n- **完成**\n<script>alert(1)</script>\n[安全](https://example.com)\n[读物](/api/assets/book:/Book/%E5%9F%BA.pdf/download)\n[危险](javascript:alert(1))',
     );
     expect(html).toContain('<h2>标题</h2>');
     expect(html).toContain('<li><strong>完成</strong></li>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('href="/Book/%E5%9F%BA.pdf"');
     expect(html).not.toContain('javascript:');
+  });
+
+  it('normalizes legacy static asset download URLs', () => {
+    expect(normalizeLegacyStaticAssetURL('/api/assets/book:/Book/%E5%9F%BA.pdf/download')).toBe('/Book/%E5%9F%BA.pdf');
+    expect(normalizeLegacyStaticAssetURL('/api/assets/12/download')).toBe('/api/assets/12/download');
   });
 });

@@ -20,6 +20,7 @@ import {
   enabledFlag,
   extractPdfPageRange,
   normalizePageField,
+  normalizeLegacyStaticAssetURL,
   normalizeSearchText,
   parsePdfPageRangeParts,
   shouldRenderWeeklyTask,
@@ -807,16 +808,23 @@ function openPendingViewerWindow(title) {
 }
 
 function resolveContentSourceURL(target) {
+  const normalizedStaticURL = normalizeLegacyStaticAssetURL(target.url);
   const type = String(target.type || inferResourceType(target.url)).toLowerCase();
+  if (normalizedStaticURL !== target.url) {
+    if (type === 'pdf' && target.pageRange) {
+      return `/api/content/pdf-range?path=${encodeURIComponent(normalizedStaticURL)}&pages=${encodeURIComponent(target.pageRange)}`;
+    }
+    return normalizedStaticURL;
+  }
   if (type !== 'pdf' || !target.pageRange) return target.url;
-  const assetMatch = String(target.url).match(/^\/api\/assets\/(\d+)\/download$/);
+  const assetMatch = String(normalizedStaticURL).match(/^\/api\/assets\/(\d+)\/download$/);
   if (assetMatch) {
     return `/api/assets/${assetMatch[1]}/range?pages=${encodeURIComponent(target.pageRange)}`;
   }
-  if (String(target.url).startsWith('/Book/')) {
-    return `/api/content/pdf-range?path=${encodeURIComponent(target.url)}&pages=${encodeURIComponent(target.pageRange)}`;
+  if (String(normalizedStaticURL).startsWith('/Book/')) {
+    return `/api/content/pdf-range?path=${encodeURIComponent(normalizedStaticURL)}&pages=${encodeURIComponent(target.pageRange)}`;
   }
-  return target.url;
+  return normalizedStaticURL;
 }
 
 export function closeViewer() {

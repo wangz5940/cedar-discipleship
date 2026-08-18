@@ -15,6 +15,13 @@ export function shouldRenderWeeklyTask(enabled: unknown, tasks: unknown): boolea
   return enabledFlag(enabled) && Array.isArray(tasks) && tasks.length > 0;
 }
 
+export function normalizeLegacyStaticAssetURL(value: unknown): string {
+  const source = String(value || '').trim();
+  const match = source.match(/^\/api\/assets\/(?:book:|passage:|handout:|video:|markdown:)\/(.+)\/download$/);
+  if (!match) return source;
+  return `/${match[1].replace(/^\/+/, '')}`;
+}
+
 export function weeklyTitleFromContent(input: {
   title?: unknown;
   book_enabled?: unknown;
@@ -172,8 +179,8 @@ function inlineMarkdown(value: string): string {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
-      const decoded = href.replaceAll('&amp;', '&').trim();
-      if (!/^(https?:\/\/|\/api\/assets\/\d+\/download$)/i.test(decoded)) {
+      const decoded = normalizeLegacyStaticAssetURL(href.replaceAll('&amp;', '&').trim());
+      if (!/^(https?:\/\/|\/api\/assets\/\d+\/download$|\/(?:Book|Passage|PPT|Newtestament)\/)/i.test(decoded)) {
         return label;
       }
       return `<a href="${escapeAttribute(decoded)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
