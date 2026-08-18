@@ -208,8 +208,13 @@ func TestServiceCreateShareChoosesApprovalStatus(t *testing.T) {
 			expectedStatus: StatusPublished,
 		},
 		{
-			name:           "leader publishes directly",
+			name:           "leader share waits for admin",
 			access:         Access{IsMember: true, IsLeader: true},
+			expectedStatus: StatusPending,
+		},
+		{
+			name:           "ministry admin publishes directly",
+			access:         Access{IsMember: true, IsAdmin: true},
 			expectedStatus: StatusPublished,
 		},
 		{
@@ -239,6 +244,30 @@ func TestServiceCreateShareChoosesApprovalStatus(t *testing.T) {
 				t.Fatalf("created share status = %q, want %q", repo.createdShare, test.expectedStatus)
 			}
 		})
+	}
+}
+
+func TestServiceDecideRequestAllowsMinistryAdmin(t *testing.T) {
+	t.Parallel()
+
+	repo := &serviceTestRepository{
+		request: Request{ID: 12, GroupID: 3, Status: StatusPending},
+		access:  Access{IsMember: true, IsAdmin: true},
+	}
+	service := NewService(repo)
+	err := service.DecideRequest(
+		context.Background(),
+		1,
+		12,
+		Actor{UserID: 7},
+		StatusApproved,
+		time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("DecideRequest() error = %v", err)
+	}
+	if repo.decideCalls != 1 {
+		t.Fatalf("repository decision calls = %d, want 1", repo.decideCalls)
 	}
 }
 

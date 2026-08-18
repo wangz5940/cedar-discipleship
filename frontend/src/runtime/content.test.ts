@@ -8,6 +8,7 @@ import {
   normalizeSearchText,
   parsePdfPageRangeParts,
   shouldRenderWeeklyTask,
+  weeklyTitleFromContent,
 } from './content';
 
 describe('content runtime helpers', () => {
@@ -37,6 +38,21 @@ describe('content runtime helpers', () => {
       daily: { enabled: true, path: '/custom.md' },
       items: [2, 3],
     });
+  });
+
+  it('builds weekly titles from enabled learning content', () => {
+    expect(weeklyTitleFromContent({
+      book_enabled: true,
+      video_enabled: true,
+      verse_enabled: true,
+      readings: [{ title: '读物一' }, { title: '读物二' }],
+      videos: [{ title: '视频一' }, { title: '视频二' }],
+      verse_ref: '罗马书 8:1',
+    })).toBe('读物一；读物二；视频一；罗马书 8:1');
+    expect(weeklyTitleFromContent({
+      title: '手动标题',
+      readings: [{ title: '读物一' }],
+    })).toBe('读物一');
   });
 
   it('renders markdown while escaping raw HTML and unsafe links', () => {

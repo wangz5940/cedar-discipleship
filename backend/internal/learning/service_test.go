@@ -78,3 +78,32 @@ func TestDailyTaskEnabled(t *testing.T) {
 		t.Fatalf("buildTodayTasks returned %d tasks, want none", len(tasks))
 	}
 }
+
+func TestWeekTitleUsesLearningContent(t *testing.T) {
+	title := WeekTitle(WeekInput{
+		BookEnabled:  true,
+		VideoEnabled: true,
+		VerseEnabled: true,
+		Readings: []TaskBinding{
+			{Title: "《生命读经》第一篇"},
+			{Title: "《生命读经》第二篇"},
+		},
+		Videos:   []TaskBinding{{Title: "本周交通视频"}},
+		VerseRef: "罗马书 8:1",
+	})
+	want := "《生命读经》第一篇；《生命读经》第二篇；本周交通视频；罗马书 8:1"
+	if title != want {
+		t.Fatalf("WeekTitle() = %q, want %q", title, want)
+	}
+}
+
+func TestWeekTitleIgnoresStaleManualTitle(t *testing.T) {
+	title := WeekTitle(WeekInput{
+		Title:       "手动周标题",
+		BookEnabled: true,
+		Readings:    []TaskBinding{{Title: "读物标题"}},
+	})
+	if title != "读物标题" {
+		t.Fatalf("WeekTitle() = %q, want content title", title)
+	}
+}

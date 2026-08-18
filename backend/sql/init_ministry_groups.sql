@@ -31,16 +31,6 @@ SET ministry.leader_user_id=leaders.user_id,
     ministry.updated_at=UTC_TIMESTAMP(3)
 WHERE ministry.leader_user_id IS NULL;
 
-UPDATE ministry_groups ministry
-JOIN (
-  SELECT MIN(id) AS user_id
-  FROM users
-  WHERE is_super_admin=1 AND status=1
-) super_admin ON super_admin.user_id IS NOT NULL
-SET ministry.leader_user_id=super_admin.user_id,
-    ministry.updated_at=UTC_TIMESTAMP(3)
-WHERE ministry.leader_user_id IS NULL;
-
 INSERT INTO ministry_group_members
   (study_group_id,ministry_group_id,user_id,role,identity_public,status,joined_at,created_at,updated_at)
 SELECT ministry.study_group_id,ministry.id,ministry.leader_user_id,'member',1,1,

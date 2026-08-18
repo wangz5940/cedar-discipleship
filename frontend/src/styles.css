@@ -5242,6 +5242,21 @@ button.notification-row:hover {
   text-transform: uppercase;
 }
 
+.ministry-directory-label-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ministry-directory-toggle {
+  min-height: 0;
+  padding: 2px 6px;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 button.ministry-group-row,
 .ministry-group-row-available {
   width: 100%;

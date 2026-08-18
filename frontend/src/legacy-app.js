@@ -23,6 +23,7 @@ import {
   normalizeSearchText,
   parsePdfPageRangeParts,
   shouldRenderWeeklyTask,
+  weeklyTitleFromContent,
 } from './runtime/content';
 
 export { enabledFlag, extractPdfPageRange };
@@ -1768,7 +1769,7 @@ export async function saveWeekDraft() {
   const payload = {
     start_date: draft.start,
     end_date: draft.end,
-    title: draft.title,
+    title: weeklyTitleFromContent(draft),
     verse_ref: draft.verse_ref,
     recite_text: draft.recite_text,
     book_enabled: enabledFlag(draft.book_enabled),

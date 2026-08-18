@@ -80,21 +80,6 @@ func (r *MySQLRepository) EnsureCatalog(ctx context.Context, studyGroupID uint64
 	}
 	if _, err := tx.ExecContext(
 		ctx,
-		`UPDATE ministry_groups ministry
-		   JOIN (
-		     SELECT MIN(id) AS user_id
-		       FROM users
-		      WHERE is_super_admin=1 AND status=1
-		   ) super_admin ON super_admin.user_id IS NOT NULL
-		    SET ministry.leader_user_id=super_admin.user_id,ministry.updated_at=?
-		  WHERE ministry.study_group_id=? AND ministry.leader_user_id IS NULL`,
-		at,
-		studyGroupID,
-	); err != nil {
-		return fmt.Errorf("assigning fallback ministry leaders: %w", err)
-	}
-	if _, err := tx.ExecContext(
-		ctx,
 		`INSERT INTO ministry_group_members
 			(study_group_id,ministry_group_id,user_id,role,identity_public,status,joined_at,created_at,updated_at)
 		 SELECT study_group_id,id,leader_user_id,'member',1,1,?,?,?
@@ -243,7 +228,8 @@ func (r *MySQLRepository) ListMembers(
 		   JOIN ministry_groups g ON g.id=m.ministry_group_id AND g.study_group_id=m.study_group_id
 		   JOIN users u ON u.id=m.user_id
 		  WHERE m.study_group_id=? AND m.ministry_group_id=? AND m.status=1
-		  ORDER BY is_leader DESC,m.role DESC,u.display_name,m.id`,
+		  ORDER BY CASE WHEN g.leader_user_id=m.user_id THEN 1 ELSE 0 END DESC,
+		           m.role DESC,u.display_name,m.id`,
 		studyGroupID,
 		groupID,
 	)
@@ -1243,23 +1229,17 @@ func notifyModeratorsTx(
 	rows, err := tx.QueryContext(
 		ctx,
 		`SELECT user_id FROM (
-		    SELECT leader_user_id AS user_id
-		      FROM ministry_groups
-		     WHERE id=? AND study_group_id=? AND leader_user_id IS NOT NULL
-		    UNION
 		    SELECT user_id
 		      FROM ministry_group_members
 		     WHERE study_group_id=? AND ministry_group_id=? AND status=1 AND role='admin'
 		    UNION
 		    SELECT user_id
 		      FROM user_group_roles
-		     WHERE group_id=? AND role IN ('group_admin','group_leader')
+		     WHERE group_id=? AND role='group_admin'
 		    UNION
 		    SELECT id AS user_id FROM users WHERE is_super_admin=1 AND status=1
 		  ) recipients
 		  WHERE user_id IS NOT NULL`,
-		groupID,
-		studyGroupID,
 		studyGroupID,
 		groupID,
 		studyGroupID,

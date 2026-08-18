@@ -15,6 +15,35 @@ export function shouldRenderWeeklyTask(enabled: unknown, tasks: unknown): boolea
   return enabledFlag(enabled) && Array.isArray(tasks) && tasks.length > 0;
 }
 
+export function weeklyTitleFromContent(input: {
+  title?: unknown;
+  book_enabled?: unknown;
+  video_enabled?: unknown;
+  verse_enabled?: unknown;
+  readings?: Array<{ title?: unknown }>;
+  videos?: Array<{ title?: unknown }>;
+  verse_ref?: unknown;
+}): string {
+  const parts: string[] = [];
+  if (enabledFlag(input.book_enabled)) {
+    for (const reading of input.readings || []) {
+      const title = String(reading?.title || '').trim();
+      if (title) parts.push(title);
+    }
+  }
+  if (enabledFlag(input.video_enabled)) {
+    const videoTitle = (input.videos || [])
+      .map((video) => String(video?.title || '').trim())
+      .find(Boolean);
+    if (videoTitle) parts.push(videoTitle);
+  }
+  if (enabledFlag(input.verse_enabled)) {
+    const verseRef = String(input.verse_ref || '').trim();
+    if (verseRef) parts.push(verseRef);
+  }
+  return parts.join('；');
+}
+
 export function normalizeSearchText(value: unknown): string {
   return String(value || '')
     .replace(/[《》【】（）()：:·,\-—–_]/g, ' ')

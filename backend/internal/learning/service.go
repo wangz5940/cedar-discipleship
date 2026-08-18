@@ -93,6 +93,7 @@ func (s *Service) SaveWeek(ctx context.Context, groupID, weekID uint64, input We
 		}
 		existingVerseTitle = title
 	}
+	input.Title = WeekTitle(input)
 	tasks := BuildTaskDrafts(input, existingVerseTitle)
 	return s.repo.SaveWeek(ctx, groupID, weekID, input, tasks, now)
 }
@@ -227,6 +228,34 @@ func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 		})
 	}
 	return tasks
+}
+
+func WeekTitle(input WeekInput) string {
+	parts := make([]string, 0, 3)
+	if input.BookEnabled {
+		for _, reading := range input.Readings {
+			if title := strings.TrimSpace(reading.Title); title != "" {
+				parts = append(parts, title)
+			}
+		}
+	}
+	if input.VideoEnabled {
+		for _, video := range input.Videos {
+			if title := strings.TrimSpace(video.Title); title != "" {
+				parts = append(parts, title)
+				break
+			}
+		}
+	}
+	if input.VerseEnabled {
+		if verse := strings.TrimSpace(input.VerseRef); verse != "" {
+			parts = append(parts, verse)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "；")
 }
 
 func WeeklyVerseTaskTitle(input WeekInput, existingTitle string) string {

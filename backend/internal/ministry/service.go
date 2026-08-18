@@ -42,7 +42,7 @@ func (s *Service) Groups(ctx context.Context, studyGroupID uint64, actor Actor) 
 	}
 	for i := range groups {
 		groups[i].CanManage = actor.IsSuperAdmin || actor.IsStudyAdmin || groups[i].IsLeader || groups[i].Role == MemberRoleAdmin
-		groups[i].CanReviewShares = actor.IsSuperAdmin || actor.IsStudyAdmin || groups[i].IsLeader
+		groups[i].CanReviewShares = actor.IsSuperAdmin || actor.IsStudyAdmin || groups[i].Role == MemberRoleAdmin
 	}
 	return groups, nil
 }
@@ -204,7 +204,7 @@ func (s *Service) PendingRequests(ctx context.Context, studyGroupID uint64, acto
 	out := make([]RequestVO, 0, len(items))
 	for _, item := range items {
 		access, accessErr := s.repo.Access(ctx, studyGroupID, item.GroupID, actor.UserID)
-		if accessErr != nil || !canManage(actor, access) {
+		if accessErr != nil || !canReviewShares(actor, access) {
 			continue
 		}
 		out = append(out, requestVO(item))
@@ -230,7 +230,7 @@ func (s *Service) DecideRequest(
 		return ErrRequestAlreadyReviewed
 	}
 	access, err := s.repo.Access(ctx, studyGroupID, target.GroupID, actor.UserID)
-	if err != nil || !canManage(actor, access) {
+	if err != nil || !canReviewShares(actor, access) {
 		return ErrForbidden
 	}
 	return s.repo.DecideRequest(ctx, studyGroupID, requestID, actor.UserID, decision, at)
@@ -386,7 +386,7 @@ func canManage(actor Actor, access Access) bool {
 }
 
 func canReviewShares(actor Actor, access Access) bool {
-	return actor.IsSuperAdmin || actor.IsStudyAdmin || access.IsLeader
+	return actor.IsSuperAdmin || actor.IsStudyAdmin || access.IsAdmin
 }
 
 func canContribute(actor Actor, access Access) bool {

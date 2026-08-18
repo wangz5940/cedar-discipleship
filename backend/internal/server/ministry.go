@@ -487,8 +487,7 @@ func ministryActor(user currentUser) ministrydomain.Actor {
 		UserID:       user.ID,
 		IsSuperAdmin: user.IsSuperAdmin,
 		IsStudyAdmin: user.IsSuperAdmin ||
-			hasRole(user.Roles, roleGroupAdmin) ||
-			hasRole(user.Roles, roleGroupLeader),
+			hasRole(user.Roles, roleGroupAdmin),
 	}
 }
 

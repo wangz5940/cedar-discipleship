@@ -38,6 +38,7 @@ const loading = ref(false);
 const detailLoading = ref(false);
 const saving = ref(false);
 const showNotifications = ref(false);
+const showAvailableGroups = ref(false);
 
 const shareID = ref(0);
 const shareTitle = ref('');
@@ -51,6 +52,7 @@ const uploadInput = ref(null);
 const visible = computed(() => authenticated.value && currentGroupID.value > 0 && tab.value === 'groups');
 const joinedGroups = computed(() => groups.value.filter((group) => group.joined));
 const availableGroups = computed(() => groups.value.filter((group) => !group.joined));
+const showAvailableGroupList = computed(() => !joinedGroups.value.length || showAvailableGroups.value);
 const selectedRequests = computed(() => requests.value.filter((request) => Number(request.group_id) === Number(selectedGroupID.value)));
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length);
 const canContribute = computed(() => Boolean(detail.value?.group?.joined || detail.value?.group?.can_manage));
@@ -75,6 +77,7 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
     groups.value = groupResult.groups || [];
     notifications.value = notificationResult.notifications || [];
     requests.value = requestResult.requests || [];
+    showAvailableGroups.value = !joinedGroups.value.length;
     const selectedStillExists = groups.value.some((group) => Number(group.id) === Number(preferredGroupID));
     const nextID = selectedStillExists
       ? Number(preferredGroupID)
@@ -317,6 +320,10 @@ function groupRole(group) {
   return '';
 }
 
+function toggleAvailableGroups() {
+  showAvailableGroups.value = !showAvailableGroups.value;
+}
+
 function shareStatusLabel(status) {
   return { pending: '待审批', published: '已发布', rejected: '未通过' }[status] || status;
 }
@@ -410,31 +417,44 @@ function localDateTimeValue() {
           </div>
 
           <div class="ministry-directory-section">
-            <div class="ministry-directory-label">全部小组</div>
-            <div
-              v-for="group in availableGroups"
-              :key="group.id"
-              class="ministry-group-row ministry-group-row-available"
-              :class="{ active: selectedGroupID === group.id }"
-            >
-              <button type="button" class="ministry-group-open" @click="selectGroup(group.id)">
-                <span class="ministry-group-symbol quiet">{{ group.name.slice(0, 1) }}</span>
-                <span class="ministry-group-row-copy">
-                  <b>{{ group.name }}</b>
-                  <small>{{ group.member_count }} 人</small>
-                </span>
-              </button>
+            <div class="ministry-directory-label ministry-directory-label-toggle">
+              <span>全部小组</span>
               <button
-                class="secondary ministry-join-button"
+                v-if="joinedGroups.length"
+                class="ghost ministry-directory-toggle"
                 type="button"
-                :disabled="saving || group.request_status === 'pending'"
-                @click="requestJoin(group)"
+                @click="toggleAvailableGroups"
               >
-                <UserPlus v-if="group.request_status !== 'pending'" :size="15" />
-                <Check v-else :size="15" />
-                {{ group.request_status === 'pending' ? '待审批' : '加入' }}
+                {{ showAvailableGroups ? '收起' : `展开 ${availableGroups.length}` }}
               </button>
             </div>
+            <template v-if="showAvailableGroupList">
+              <div
+                v-for="group in availableGroups"
+                :key="group.id"
+                class="ministry-group-row ministry-group-row-available"
+                :class="{ active: selectedGroupID === group.id }"
+              >
+                <button type="button" class="ministry-group-open" @click="selectGroup(group.id)">
+                  <span class="ministry-group-symbol quiet">{{ group.name.slice(0, 1) }}</span>
+                  <span class="ministry-group-row-copy">
+                    <b>{{ group.name }}</b>
+                    <small>{{ group.member_count }} 人</small>
+                  </span>
+                </button>
+                <button
+                  class="secondary ministry-join-button"
+                  type="button"
+                  :disabled="saving || group.request_status === 'pending'"
+                  @click="requestJoin(group)"
+                >
+                  <UserPlus v-if="group.request_status !== 'pending'" :size="15" />
+                  <Check v-else :size="15" />
+                  {{ group.request_status === 'pending' ? '待审批' : '加入' }}
+                </button>
+              </div>
+            </template>
+            <div v-else class="ministry-directory-empty">已隐藏未加入的小组</div>
           </div>
         </aside>
 
@@ -526,7 +546,7 @@ function localDateTimeValue() {
                 <div class="ministry-view-head">
                   <div>
                     <h3>{{ shareID ? '修改分享' : '记录经验分享' }}</h3>
-                    <p class="muted">发布规则：{{ detail.group.share_auto_approve ? '免审批' : '组长审批' }}</p>
+                    <p class="muted">发布规则：{{ detail.group.share_auto_approve ? '免审批' : '管理员审批' }}</p>
                   </div>
                   <button v-if="shareID" class="ghost" type="button" @click="resetShareForm">取消修改</button>
                 </div>
