@@ -97,6 +97,8 @@ AGP_CONTAINER_PREFIX=cedar \
 AGP_WEB_PORT=5114 \
 AGP_MYSQL_PORT=3307 \
 AGP_DATA_DIR=/volume2/docker/cedar-discipleship-data \
+GOPROXY=https://goproxy.cn,direct \
+NPM_CONFIG_REGISTRY=https://registry.npmmirror.com \
 docker compose -f deploy/docker-compose.separated.yml up -d --build
 ```
 
@@ -114,16 +116,17 @@ export BOOTSTRAP_SUPERADMIN_DISPLAY_NAME='超级管理员'
 export AGP_TOKEN_TTL=''
 ```
 
-如果部署机器无法访问 `proxy.golang.org`，后端镜像构建会在 `go mod download` 阶段超时。NAS 或受限网络环境里，先设置 Go 模块代理再执行部署：
+如果部署机器无法访问 `proxy.golang.org` 或 `registry.npmjs.org`，镜像构建会在依赖下载阶段超时。NAS 或受限网络环境里，先设置 Go 模块代理和 npm registry 再执行部署：
 
 ```bash
 export GOPROXY='https://goproxy.cn,direct'
+export NPM_CONFIG_REGISTRY='https://registry.npmmirror.com'
 
 # 如果模块校验服务仍不可达，再临时关闭校验数据库
 # export GOSUMDB='off'
 ```
 
-这些变量会透传到 `backend` 镜像构建，以及迁移脚本内部启动的 `golang:1.25-bookworm` 容器。
+这些变量会透传到 `backend`/`frontend` 镜像构建，以及迁移脚本内部启动的 `golang:1.25-bookworm` 容器。
 
 ### 2. 本地检查
 

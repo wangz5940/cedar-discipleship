@@ -65,6 +65,8 @@ services:
     build:
       context: ..
       dockerfile: frontend/Dockerfile
+      args:
+        NPM_CONFIG_REGISTRY: "${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/}"
     container_name: ${AGP_CONTAINER_PREFIX:-agp}-frontend
     restart: unless-stopped
     depends_on:
