@@ -184,7 +184,7 @@ should_run_primary_migration() {
     true) return 0 ;;
     false) return 1 ;;
     auto)
-      [ -n "$PRIMARY_GROUP_CODE" ] && [ -n "$PRIMARY_GROUP_NAME" ] && [ -f "$PRIMARY_CONFIG_PATH" ] && [ -f "$PRIMARY_RECORDS_PATH" ]
+      [ -n "$PRIMARY_GROUP_CODE" ] || [ -n "$PRIMARY_GROUP_NAME" ]
       return
       ;;
     *)
@@ -194,7 +194,13 @@ should_run_primary_migration() {
   esac
 }
 
-require_cmd docker
+validate_primary_migration_inputs() {
+  [ -n "$PRIMARY_GROUP_CODE" ] || { echo "缺少 PRIMARY_GROUP_CODE" >&2; exit 1; }
+  [ -n "$PRIMARY_GROUP_NAME" ] || { echo "缺少 PRIMARY_GROUP_NAME" >&2; exit 1; }
+  [ -f "$PRIMARY_CONFIG_PATH" ] || { echo "迁移配置文件不存在: $PRIMARY_CONFIG_PATH" >&2; exit 1; }
+  [ -f "$PRIMARY_RECORDS_PATH" ] || { echo "迁移记录文件不存在: $PRIMARY_RECORDS_PATH" >&2; exit 1; }
+}
+
 mkdir -p "$AGP_DATA_DIR/mysql" "$AGP_DATA_DIR/assets" "$AGP_DATA_DIR/backups/mysql" "$MIGRATION_REPORT_DIR"
 trap cleanup EXIT
 
@@ -209,16 +215,9 @@ if [ -z "${BOOTSTRAP_SUPERADMIN_PASSWORD:-}" ]; then
 fi
 
 if should_run_primary_migration; then
+  validate_primary_migration_inputs
   if [ -z "$PRIMARY_GROUP_DEFAULT_PASSWORD" ]; then
     PRIMARY_GROUP_DEFAULT_PASSWORD="$(rand_password 12)"
-  fi
-  if [ ! -f "$PRIMARY_CONFIG_PATH" ]; then
-    echo "迁移配置文件不存在: $PRIMARY_CONFIG_PATH" >&2
-    exit 1
-  fi
-  if [ ! -f "$PRIMARY_RECORDS_PATH" ]; then
-    echo "迁移记录文件不存在: $PRIMARY_RECORDS_PATH" >&2
-    exit 1
   fi
   prepare_migration_inputs
 fi
@@ -227,6 +226,7 @@ export COMPOSE_PROJECT_NAME AGP_CONTAINER_PREFIX AGP_DATA_DIR MYSQL_DATABASE MYS
 export AGP_WEB_PORT AGP_MYSQL_PORT AGP_JWT_SECRET AGP_TOKEN_TTL BOOTSTRAP_SUPERADMIN_USERNAME BOOTSTRAP_SUPERADMIN_PASSWORD BOOTSTRAP_SUPERADMIN_DISPLAY_NAME
 export GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY NPM_CONFIG_REGISTRY
 
+require_cmd docker
 log "启动 Cedar Discipleship 服务栈"
 compose up -d --build
 wait_for_mysql
