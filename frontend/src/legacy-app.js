@@ -609,6 +609,14 @@ function viewerResourceLink(item, fallbackTitle = '') {
   };
 }
 
+function assetDownloadURL(asset) {
+  const assetID = Number(asset?.id);
+  if (Number.isInteger(assetID) && assetID > 0) {
+    return `/api/assets/${assetID}/download`;
+  }
+  return asset?.url || '';
+}
+
 function joinPublicPath(publicPath, filename) {
   const base = String(publicPath || '').replace(/\/+$/, '');
   return `${base}/${encodeURIComponent(filename)}`;
@@ -1097,7 +1105,7 @@ function firstTaskAssetLink(task, fallbackTitle = '') {
   return {
     label: fallbackTitle ? `打开 ${fallbackTitle}` : '打开内容',
     title: fallbackTitle || asset.title || asset.original_name || '内容',
-    url: `/api/assets/${asset.id}/download`,
+    url: assetDownloadURL(asset),
     type: inferResourceType(asset.original_name || asset.title, 'iframe'),
     pageRange: extractPdfPageRange(fallbackTitle || asset.title || asset.original_name || ''),
   };
@@ -1106,7 +1114,7 @@ function firstTaskAssetLink(task, fallbackTitle = '') {
 function findAssetURL(keyword) {
   const target = String(keyword || '').toLowerCase();
   const asset = state.assets.find((item) => `${item.title || ''} ${item.original_name || ''} ${item.category || ''}`.toLowerCase().includes(target));
-  return asset?.url || (asset?.id ? `/api/assets/${asset.id}/download` : '');
+  return assetDownloadURL(asset);
 }
 
 function splitBookTitles(title) {
@@ -1200,12 +1208,12 @@ function bestAssetLinksForTitle(title, task) {
   const target = normalizeSearchText(title);
   const localAssets = [...(task?.assets || []), ...state.assets];
   const matched = localAssets
-    .filter((asset, index, arr) => asset?.id && arr.findIndex((other) => other?.id === asset.id) === index)
+    .filter((asset, index, arr) => assetDownloadURL(asset) && arr.findIndex((other) => assetDownloadURL(other) === assetDownloadURL(asset)) === index)
     .filter((asset) => normalizeSearchText(`${asset.title || ''} ${asset.original_name || ''}`).includes(target) || target.includes(normalizeSearchText(asset.title || asset.original_name || '')))
     .map((asset) => ({
       label: asset.title || asset.original_name || '打开内容',
       title: title,
-      url: `/api/assets/${asset.id}/download`,
+      url: assetDownloadURL(asset),
       type: inferResourceType(asset.original_name || asset.title, 'iframe'),
       pageRange: extractPdfPageRange(title),
     }));

@@ -279,3 +279,19 @@ func TestResolveExistingFileInRootsReturnsErrorWhenMissing(t *testing.T) {
 		t.Fatal("expected missing file error")
 	}
 }
+
+func TestStaticAssetDownloadPath(t *testing.T) {
+	path, ok := staticAssetDownloadPath("book:", "Book/%E5%9F%BA%E7%9D%A3.pdf/download")
+	if !ok {
+		t.Fatal("staticAssetDownloadPath rejected a valid static asset link")
+	}
+	if path != "/Book/%E5%9F%BA%E7%9D%A3.pdf" {
+		t.Fatalf("path = %q", path)
+	}
+	if _, ok := staticAssetDownloadPath("unknown:", "Book/a.pdf/download"); ok {
+		t.Fatal("staticAssetDownloadPath accepted an unknown prefix")
+	}
+	if _, ok := staticAssetDownloadPath("book:", "Book/a.pdf"); ok {
+		t.Fatal("staticAssetDownloadPath accepted a path without /download")
+	}
+}

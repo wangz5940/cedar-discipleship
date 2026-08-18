@@ -640,7 +640,7 @@ function localDateTimeValue() {
                     :checked="detail.group.share_auto_approve"
                     @change="updateAutoApproval($event.target.checked)"
                   />
-                  <span>分享免审批</span>
+                  <span>加入/分享免审批</span>
                 </label>
                 <label v-if="app.user?.is_super_admin || app.user?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))">
                   <span>小组组长</span>

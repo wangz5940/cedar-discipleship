@@ -76,6 +76,43 @@ func (a *app) handleDownloadAssetRange(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *app) handleDownloadStaticAssetLink(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
+	}
+	contentPath, ok := staticAssetDownloadPath(r.PathValue("kind"), r.PathValue("rest"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	abs, original, err := assetdomain.ResolveExistingFileInRoots(contentPath, a.contentRoot)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	mt := mime.TypeByExtension(filepath.Ext(original))
+	if mt == "" {
+		mt = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", mt)
+	http.ServeFile(w, r, abs)
+}
+
+func staticAssetDownloadPath(kind, rest string) (string, bool) {
+	switch strings.TrimSpace(kind) {
+	case "book:", "passage:", "handout:", "video:", "markdown:":
+	default:
+		return "", false
+	}
+	path := strings.TrimSuffix(strings.TrimSpace(rest), "/download")
+	if path == rest || path == "" {
+		return "", false
+	}
+	return "/" + strings.TrimLeft(path, "/"), true
+}
+
 func (a *app) handleStaticPDFRange(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)

@@ -114,7 +114,7 @@ func (s *Service) RequestJoin(
 	if access.IsMember {
 		return 0, ErrAlreadyMember
 	}
-	return s.repo.RequestJoin(ctx, studyGroupID, groupID, actor.UserID, strings.TrimSpace(message), at)
+	return s.repo.RequestJoin(ctx, studyGroupID, groupID, actor.UserID, strings.TrimSpace(message), access.ShareAutoApprove, at)
 }
 
 func (s *Service) Leave(ctx context.Context, studyGroupID, groupID uint64, actor Actor, at time.Time) error {

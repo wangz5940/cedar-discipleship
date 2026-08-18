@@ -12,7 +12,7 @@ type Repository interface {
 	Access(ctx context.Context, studyGroupID, groupID, userID uint64) (Access, error)
 	ListMembers(ctx context.Context, studyGroupID, groupID uint64) ([]Member, error)
 
-	RequestJoin(ctx context.Context, studyGroupID, groupID, userID uint64, message string, at time.Time) (uint64, error)
+	RequestJoin(ctx context.Context, studyGroupID, groupID, userID uint64, message string, autoApprove bool, at time.Time) (uint64, error)
 	Leave(ctx context.Context, studyGroupID, groupID, userID uint64, at time.Time) error
 	SetIdentityPublic(ctx context.Context, studyGroupID, groupID, userID uint64, public bool, at time.Time) error
 	SetMemberRole(ctx context.Context, studyGroupID, groupID, userID uint64, role MemberRole, at time.Time) error

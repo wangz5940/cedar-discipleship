@@ -9,12 +9,13 @@ import (
 
 type serviceTestRepository struct {
 	Repository
-	group        GroupSummary
-	access       Access
-	members      []Member
-	request      Request
-	decideCalls  int
-	createdShare Status
+	group           GroupSummary
+	access          Access
+	members         []Member
+	request         Request
+	decideCalls     int
+	createdShare    Status
+	joinAutoApprove bool
 }
 
 func (r *serviceTestRepository) EnsureCatalog(context.Context, uint64, time.Time) error {
@@ -68,6 +69,17 @@ func (r *serviceTestRepository) DecideRequest(
 ) error {
 	r.decideCalls++
 	return nil
+}
+
+func (r *serviceTestRepository) RequestJoin(
+	_ context.Context,
+	_, _, _ uint64,
+	_ string,
+	autoApprove bool,
+	_ time.Time,
+) (uint64, error) {
+	r.joinAutoApprove = autoApprove
+	return 1, nil
 }
 
 func (r *serviceTestRepository) CreateShare(
@@ -268,6 +280,21 @@ func TestServiceDecideRequestAllowsMinistryAdmin(t *testing.T) {
 	}
 	if repo.decideCalls != 1 {
 		t.Fatalf("repository decision calls = %d, want 1", repo.decideCalls)
+	}
+}
+
+func TestServiceRequestJoinUsesAutoApprovalSetting(t *testing.T) {
+	t.Parallel()
+
+	repo := &serviceTestRepository{
+		access: Access{ShareAutoApprove: true},
+	}
+	service := NewService(repo)
+	if _, err := service.RequestJoin(context.Background(), 1, 3, Actor{UserID: 7}, "", time.Now()); err != nil {
+		t.Fatalf("RequestJoin() error = %v", err)
+	}
+	if !repo.joinAutoApprove {
+		t.Fatal("RequestJoin() did not pass auto approval setting to repository")
 	}
 }
 

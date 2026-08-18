@@ -263,6 +263,7 @@ func (r *MySQLRepository) RequestJoin(
 	ctx context.Context,
 	studyGroupID, groupID, userID uint64,
 	message string,
+	autoApprove bool,
 	at time.Time,
 ) (uint64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -299,10 +300,12 @@ func (r *MySQLRepository) RequestJoin(
 	).Scan(&requestID, &status)
 	switch {
 	case err == nil && status == StatusPending:
-		if err := tx.Commit(); err != nil {
-			return 0, fmt.Errorf("committing existing join request: %w", err)
+		if !autoApprove {
+			if err := tx.Commit(); err != nil {
+				return 0, fmt.Errorf("committing existing join request: %w", err)
+			}
+			return requestID, nil
 		}
-		return requestID, nil
 	case err == nil:
 		_, err = tx.ExecContext(
 			ctx,
@@ -336,6 +339,59 @@ func (r *MySQLRepository) RequestJoin(
 	}
 	if err != nil {
 		return 0, fmt.Errorf("saving join request: %w", err)
+	}
+
+	if autoApprove {
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE ministry_group_requests
+			    SET status='approved',reviewed_by=?,reviewed_at=?,updated_at=?
+			  WHERE id=? AND study_group_id=?`,
+			userID,
+			at,
+			at,
+			requestID,
+			studyGroupID,
+		); err != nil {
+			return 0, fmt.Errorf("auto approving join request: %w", err)
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO ministry_group_members
+				(study_group_id,ministry_group_id,user_id,role,identity_public,status,joined_at,created_at,updated_at)
+			 VALUES (?,?,?,'member',0,1,?,?,?)
+			 ON DUPLICATE KEY UPDATE status=1,role='member',joined_at=VALUES(joined_at),updated_at=VALUES(updated_at)`,
+			studyGroupID,
+			groupID,
+			userID,
+			at,
+			at,
+			at,
+		); err != nil {
+			return 0, fmt.Errorf("auto approving ministry membership: %w", err)
+		}
+		groupName, err := groupNameTx(ctx, tx, studyGroupID, groupID)
+		if err != nil {
+			return 0, err
+		}
+		if err := insertNotificationTx(
+			ctx,
+			tx,
+			studyGroupID,
+			groupID,
+			userID,
+			fmt.Sprintf("join-auto-approved:%d", requestID),
+			"join_decision",
+			"加入申请已通过",
+			"你已加入"+groupName,
+			at,
+		); err != nil {
+			return 0, err
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, fmt.Errorf("committing auto approved join request: %w", err)
+		}
+		return requestID, nil
 	}
 
 	displayName, err := userDisplayNameTx(ctx, tx, userID)

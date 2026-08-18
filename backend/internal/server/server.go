@@ -250,6 +250,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/library", a.auth(a.handleResourceLibrary))
 	mux.HandleFunc("GET /api/assets/{id}/download", a.auth(a.handleDownloadAsset))
 	mux.HandleFunc("GET /api/assets/{id}/range", a.auth(a.handleDownloadAssetRange))
+	mux.HandleFunc("GET /api/assets/{kind}/{rest...}", a.auth(a.handleDownloadStaticAssetLink))
 	mux.HandleFunc("POST /api/admin/assets/upload", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminUploadAsset)))
 	mux.HandleFunc("GET /api/admin/resource-library", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResourceLibrary)))
 	mux.HandleFunc("GET /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminLearningConfig)))
