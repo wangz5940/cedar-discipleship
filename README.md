@@ -92,6 +92,11 @@ http://127.0.0.1:5114
 如果同一台机器上已经有其他服务占用端口或已有 `agp-*` 容器，可用独立前缀、端口和数据目录启动，避免冲突：
 
 ```bash
+export MYSQL_PASSWORD='替换为数据库密码'
+export MYSQL_ROOT_PASSWORD='替换为数据库root密码'
+export AGP_JWT_SECRET='替换为长随机字符串'
+export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
+
 COMPOSE_PROJECT_NAME=cedar \
 AGP_CONTAINER_PREFIX=cedar \
 AGP_WEB_PORT=5114 \

@@ -9,19 +9,24 @@ services:
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-agp}
       MYSQL_USER: ${MYSQL_USER:-agp}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-agp}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-agp-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}
       TZ: Asia/Shanghai
     ports:
       - "127.0.0.1:${AGP_MYSQL_PORT:-3307}:3306"
     volumes:
       - ${AGP_DATA_DIR:-../data}/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${MYSQL_USER:-agp}", "-p${MYSQL_PASSWORD:-agp}"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysql --protocol=TCP -h 127.0.0.1 -u\"$${MYSQL_USER}\" \"$${MYSQL_DATABASE}\" -Nse 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 5m
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build:
@@ -40,14 +45,14 @@ services:
         condition: service_healthy
     environment:
       AGP_ADDR: ":8080"
-      AGP_DSN: "${MYSQL_USER:-agp}:${MYSQL_PASSWORD:-agp}@tcp(mysql:3306)/${MYSQL_DATABASE:-agp}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
-      AGP_JWT_SECRET: "${AGP_JWT_SECRET:-}"
+      AGP_DSN: "${MYSQL_USER:-agp}:${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}@tcp(mysql:3306)/${MYSQL_DATABASE:-agp}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
+      AGP_JWT_SECRET: "${AGP_JWT_SECRET:?AGP_JWT_SECRET must be set in .env}"
       AGP_TOKEN_TTL: "${AGP_TOKEN_TTL:-}"
       AGP_ASSETS_ROOT: "/data/agp/assets"
       AGP_CONTENT_ROOT: "/data/agp/content"
       AGP_MIGRATIONS_DIR: "/app/migrations"
       BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
-      BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:-}"
+      BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
     volumes:
       - ${AGP_DATA_DIR:-../data}/assets:/data/agp/assets
@@ -60,6 +65,11 @@ services:
       - ../weekly_task.md:/data/agp/content/weekly_task.md:ro
       - ../Kuangye.md:/data/agp/content/Kuangye.md:ro
       - ../README.md:/data/agp/content/README.md:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
@@ -82,3 +92,8 @@ services:
       - ../Kuangye.md:/usr/share/nginx/html/Kuangye.md:ro
     ports:
       - "${AGP_WEB_PORT:-5114}:80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
