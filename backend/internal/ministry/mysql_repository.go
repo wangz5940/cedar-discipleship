@@ -61,38 +61,6 @@ func (r *MySQLRepository) EnsureCatalog(ctx context.Context, studyGroupID uint64
 			return fmt.Errorf("ensuring ministry group %q: %w", item.code, err)
 		}
 	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`UPDATE ministry_groups ministry
-		   JOIN (
-		     SELECT group_id,MIN(user_id) AS user_id
-		       FROM user_group_roles
-		      WHERE group_id=? AND role='group_leader'
-		      GROUP BY group_id
-		   ) leader ON leader.group_id=ministry.study_group_id
-		    SET ministry.leader_user_id=leader.user_id,ministry.updated_at=?
-		  WHERE ministry.study_group_id=? AND ministry.leader_user_id IS NULL`,
-		studyGroupID,
-		at,
-		studyGroupID,
-	); err != nil {
-		return fmt.Errorf("assigning default ministry leaders: %w", err)
-	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO ministry_group_members
-			(study_group_id,ministry_group_id,user_id,role,identity_public,status,joined_at,created_at,updated_at)
-		 SELECT study_group_id,id,leader_user_id,'member',1,1,?,?,?
-		   FROM ministry_groups
-		  WHERE study_group_id=? AND leader_user_id IS NOT NULL
-		 ON DUPLICATE KEY UPDATE status=1,identity_public=1,updated_at=VALUES(updated_at)`,
-		at,
-		at,
-		at,
-		studyGroupID,
-	); err != nil {
-		return fmt.Errorf("adding default ministry leaders: %w", err)
-	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing ministry catalog initialization: %w", err)
 	}
