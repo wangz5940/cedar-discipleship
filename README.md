@@ -52,6 +52,7 @@
 ├── deploy/
 │   └── docker-compose.separated.yml
 ├── scripts/
+│   ├── init-deploy-env.sh      # 生成本地部署 .env
 │   ├── deploy-oneclick.sh       # 新环境一键部署
 │   └── migrate-group.sh         # 独立迁移其他组
 ├── docs/
@@ -92,24 +93,18 @@ http://127.0.0.1:5114
 如果同一台机器上已经有其他服务占用端口或已有 `agp-*` 容器，可用独立前缀、端口和数据目录启动，避免冲突：
 
 ```bash
-export MYSQL_PASSWORD='替换为数据库密码'
-export MYSQL_ROOT_PASSWORD='替换为数据库root密码'
-export AGP_JWT_SECRET='替换为长随机字符串'
-export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
+./scripts/init-deploy-env.sh
 
-COMPOSE_PROJECT_NAME=cedar \
-AGP_CONTAINER_PREFIX=cedar \
-AGP_WEB_PORT=5114 \
-AGP_MYSQL_PORT=3307 \
-AGP_DATA_DIR=/volume2/docker/cedar-discipleship-data \
-GOPROXY=https://goproxy.cn,direct \
-NPM_CONFIG_REGISTRY=https://registry.npmmirror.com \
+set -a
+. ./.env
+set +a
+
 docker compose -f deploy/docker-compose.separated.yml up -d --build
 ```
 
-其中 `AGP_WEB_PORT` 需避开已有的 `5112`，`AGP_MYSQL_PORT` 需避开已有的 `3377`。`AGP_CONTAINER_PREFIX` 会生成 `cedar-mysql`、`cedar-backend`、`cedar-frontend`，避免与已有容器名冲突。
+脚本会补齐 `.env` 中缺失的部署变量和随机密钥，不覆盖已存在的值。默认会写入 `COMPOSE_PROJECT_NAME=cedar`、`AGP_CONTAINER_PREFIX=cedar`、`AGP_WEB_PORT=5114`、`AGP_MYSQL_PORT=3307`、`AGP_DATA_DIR=/volume2/docker/cedar-discipleship-data`、`GOPROXY=https://goproxy.cn,direct`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`。其中 `AGP_WEB_PORT` 需避开已有的 `5112`，`AGP_MYSQL_PORT` 需避开已有的 `3377`。`AGP_CONTAINER_PREFIX` 会生成 `cedar-mysql`、`cedar-backend`、`cedar-frontend`，避免与已有容器名冲突。
 
-首次超级管理员由环境变量创建。直接使用 Docker Compose 启动时必须提供：
+首次超级管理员由环境变量创建。已运行 `./scripts/init-deploy-env.sh` 时，所需变量会写入 `.env`；未运行该脚本而直接使用 Docker Compose 启动时，必须手动提供：
 
 ```bash
 export AGP_JWT_SECRET='替换为长随机字符串'
