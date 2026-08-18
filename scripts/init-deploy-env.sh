@@ -46,6 +46,18 @@ append_env() {
   printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE"
 }
 
+env_value() {
+  local key="$1"
+  awk -F= -v key="$key" '
+    $1 == key {
+      value = substr($0, length(key) + 2)
+      gsub(/^["'\'']|["'\'']$/, "", value)
+      print value
+      exit
+    }
+  ' "$ENV_FILE"
+}
+
 mkdir -p "$(dirname "$ENV_FILE")"
 if [ ! -f "$ENV_FILE" ]; then
   {
@@ -74,10 +86,17 @@ append_env BOOTSTRAP_SUPERADMIN_DISPLAY_NAME "超级管理员"
 append_env GOPROXY "https://goproxy.cn,direct"
 append_env NPM_CONFIG_REGISTRY "https://registry.npmmirror.com"
 
+AGP_DATA_DIR_VALUE="$(env_value AGP_DATA_DIR)"
+mkdir -p \
+  "$AGP_DATA_DIR_VALUE/mysql" \
+  "$AGP_DATA_DIR_VALUE/assets" \
+  "$AGP_DATA_DIR_VALUE/backups/mysql"
+
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 cat <<EOF
 部署环境变量已写入: $ENV_FILE
+部署数据目录已创建: $AGP_DATA_DIR_VALUE
 
 启动命令:
   set -a
