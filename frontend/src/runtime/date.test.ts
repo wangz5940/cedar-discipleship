@@ -8,6 +8,7 @@ import {
   parseLocalDate,
   todayString,
   toChineseMonthDay,
+  weekEndDateFromStart,
 } from './date';
 
 describe('date runtime helpers', () => {
@@ -21,6 +22,9 @@ describe('date runtime helpers', () => {
       start: '2026-08-16',
       end: '2026-08-22',
     });
+    expect(weekEndDateFromStart('2026-08-16')).toBe('2026-08-22');
+    expect(weekEndDateFromStart('2026-12-27')).toBe('2027-01-02');
+    expect(weekEndDateFromStart('')).toBe('');
   });
 
   it('formats study dates and offsets', () => {

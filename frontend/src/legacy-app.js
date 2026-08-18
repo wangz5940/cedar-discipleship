@@ -12,6 +12,7 @@ import {
   parseLocalDate,
   todayString,
   toChineseMonthDay,
+  weekEndDateFromStart,
 } from './runtime/date';
 import {
   applyPdfPageRangeToTitle,
@@ -21,6 +22,7 @@ import {
   normalizePageField,
   normalizeSearchText,
   parsePdfPageRangeParts,
+  shouldRenderWeeklyTask,
 } from './runtime/content';
 
 export { enabledFlag, extractPdfPageRange };
@@ -1006,7 +1008,7 @@ function currentTaskOptions() {
       contentLinks: dailyLinks,
     });
   }
-  if (enabledFlag(week.book_enabled)) {
+  if (shouldRenderWeeklyTask(week.book_enabled, bookTasks)) {
     for (const book of buildWeeklyBookEntries(bookTasks, week.title, configPlan)) {
       tasks.push({
         type: 'weekly_book',
@@ -1022,7 +1024,7 @@ function currentTaskOptions() {
       });
     }
   }
-  if (enabledFlag(week.video_enabled) && (videoLinks.length || videoTasks.length)) {
+  if (shouldRenderWeeklyTask(week.video_enabled, videoTasks)) {
     tasks.push({
       type: 'weekly_video',
       taskID: Number(videoTasks[0]?.id || 0),
@@ -1598,8 +1600,8 @@ function weekDraftFromWeek(week = null) {
       title: '',
       verse_ref: '',
       recite_text: '',
-      book_enabled: false,
-      video_enabled: false,
+      book_enabled: true,
+      video_enabled: true,
       verse_enabled: false,
       outline_enabled: false,
       readings: [emptyWeekBinding('readings')],
@@ -1615,8 +1617,8 @@ function weekDraftFromWeek(week = null) {
     title: hasTaskContent ? (week.title || '') : '',
     verse_ref: hasTaskContent ? (week.verse_ref || '') : '',
     recite_text: hasTaskContent ? (week.recite_text || '') : '',
-    book_enabled: hasTaskContent && enabledFlag(week.book_enabled),
-    video_enabled: hasTaskContent && enabledFlag(week.video_enabled),
+    book_enabled: hasTaskContent ? enabledFlag(week.book_enabled) : true,
+    video_enabled: hasTaskContent ? enabledFlag(week.video_enabled) : true,
     verse_enabled: hasTaskContent && enabledFlag(week.verse_enabled),
     outline_enabled: hasTaskContent && enabledFlag(week.outline_enabled),
     readings: hasTaskContent && (week.readings || []).length
@@ -1664,7 +1666,11 @@ export function updateWeekDraftField(key, value) {
     selectWeekDraft(value);
     return;
   }
-  state.weekDraft = { ...(state.weekDraft || weekDraftFromWeek()), [key]: value };
+  const draft = { ...(state.weekDraft || weekDraftFromWeek()), [key]: value };
+  if (key === 'start') {
+    draft.end = weekEndDateFromStart(value);
+  }
+  state.weekDraft = draft;
   render();
 }
 

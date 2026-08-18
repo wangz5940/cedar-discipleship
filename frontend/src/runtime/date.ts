@@ -27,6 +27,13 @@ export function currentCalendarWeekRange(value = todayString()): DateRange {
   return { start: formatLocalDate(start), end: formatLocalDate(end) };
 }
 
+export function weekEndDateFromStart(value: string): string {
+  const start = parseLocalDate(value);
+  if (formatLocalDate(start) !== value) return '';
+  start.setDate(start.getDate() + 6);
+  return formatLocalDate(start);
+}
+
 export function currentMonthString(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }

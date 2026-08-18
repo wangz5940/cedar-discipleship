@@ -11,6 +11,10 @@ export function enabledFlag(value: unknown, fallback = true): boolean {
   return Boolean(value);
 }
 
+export function shouldRenderWeeklyTask(enabled: unknown, tasks: unknown): boolean {
+  return enabledFlag(enabled) && Array.isArray(tasks) && tasks.length > 0;
+}
+
 export function normalizeSearchText(value: unknown): string {
   return String(value || '')
     .replace(/[《》【】（）()：:·,\-—–_]/g, ' ')

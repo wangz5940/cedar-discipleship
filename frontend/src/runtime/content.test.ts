@@ -7,6 +7,7 @@ import {
   markdownToSafeHTML,
   normalizeSearchText,
   parsePdfPageRangeParts,
+  shouldRenderWeeklyTask,
 } from './content';
 
 describe('content runtime helpers', () => {
@@ -14,6 +15,9 @@ describe('content runtime helpers', () => {
     expect(enabledFlag('off')).toBe(false);
     expect(enabledFlag('yes')).toBe(true);
     expect(enabledFlag('', false)).toBe(false);
+    expect(shouldRenderWeeklyTask(true, [{ id: 1 }])).toBe(true);
+    expect(shouldRenderWeeklyTask(true, [])).toBe(false);
+    expect(shouldRenderWeeklyTask(false, [{ id: 1 }])).toBe(false);
   });
 
   it('parses and normalizes PDF page ranges', () => {
