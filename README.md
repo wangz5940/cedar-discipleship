@@ -89,6 +89,19 @@ http://127.0.0.1:5114
 127.0.0.1:3307
 ```
 
+如果同一台机器上已经有其他服务占用端口或已有 `agp-*` 容器，可用独立前缀、端口和数据目录启动，避免冲突：
+
+```bash
+COMPOSE_PROJECT_NAME=cedar \
+AGP_CONTAINER_PREFIX=cedar \
+AGP_WEB_PORT=5114 \
+AGP_MYSQL_PORT=3307 \
+AGP_DATA_DIR=/volume2/docker/cedar-discipleship-data \
+docker compose -f deploy/docker-compose.separated.yml up -d --build
+```
+
+其中 `AGP_WEB_PORT` 需避开已有的 `5112`，`AGP_MYSQL_PORT` 需避开已有的 `3377`。`AGP_CONTAINER_PREFIX` 会生成 `cedar-mysql`、`cedar-backend`、`cedar-frontend`，避免与已有容器名冲突。
+
 首次超级管理员由环境变量创建。直接使用 Docker Compose 启动时必须提供：
 
 ```bash
@@ -231,14 +244,14 @@ docker compose -f deploy/docker-compose.separated.yml down
 MySQL 进入方式：
 
 ```bash
-docker exec -it agp-mysql mysql -uagp -pagp agp
+docker exec -it ${AGP_CONTAINER_PREFIX:-agp}-mysql mysql -uagp -pagp agp
 ```
 
 数据库备份：
 
 ```bash
-mkdir -p data/backups/mysql
-docker exec agp-mysql mysqldump -uagp -pagp agp > data/backups/mysql/agp-$(date +%F).sql
+mkdir -p "${AGP_DATA_DIR:-data}/backups/mysql"
+docker exec ${AGP_CONTAINER_PREFIX:-agp}-mysql mysqldump -uagp -pagp agp > "${AGP_DATA_DIR:-data}/backups/mysql/agp-$(date +%F).sql"
 ```
 
 ## 静态资料与上传目录

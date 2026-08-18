@@ -3,8 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/deploy/docker-compose.separated.yml}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect agp-mysql --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agp}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 
 env_file_value() {
@@ -21,6 +19,7 @@ env_file_value() {
 
 for env_name in \
   MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD \
+  COMPOSE_PROJECT_NAME AGP_CONTAINER_PREFIX \
   GROUP_CODE GROUP_NAME CONFIG_PATH RECORDS_PATH GROUP_DEFAULT_PASSWORD REPORT_DIR \
   ALLOW_DUPLICATE_AS_DELETED FAIL_ON_GENERATED_USERNAMES EXECUTE_IMPORT \
   GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY; do
@@ -29,6 +28,10 @@ for env_name in \
   fi
 done
 
+AGP_CONTAINER_PREFIX="${AGP_CONTAINER_PREFIX:-agp}"
+MYSQL_CONTAINER_NAME="${MYSQL_CONTAINER_NAME:-${AGP_CONTAINER_PREFIX}-mysql}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect "$MYSQL_CONTAINER_NAME" --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$AGP_CONTAINER_PREFIX}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-agp}"
 MYSQL_USER="${MYSQL_USER:-agp}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-agp}"

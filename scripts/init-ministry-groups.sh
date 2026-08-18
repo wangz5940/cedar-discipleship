@@ -3,8 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/deploy/docker-compose.separated.yml}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect agp-mysql --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agp}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 SQL_FILE="${SQL_FILE:-$ROOT_DIR/backend/sql/init_ministry_groups.sql}"
 SCHEMA_FILE="${SCHEMA_FILE:-$ROOT_DIR/backend/migrations/003_ministry_groups.sql}"
@@ -22,12 +20,16 @@ env_file_value() {
   )
 }
 
-for env_name in MYSQL_HOST MYSQL_PORT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
+for env_name in COMPOSE_PROJECT_NAME AGP_CONTAINER_PREFIX MYSQL_HOST MYSQL_PORT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
   if [ -z "${!env_name:-}" ]; then
     printf -v "$env_name" '%s' "$(env_file_value "$env_name")"
   fi
 done
 
+AGP_CONTAINER_PREFIX="${AGP_CONTAINER_PREFIX:-agp}"
+MYSQL_CONTAINER_NAME="${MYSQL_CONTAINER_NAME:-${AGP_CONTAINER_PREFIX}-mysql}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(docker inspect "$MYSQL_CONTAINER_NAME" --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null || true)}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$AGP_CONTAINER_PREFIX}"
 MYSQL_HOST="${MYSQL_HOST:-127.0.0.1}"
 MYSQL_PORT="${MYSQL_PORT:-3307}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-agp}"
@@ -43,6 +45,7 @@ usage() {
 默认通过 Docker Compose 的 mysql 服务执行:
   COMPOSE_FILE=deploy/docker-compose.separated.yml
   COMPOSE_PROJECT_NAME=agp
+  AGP_CONTAINER_PREFIX=agp
 
 如需直连本机或远端 MySQL:
   USE_LOCAL_MYSQL=true \\
@@ -79,7 +82,7 @@ compose() {
 
 container_env_value() {
   local env_name="$1"
-  docker inspect agp-mysql --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+  docker inspect "$MYSQL_CONTAINER_NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
     | awk -v key="$env_name" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }'
 }
 
