@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ func (a *app) handleMinistryGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	groups, err := a.ministry.Groups(r.Context(), studyGroupID, ministryActor(user))
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"groups": groups})
@@ -42,7 +43,7 @@ func (a *app) handleMinistryGroup(w http.ResponseWriter, r *http.Request) {
 		ministryActor(user),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
@@ -70,7 +71,7 @@ func (a *app) handleMinistryJoinRequest(w http.ResponseWriter, r *http.Request) 
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	a.audit(
@@ -101,7 +102,7 @@ func (a *app) handleMinistryLeave(w http.ResponseWriter, r *http.Request) {
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	a.audit(
@@ -138,7 +139,7 @@ func (a *app) handleMinistryIdentity(w http.ResponseWriter, r *http.Request) {
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -164,7 +165,7 @@ func (a *app) handleMinistrySettings(w http.ResponseWriter, r *http.Request) {
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	a.audit(
@@ -204,7 +205,7 @@ func (a *app) handleMinistryMemberRole(w http.ResponseWriter, r *http.Request) {
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	a.audit(
@@ -232,7 +233,7 @@ func (a *app) handleMinistryRequests(w http.ResponseWriter, r *http.Request) {
 		ministryActor(user),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"requests": requests})
@@ -260,7 +261,7 @@ func (a *app) handleMinistryRequestDecision(w http.ResponseWriter, r *http.Reque
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	a.audit(
@@ -289,7 +290,7 @@ func (a *app) handleMinistryNotifications(w http.ResponseWriter, r *http.Request
 		100,
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": notifications})
@@ -309,7 +310,7 @@ func (a *app) handleMinistryNotificationRead(w http.ResponseWriter, r *http.Requ
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -334,7 +335,7 @@ func (a *app) handleMinistryCreateShare(w http.ResponseWriter, r *http.Request) 
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": shareID})
@@ -360,7 +361,7 @@ func (a *app) handleMinistryUpdateShare(w http.ResponseWriter, r *http.Request) 
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -389,7 +390,7 @@ func (a *app) handleMinistryShareDecision(w http.ResponseWriter, r *http.Request
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	a.audit(
@@ -424,7 +425,7 @@ func (a *app) handleMinistryCreateProgress(w http.ResponseWriter, r *http.Reques
 		time.Now().UTC(),
 	)
 	if err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": progressID})
@@ -443,7 +444,7 @@ func (a *app) handleMinistryAttachment(w http.ResponseWriter, r *http.Request) {
 		groupID,
 		ministryActor(user),
 	); err != nil {
-		writeMinistryError(w, err)
+		a.writeMinistryError(w, r, err)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, ministryUploadLimit)
@@ -496,7 +497,7 @@ func pathUint64(r *http.Request, name string) uint64 {
 	return value
 }
 
-func writeMinistryError(w http.ResponseWriter, err error) {
+func (a *app) writeMinistryError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, ministrydomain.ErrContentRequired),
 		errors.Is(err, ministrydomain.ErrInvalidDecision),
@@ -517,6 +518,16 @@ func writeMinistryError(w http.ResponseWriter, err error) {
 		errors.Is(err, ministrydomain.ErrShareAlreadyReviewed):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
+		user := mustUser(r)
+		log.Printf(
+			"ministry request failed method=%s path=%s user_id=%d group_id=%d ministry_group_id=%d err=%v",
+			r.Method,
+			r.URL.Path,
+			user.ID,
+			user.CurrentGroupID,
+			pathUint64(r, "id"),
+			err,
+		)
 		writeError(w, http.StatusInternalServerError, "ministry_failed")
 	}
 }
