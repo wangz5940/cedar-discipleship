@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useDashboardStore } from '../stores/dashboard';
 import { openMemberCalendar, setSelectedDate, shiftSelectedDate, toggleCheckin } from '../legacy-app';
@@ -33,10 +33,38 @@ const legend = [
   { key: 'daily_devotion', label: '灵修' },
   { key: 'weekly_book', label: '书籍' },
   { key: 'weekly_video', label: '视频' },
-  { key: 'weekly_verse', label: '背经' },
+  { key: 'weekly_outline', label: '背大纲' },
 ];
 
 const rankingMax = computed(() => Math.max(1, ...ranking.value.map((item) => item.total || 0)));
+const statsView = ref('chart');
+const taskSectionDefinitions = [
+  { key: 'daily_devotion', label: '灵修' },
+  { key: 'weekly_book', label: '书籍' },
+  { key: 'weekly_video', label: '视频' },
+  { key: 'weekly_outline', label: '背大纲' },
+];
+const taskSections = computed(() => taskSectionDefinitions.map((definition) => {
+  const tasks = progressCards.value
+    .filter((card) => card.task.type === definition.key)
+    .map((card) => card.task);
+  const rows = members.value.map((member) => {
+    const states = tasks.map((task) => member.taskStates.find((item) => item.task === task));
+    return {
+      userID: member.user_id,
+      name: member.name,
+      states,
+      done: tasks.length > 0 && states.every((state) => state?.done),
+    };
+  });
+  return {
+    ...definition,
+    tasks,
+    rows,
+    completed: rows.filter((row) => row.done).length,
+    missing: rows.filter((row) => !row.done),
+  };
+}).filter((section) => section.tasks.length));
 
 function segmentHeight(count, total) {
   if (!count || !total) return 0;
@@ -65,7 +93,7 @@ async function exportRankingChart() {
     daily_devotion: '#0a84ff',
     weekly_book: '#8b5cf6',
     weekly_video: '#19bf7a',
-    weekly_verse: '#f59e0b',
+    weekly_outline: '#f59e0b',
   };
   const slotWidth = chartWidth / Math.max(1, items.length);
   const barWidth = Math.max(26, Math.min(42, slotWidth * 0.48));
@@ -254,14 +282,18 @@ async function exportRankingChart() {
           <div>
             <div class="eyebrow">月度统计</div>
             <h2>香柏木数据统计中心</h2>
-            <p class="muted">{{ monthLabel }}分项总榜按灵修、书籍、视频累计打卡次数排序。</p>
+            <p class="muted">{{ monthLabel }}分项总榜按灵修、书籍、视频、背大纲累计打卡次数排序。</p>
           </div>
           <div class="stats-center-tags">
             <button class="secondary" type="button" @click="exportRankingChart">导出柱状图 PNG</button>
+            <div class="segmented-control" aria-label="统计展示方式">
+              <button type="button" :class="{ active: statsView === 'chart' }" @click="statsView = 'chart'">柱状图</button>
+              <button type="button" :class="{ active: statsView === 'table' }" @click="statsView = 'table'">板块表格</button>
+            </div>
             <span class="stats-tag active">分项总榜</span>
             <span class="stats-tag">统计范围 {{ monthLabel }}</span>
             <span class="stats-tag">活跃成员 {{ activeCount }}人</span>
-            <span class="stats-tag">灵修 / 书籍 / 视频</span>
+            <span class="stats-tag">灵修 / 书籍 / 视频 / 背大纲</span>
           </div>
         </div>
 
@@ -283,7 +315,7 @@ async function exportRankingChart() {
           </div>
         </div>
 
-        <div class="bar-chart-card">
+        <div v-if="statsView === 'chart'" class="bar-chart-card">
           <div class="bar-chart-meta">
             <strong>分项总榜</strong>
             <div class="bar-legend">
@@ -316,10 +348,10 @@ async function exportRankingChart() {
                     :title="`视频 ${member.counts.weekly_video} 次`"
                   ></span>
                   <span
-                    v-if="member.counts?.weekly_verse"
-                    class="bar-segment verse"
-                    :style="{ height: `${segmentHeight(member.counts.weekly_verse, member.total)}%` }"
-                    :title="`背经 ${member.counts.weekly_verse} 次`"
+                    v-if="member.counts?.weekly_outline"
+                    class="bar-segment outline"
+                    :style="{ height: `${segmentHeight(member.counts.weekly_outline, member.total)}%` }"
+                    :title="`背大纲 ${member.counts.weekly_outline} 次`"
                   ></span>
                 </div>
                 <span v-else class="bar-empty"></span>
@@ -328,6 +360,49 @@ async function exportRankingChart() {
               <small>{{ member.total || 0 }} 次</small>
             </div>
           </div>
+        </div>
+
+        <div v-else class="task-section-tables">
+          <section v-for="section in taskSections" :key="section.key" class="task-section-table">
+            <div class="task-section-table-head">
+              <div>
+                <h3>{{ section.label }}</h3>
+                <p>{{ section.completed }}/{{ section.rows.length }} 人完成</p>
+              </div>
+              <span class="missing-summary">
+                未完成：{{ section.missing.length ? section.missing.map((item) => item.name).join('、') : '无' }}
+              </span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>成员</th>
+                    <th v-for="task in section.tasks" :key="`${task.type}:${task.taskID || task.title}`">
+                      {{ task.title }}
+                    </th>
+                    <th>板块状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in section.rows" :key="row.userID">
+                    <td>{{ row.name }}</td>
+                    <td v-for="(state, index) in row.states" :key="`${row.userID}:${index}`">
+                      <span class="completion-mark" :class="{ done: state?.done }">
+                        {{ state?.done ? '✓' : '未完成' }}
+                      </span>
+                    </td>
+                    <td>
+                      <span class="completion-mark" :class="{ done: row.done }">
+                        {{ row.done ? '已完成' : '需跟进' }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <div v-if="!taskSections.length" class="empty">当前周尚未配置可统计的学习板块。</div>
         </div>
       </section>
     </div>

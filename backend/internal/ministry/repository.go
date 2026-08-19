@@ -31,4 +31,12 @@ type Repository interface {
 
 	ListProgress(ctx context.Context, studyGroupID, groupID uint64, limit int) ([]Progress, error)
 	CreateProgress(ctx context.Context, studyGroupID, groupID, authorID uint64, input ProgressInput, at time.Time) (uint64, error)
+
+	AttendanceSettings(ctx context.Context, studyGroupID, groupID uint64) ([]int, []string, error)
+	AttendanceGroupCode(ctx context.Context, studyGroupID, groupID uint64) (string, error)
+	SaveAttendanceSettings(ctx context.Context, studyGroupID, groupID, actorID uint64, weekdays []int, extraDates []string, at time.Time) error
+	AttendanceMembers(ctx context.Context, studyGroupID uint64) ([]AttendanceMember, error)
+	AttendanceRecords(ctx context.Context, studyGroupID, groupID uint64, from, to string) ([]AttendanceRecord, error)
+	IsActiveStudyGroupMember(ctx context.Context, studyGroupID, userID uint64) (bool, error)
+	SetAttendance(ctx context.Context, studyGroupID, groupID, userID, actorID uint64, date string, present bool, at time.Time) error
 }

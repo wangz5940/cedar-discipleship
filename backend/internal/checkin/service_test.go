@@ -7,13 +7,14 @@ import (
 	"testing"
 )
 
-func TestServiceCreateWeeklyVideoAndVerseIdempotent(t *testing.T) {
+func TestServiceCreateWeeklyTaskIdempotent(t *testing.T) {
 	tests := []struct {
 		name     string
 		taskType string
 	}{
 		{name: "weekly video", taskType: "weekly_video"},
 		{name: "weekly verse", taskType: "weekly_verse"},
+		{name: "weekly outline", taskType: "weekly_outline"},
 	}
 
 	for _, tt := range tests {

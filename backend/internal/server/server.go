@@ -234,6 +234,10 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ministry-groups/{id}/shares/{share_id}/decision", a.auth(a.handleMinistryShareDecision))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/progress", a.auth(a.handleMinistryCreateProgress))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/attachments", a.auth(a.handleMinistryAttachment))
+	mux.HandleFunc("GET /api/ministry-groups/{id}/attendance", a.auth(a.handleMinistryAttendance))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/attendance/settings", a.auth(a.handleMinistryAttendanceSettings))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/attendance/{date}/members/{user_id}", a.auth(a.handleMinistryAttendanceMark))
+	mux.HandleFunc("GET /api/ministry-groups/{id}/attendance/export", a.auth(a.handleMinistryAttendanceExport))
 
 	mux.HandleFunc("GET /api/study-weeks", a.auth(a.handleStudyWeeks))
 	mux.HandleFunc("GET /api/study-weeks/current", a.auth(a.handleCurrentStudyWeek))

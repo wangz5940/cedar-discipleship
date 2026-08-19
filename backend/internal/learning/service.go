@@ -349,6 +349,10 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 				if !mapBool(week, "verse_enabled", true) {
 					continue
 				}
+			case "weekly_outline":
+				if !mapBool(week, "outline_enabled", true) {
+					continue
+				}
 			default:
 				continue
 			}
@@ -411,6 +415,8 @@ func todayTaskKind(taskType string) string {
 		return "video"
 	case "weekly_verse":
 		return "verse"
+	case "weekly_outline":
+		return "outline"
 	default:
 		return "activity"
 	}
@@ -424,6 +430,8 @@ func todayTaskSummary(taskType string) string {
 		return "本周视频"
 	case "weekly_verse":
 		return "背经与默想"
+	case "weekly_outline":
+		return "本周大纲背诵"
 	default:
 		return "今日学习"
 	}
@@ -437,6 +445,8 @@ func todayTaskFallbackTitle(taskType string) string {
 		return "本周视频"
 	case "weekly_verse":
 		return "本周背经"
+	case "weekly_outline":
+		return "提纲背诵"
 	default:
 		return "学习任务"
 	}
@@ -488,7 +498,7 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			}
 			continue
 		}
-		if task.Type == "weekly_video" || task.Type == "weekly_verse" {
+		if task.Type == "weekly_video" || task.Type == "weekly_verse" || task.Type == "weekly_outline" {
 			if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
 				return record
 			}

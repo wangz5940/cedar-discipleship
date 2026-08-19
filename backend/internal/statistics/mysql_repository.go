@@ -60,7 +60,7 @@ func (r *MySQLRepository) MonthlyTaskCounts(ctx context.Context, groupID uint64,
 	rows, err := r.db.QueryContext(ctx, `SELECT user_id,task_type,COUNT(*)
 		FROM checkin_records
 		WHERE group_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL
-		  AND task_type IN ('daily_devotion','weekly_book','weekly_video','weekly_verse')
+		  AND task_type IN ('daily_devotion','weekly_book','weekly_video','weekly_outline')
 		GROUP BY user_id,task_type`, groupID, from, to)
 	if err != nil {
 		return nil, err

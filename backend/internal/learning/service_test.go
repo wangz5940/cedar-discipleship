@@ -47,6 +47,60 @@ func TestMatchingTodayRecordWeeklyVideoFallsBackToWeek(t *testing.T) {
 	}
 }
 
+func TestBuildTodayTasksIncludesEnabledOutline(t *testing.T) {
+	t.Parallel()
+
+	tasks := buildTodayTasks(
+		"2026-08-19",
+		map[string]any{
+			"id":              uint64(7),
+			"outline_enabled": true,
+		},
+		[]map[string]any{{
+			"id":        uint64(11),
+			"task_type": "weekly_outline",
+			"title":     "第三篇大纲",
+			"enabled":   true,
+			"assets": []map[string]any{{
+				"id": uint64(23),
+			}},
+		}},
+		map[string]any{},
+		nil,
+	)
+	if len(tasks) != 2 {
+		t.Fatalf("buildTodayTasks returned %d tasks, want devotion and outline", len(tasks))
+	}
+	outline := tasks[1]
+	if outline.Type != "weekly_outline" || outline.Kind != "outline" {
+		t.Fatalf("outline task = %+v", outline)
+	}
+	if outline.TaskID != 11 || outline.WeekID != 7 || len(outline.Assets) != 1 {
+		t.Fatalf("outline target = %+v", outline)
+	}
+}
+
+func TestMatchingTodayRecordWeeklyOutlineMatchesSameTaskAcrossDates(t *testing.T) {
+	t.Parallel()
+
+	taskID := uint64(11)
+	weekID := uint64(7)
+	record := matchingTodayRecord(TodayTaskVO{
+		Type:   "weekly_outline",
+		TaskID: taskID,
+		WeekID: weekID,
+	}, []TodayRecord{{
+		ID:          102,
+		TaskType:    "weekly_outline",
+		TaskID:      &taskID,
+		WeekID:      &weekID,
+		LogicalDate: "2026-08-17",
+	}}, "2026-08-19")
+	if record == nil || record.ID != 102 {
+		t.Fatalf("matchingTodayRecord returned %+v, want record 102", record)
+	}
+}
+
 func TestMatchingTodayRecordDailyDevotionStillRequiresDate(t *testing.T) {
 	record := matchingTodayRecord(TodayTaskVO{
 		Type: "daily_devotion",

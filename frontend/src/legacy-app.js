@@ -1009,6 +1009,7 @@ function currentTaskOptions() {
   const bookTasks = serverTasks.filter((task) => task.task_type === 'weekly_book');
   const videoTasks = serverTasks.filter((task) => task.task_type === 'weekly_video');
   const verseTask = serverTasks.find((task) => task.task_type === 'weekly_verse');
+  const outlineTask = serverTasks.find((task) => task.task_type === 'weekly_outline');
   const dailyLinks = [getDailyDevotionPlan(), getDailyScripturePlan()].filter(Boolean);
   const dailyLabel = dailyTaskLabel();
   const videoLinks = currentWeeklyVideoLinks(videoTasks, configPlan);
@@ -1067,6 +1068,27 @@ function currentTaskOptions() {
       summary: '背经与默想',
       contentURL: '',
       contentLinks: [],
+    });
+  }
+  if (enabledFlag(week.outline_enabled) && outlineTask?.id) {
+    const outlineTitle = outlineTask.title || '提纲背诵';
+    const outlineLink = firstTaskAssetLink(outlineTask, outlineTitle) || (outlineTask.content ? {
+      label: '打开大纲',
+      title: outlineTitle,
+      url: outlineTask.content,
+      type: inferResourceType(outlineTask.content, 'image'),
+    } : null);
+    tasks.push({
+      type: 'weekly_outline',
+      taskID: Number(outlineTask.id || 0),
+      weekID: Number(week.id || 0),
+      title: outlineTitle,
+      icon: '大纲',
+      part: '',
+      detail: outlineTitle,
+      summary: '本周大纲背诵',
+      contentURL: outlineLink?.url || '',
+      contentLinks: outlineLink ? [outlineLink] : [],
     });
   }
   return mergeTodayHubTasks(tasks);
@@ -1399,7 +1421,7 @@ function checkinMatchesTask(item, task) {
     const recordDetail = String(item.detail || '');
     return Boolean(part) && (recordPart === part || recordDetail === part);
   }
-  if (task.type === 'weekly_video' || task.type === 'weekly_verse') {
+  if (task.type === 'weekly_video' || task.type === 'weekly_verse' || task.type === 'weekly_outline') {
     if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
     if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
     return item.logical_date === state.selectedDate;

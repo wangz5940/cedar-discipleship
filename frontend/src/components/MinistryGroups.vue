@@ -5,6 +5,7 @@ import {
   Activity,
   Bell,
   BookOpen,
+  CalendarCheck,
   Check,
   ChevronRight,
   Eye,
@@ -24,6 +25,7 @@ import {
 import { useAppStateStore } from '../stores/appState';
 import { api, toast as showToast } from '../legacy-app';
 import { markdownToSafeHTML } from '../runtime/content';
+import CountingAttendance from './CountingAttendance.vue';
 
 const app = useAppStateStore();
 const { authenticated, currentGroupID, tab } = storeToRefs(app);
@@ -92,6 +94,7 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
 
 async function selectGroup(groupID) {
   selectedGroupID.value = Number(groupID);
+  activeView.value = 'members';
   detailLoading.value = true;
   try {
     detail.value = await api(`/ministry-groups/${groupID}`);
@@ -510,6 +513,14 @@ function localDateTimeValue() {
               <button :class="{ active: activeView === 'members' }" type="button" @click="activeView = 'members'"><Users :size="16" />成员</button>
               <button :class="{ active: activeView === 'shares' }" type="button" @click="activeView = 'shares'"><BookOpen :size="16" />分享</button>
               <button :class="{ active: activeView === 'progress' }" type="button" @click="activeView = 'progress'"><Activity :size="16" />进展</button>
+              <button
+                v-if="detail.group.code === 'counting' && (detail.group.joined || detail.group.can_manage)"
+                :class="{ active: activeView === 'attendance' }"
+                type="button"
+                @click="activeView = 'attendance'"
+              >
+                <CalendarCheck :size="16" />考勤
+              </button>
               <button v-if="detail.group.can_manage" :class="{ active: activeView === 'manage' }" type="button" @click="activeView = 'manage'">
                 <Settings :size="16" />管理
                 <span v-if="selectedRequests.length" class="tab-count">{{ selectedRequests.length }}</span>
@@ -624,6 +635,12 @@ function localDateTimeValue() {
                 <div v-if="!detail.progress.length" class="empty">暂无进展记录</div>
               </div>
             </section>
+
+            <CountingAttendance
+              v-else-if="activeView === 'attendance' && detail.group.code === 'counting'"
+              :group-id="Number(detail.group.id)"
+              :active="activeView === 'attendance'"
+            />
 
             <section v-else-if="activeView === 'manage' && detail.group.can_manage" class="ministry-view">
               <div class="ministry-settings-grid">

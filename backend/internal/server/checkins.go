@@ -94,7 +94,7 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 
 func validCheckinTaskType(taskType string) bool {
 	switch taskType {
-	case "daily_devotion", "weekly_book", "weekly_video", "weekly_verse":
+	case "daily_devotion", "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
 		return true
 	default:
 		return false

@@ -62,6 +62,17 @@ type Member struct {
 	IsLeader       bool
 }
 
+type AttendanceMember struct {
+	UserID      uint64
+	Username    string
+	DisplayName string
+}
+
+type AttendanceRecord struct {
+	UserID uint64
+	Date   string
+}
+
 type Request struct {
 	ID              uint64
 	GroupID         uint64

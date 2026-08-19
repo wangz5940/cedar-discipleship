@@ -91,6 +91,33 @@ type GroupDetail struct {
 	Progress []ProgressVO `json:"progress"`
 }
 
+type AttendanceSettingsInput struct {
+	Weekdays   []int    `json:"weekdays"`
+	ExtraDates []string `json:"extra_dates"`
+}
+
+type AttendanceSettingsVO struct {
+	Weekdays   []int    `json:"weekdays"`
+	ExtraDates []string `json:"extra_dates"`
+}
+
+type AttendanceMemberVO struct {
+	UserID       uint64          `json:"user_id"`
+	Username     string          `json:"username"`
+	DisplayName  string          `json:"display_name"`
+	Present      map[string]bool `json:"present"`
+	PresentCount int             `json:"present_count"`
+}
+
+type AttendanceSheetVO struct {
+	Month     string               `json:"month"`
+	Dates     []string             `json:"dates"`
+	Members   []AttendanceMemberVO `json:"members"`
+	Settings  AttendanceSettingsVO `json:"settings"`
+	CanMark   bool                 `json:"can_mark"`
+	CanManage bool                 `json:"can_manage"`
+}
+
 type GroupSettingsInput struct {
 	MemberVisibility *Visibility `json:"member_visibility,omitempty"`
 	ShareAutoApprove *bool       `json:"share_auto_approve,omitempty"`

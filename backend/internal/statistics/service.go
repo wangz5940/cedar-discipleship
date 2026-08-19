@@ -55,7 +55,7 @@ func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month stri
 				"daily_devotion": 0,
 				"weekly_book":    0,
 				"weekly_video":   0,
-				"weekly_verse":   0,
+				"weekly_outline": 0,
 			},
 		}
 	}
@@ -85,8 +85,8 @@ func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month stri
 		if items[i].Counts["weekly_book"] != items[j].Counts["weekly_book"] {
 			return items[i].Counts["weekly_book"] > items[j].Counts["weekly_book"]
 		}
-		if items[i].Counts["weekly_verse"] != items[j].Counts["weekly_verse"] {
-			return items[i].Counts["weekly_verse"] > items[j].Counts["weekly_verse"]
+		if items[i].Counts["weekly_outline"] != items[j].Counts["weekly_outline"] {
+			return items[i].Counts["weekly_outline"] > items[j].Counts["weekly_outline"]
 		}
 		return items[i].UserID < items[j].UserID
 	})

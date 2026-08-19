@@ -157,7 +157,7 @@ func TestValidateConfigRejectsWeakSecrets(t *testing.T) {
 }
 
 func TestValidCheckinTaskType(t *testing.T) {
-	for _, taskType := range []string{"daily_devotion", "weekly_book", "weekly_video", "weekly_verse"} {
+	for _, taskType := range []string{"daily_devotion", "weekly_book", "weekly_video", "weekly_verse", "weekly_outline"} {
 		if !validCheckinTaskType(taskType) {
 			t.Fatalf("validCheckinTaskType(%q) = false", taskType)
 		}

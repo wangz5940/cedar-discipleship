@@ -29,7 +29,7 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 		if !errors.Is(err, sql.ErrNoRows) {
 			return 0, false, err
 		}
-	case "weekly_video", "weekly_verse":
+	case "weekly_video", "weekly_verse", "weekly_outline":
 		if err := s.validateWeeklyTarget(ctx, record); err != nil {
 			return 0, false, err
 		}

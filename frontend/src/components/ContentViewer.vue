@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useContentViewerStore } from '../stores/contentViewer';
 import {
@@ -13,6 +13,18 @@ import {
 
 const viewerStore = useContentViewerStore();
 const { viewer } = storeToRefs(viewerStore);
+
+const readerPreferenceKey = 'agp_reader_preferences_v1';
+const readerPreferences = loadReaderPreferences();
+const readerFontSize = ref(readerPreferences.fontSize);
+const readerLineHeight = ref(readerPreferences.lineHeight);
+
+watch(
+  [readerFontSize, readerLineHeight],
+  ([fontSize, lineHeight]) => {
+    localStorage.setItem(readerPreferenceKey, JSON.stringify({ fontSize, lineHeight }));
+  },
+);
 
 const relatedSections = computed(() => {
   const sections = viewer.value?.relatedSections;
@@ -40,6 +52,28 @@ const nextItem = computed(() => {
   if (activeIndex.value < 0 || activeIndex.value >= activeSectionItems.value.length - 1) return null;
   return activeSectionItems.value[activeIndex.value + 1] || null;
 });
+const readerStyle = computed(() => ({
+  '--reader-font-size': `${readerFontSize.value}px`,
+  '--reader-line-height': String(readerLineHeight.value),
+}));
+
+function clampNumber(value, minimum, maximum, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(maximum, Math.max(minimum, number));
+}
+
+function loadReaderPreferences() {
+  try {
+    const value = JSON.parse(localStorage.getItem(readerPreferenceKey) || '{}');
+    return {
+      fontSize: clampNumber(value.fontSize, 16, 24, 19),
+      lineHeight: clampNumber(value.lineHeight, 1.6, 2.2, 1.9),
+    };
+  } catch {
+    return { fontSize: 19, lineHeight: 1.9 };
+  }
+}
 
 function closeOnBackdrop(event) {
   if (event.target.className === 'modal-backdrop') closeViewer();
@@ -88,6 +122,16 @@ function openAdjacentItem(item) {
           </div>
         </div>
         <div class="viewer-actions">
+          <div v-if="viewer.type === 'markdown'" class="reader-controls">
+            <label>
+              <span>字号 {{ readerFontSize }}</span>
+              <input v-model.number="readerFontSize" type="range" min="16" max="24" step="1" />
+            </label>
+            <label>
+              <span>行距 {{ readerLineHeight.toFixed(1) }}</span>
+              <input v-model.number="readerLineHeight" type="range" min="1.6" max="2.2" step="0.1" />
+            </label>
+          </div>
           <button
             v-if="activeSectionItems.length"
             class="secondary"
@@ -179,7 +223,12 @@ function openAdjacentItem(item) {
               <button class="ghost" type="button" :disabled="!nextItem" @click="openAdjacentItem(nextItem)">下一篇</button>
             </div>
           </div>
-          <div v-if="viewer.type === 'markdown'" class="viewer-markdown" v-html="viewer.html"></div>
+          <div
+            v-if="viewer.type === 'markdown'"
+            class="viewer-markdown"
+            :style="readerStyle"
+            v-html="viewer.html"
+          ></div>
           <div v-else-if="viewer.type === 'image'" class="viewer-image-wrap">
             <img class="viewer-image" :src="viewer.url" :alt="viewer.title" />
           </div>
