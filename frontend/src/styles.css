@@ -5462,7 +5462,7 @@ textarea::placeholder {
 
   .viewer-markdown {
     padding: 30px 22px;
-    font-size: 16px;
+    font-size: var(--reader-font-size, 19px);
   }
 
   .calendar-modal {
