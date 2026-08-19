@@ -45,12 +45,6 @@ const legend = [
 
 const statsView = ref('chart');
 const activeStatKey = ref('all');
-const taskSectionDefinitions = [
-  { key: 'daily_devotion', label: '灵修' },
-  { key: 'weekly_book', label: '书籍' },
-  { key: 'weekly_video', label: '视频' },
-  { key: 'weekly_outline', label: '背大纲' },
-];
 const activeLegend = computed(() => legend.find((item) => item.key === activeStatKey.value) || null);
 const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : legend));
 const rankedItems = computed(() => [...ranking.value].sort((left, right) => {
@@ -65,28 +59,33 @@ const activeCountForView = computed(() => rankedItems.value.filter((item) => ran
 const activeScopeLabel = computed(() => activeLegend.value?.label || '全部分项');
 const activeLeaderName = computed(() => activeLeader.value ? `${activeLeader.value.member_name || activeLeader.value.display_name}` : '-');
 const activeLeaderNote = computed(() => activeLeader.value ? `${rankingItemTotal(activeLeader.value)} 次${activeLegend.value ? activeLegend.value.label : '打卡'}` : '暂无记录');
-const taskSections = computed(() => taskSectionDefinitions.map((definition) => {
-  const rows = ranking.value.map((item) => {
-    const count = segmentCount(item, definition.key);
-    return {
-      userID: item.user_id,
-      name: item.member_name || item.display_name || item.username || '未命名成员',
-      username: item.username || '',
-      count,
-      done: count > 0,
-    };
-  }).sort((left, right) => {
-    if (left.count !== right.count) return right.count - left.count;
-    return left.name.localeCompare(right.name, 'zh-CN');
-  });
+const periodRows = computed(() => ranking.value.map((item) => {
+  const counts = Object.fromEntries(legend.map((part) => [part.key, segmentCount(item, part.key)]));
   return {
-    ...definition,
-    rows,
-    completed: rows.filter((row) => row.done).length,
-    missing: rows.filter((row) => !row.done),
-    totalCompletions: rows.reduce((total, row) => total + row.count, 0),
+    userID: item.user_id,
+    name: item.member_name || item.display_name || item.username || '未命名成员',
+    username: item.username || '',
+    counts,
+    total: legend.reduce((sum, part) => sum + counts[part.key], 0),
   };
+}).sort((left, right) => {
+  if (left.total !== right.total) return right.total - left.total;
+  return left.name.localeCompare(right.name, 'zh-CN');
 }));
+const periodTotals = computed(() => {
+  const totals = Object.fromEntries(legend.map((part) => [part.key, 0]));
+  for (const row of periodRows.value) {
+    for (const part of legend) {
+      totals[part.key] += row.counts[part.key];
+    }
+  }
+  return totals;
+});
+const periodGrandTotal = computed(() => legend.reduce((sum, part) => sum + periodTotals.value[part.key], 0));
+const zeroCountSummary = computed(() => legend.map((part) => {
+  const count = periodRows.value.filter((row) => row.counts[part.key] === 0).length;
+  return `${part.label} ${count}`;
+}).join(' / '));
 
 function segmentHeight(count, total) {
   if (!count || !total) return 0;
@@ -437,37 +436,44 @@ async function exportRankingChart() {
         </div>
 
         <div v-else class="task-section-tables">
-          <section v-for="section in taskSections" :key="section.key" class="task-section-table">
+          <section class="task-section-table period-matrix-table-card">
             <div class="task-section-table-head">
               <div>
-                <h3>{{ section.label }}</h3>
-                <p>{{ section.totalCompletions }} 次完成 · {{ section.completed }}/{{ section.rows.length }} 人有记录</p>
+                <h3>周期完成矩阵</h3>
+                <p>{{ rankingFrom }} 至 {{ rankingTo }} · {{ periodRows.length }} 位成员</p>
               </div>
-              <span class="missing-summary">
-                0 次：{{ section.missing.length ? section.missing.map((item) => item.name).join('、') : '无' }}
-              </span>
+              <span class="missing-summary">0 次人数：{{ zeroCountSummary }}</span>
             </div>
             <div class="table-scroll">
-              <table>
+              <table class="period-matrix-table">
                 <thead>
                   <tr>
                     <th>成员</th>
-                    <th>完成次数</th>
+                    <th v-for="item in legend" :key="item.key">{{ item.label }}</th>
+                    <th>合计</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="row in section.rows" :key="row.userID">
+                  <tr v-for="row in periodRows" :key="row.userID">
                     <td>
                       <b>{{ row.name }}</b>
                       <small v-if="row.username">{{ row.username }}</small>
                     </td>
-                    <td>
-                      <span class="completion-count" :class="{ empty: row.count === 0 }">
-                        {{ row.count }} 次
+                    <td v-for="item in legend" :key="`${row.userID}:${item.key}`">
+                      <span class="completion-count" :class="{ empty: row.counts[item.key] === 0 }">
+                        {{ row.counts[item.key] }} 次
                       </span>
                     </td>
+                    <td><strong>{{ row.total }} 次</strong></td>
                   </tr>
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td>合计</td>
+                    <td v-for="item in legend" :key="`total:${item.key}`">{{ periodTotals[item.key] }} 次</td>
+                    <td>{{ periodGrandTotal }} 次</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </section>

@@ -4326,6 +4326,10 @@ textarea::placeholder {
   border-collapse: collapse;
 }
 
+.period-matrix-table {
+  min-width: 760px;
+}
+
 .task-section-table th,
 .task-section-table td {
   min-width: 120px;
@@ -4359,6 +4363,21 @@ textarea::placeholder {
 
 .task-section-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.period-matrix-table th:not(:first-child),
+.period-matrix-table td:not(:first-child) {
+  min-width: 92px;
+  text-align: center;
+}
+
+.period-matrix-table tfoot td {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 780;
 }
 
 .section-not-configured {
