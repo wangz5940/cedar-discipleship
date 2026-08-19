@@ -44,6 +44,8 @@ const state = {
   todayHub: null,
   summary: null,
   monthlyRanking: null,
+  statsFrom: monthStartString(),
+  statsTo: todayString(),
   checkins: [],
   members: [],
   weeks: [],
@@ -160,7 +162,9 @@ function dashboardSnapshot() {
   const doneSlots = matrix.doneSlots;
   const overallPercent = Math.round((doneSlots / totalSlots) * 100);
   const completed = tasks.filter((task) => task.ownRecord).length;
-  const monthLabel = formatMonthLabel(state.monthlyRanking?.month || currentMonthString());
+  const rankingFrom = state.monthlyRanking?.from || state.statsFrom || monthStartString();
+  const rankingTo = state.monthlyRanking?.to || state.statsTo || todayString();
+  const monthLabel = formatDateRangeLabel(rankingFrom, rankingTo);
   const ranking = monthlyRankingItems();
   const leader = ranking[0];
   const activeCount = ranking.filter((item) => item.total > 0).length;
@@ -216,8 +220,11 @@ function dashboardSnapshot() {
     ranking,
     leaderName: leader ? `${leader.member_name || leader.display_name}` : '-',
     leaderNote: leader ? `${leader.total} 次打卡` : '暂无记录',
-    rankingFrom: state.monthlyRanking?.from || '-',
-    rankingTo: state.monthlyRanking?.to || '-',
+    rankingFrom,
+    rankingTo,
+    statsFrom: state.statsFrom,
+    statsTo: state.statsTo,
+    statsMaxDate: todayString(),
     activeCount,
   };
 }
@@ -381,13 +388,13 @@ async function loadAll() {
       state.adminDataGroupID = 0;
     }
     const selectedDate = state.selectedDate || todayString();
-    const month = currentMonthString();
     const bootstrap = await api(`/app/bootstrap?date=${selectedDate}`);
     const checkinFrom = bootstrap.current_week?.start || selectedDate;
     const checkinTo = bootstrap.current_week?.end || selectedDate;
+    normalizeStatsRange();
     const [summary, monthlyRanking, checkins, weeks, assets, todayHub, library] = await Promise.all([
       api(`/dashboard/summary?from=${selectedDate}&to=${selectedDate}`),
-      api(`/dashboard/monthly-ranking?month=${month}`),
+      api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`),
       api(`/checkins?from=${checkinFrom}&to=${checkinTo}&page_size=1000`),
       api('/study-weeks'),
       api('/assets').catch(() => ({ assets: [] })),
@@ -519,6 +526,44 @@ export function shiftSelectedDate(delta) {
   const d = parseLocalDate(state.selectedDate);
   d.setDate(d.getDate() + delta);
   setSelectedDate(formatLocalDate(d));
+}
+
+export async function setStatsDateRange(part, value) {
+  if (!value) return;
+  let next = value;
+  if (next > todayString()) {
+    toast('统计范围不能超过今天');
+    next = todayString();
+  }
+  if (part === 'from') {
+    state.statsFrom = next;
+    if (state.statsFrom > state.statsTo) state.statsTo = state.statsFrom;
+  } else if (part === 'to') {
+    state.statsTo = next;
+    if (state.statsTo < state.statsFrom) state.statsFrom = state.statsTo;
+  }
+  try {
+    await loadMonthlyRanking();
+    render();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+export async function resetStatsRangeToMonth() {
+  state.statsFrom = monthStartString();
+  state.statsTo = todayString();
+  try {
+    await loadMonthlyRanking();
+    render();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function loadMonthlyRanking() {
+  normalizeStatsRange();
+  state.monthlyRanking = await api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`);
 }
 
 export async function openTaskContent(task, link = null) {
@@ -1448,6 +1493,25 @@ function buildCheckinMatrix(tasks) {
 
 function monthlyRankingItems() {
   return [...(state.monthlyRanking?.items || [])];
+}
+
+function normalizeStatsRange() {
+  if (!state.statsFrom) state.statsFrom = monthStartString();
+  if (!state.statsTo) state.statsTo = todayString();
+  if (state.statsTo > todayString()) state.statsTo = todayString();
+  if (state.statsFrom > state.statsTo) state.statsFrom = state.statsTo;
+}
+
+function monthStartString(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function formatDateRangeLabel(from, to) {
+  if (!from || !to) return formatMonthLabel(currentMonthString());
+  if (from === monthStartString(parseLocalDate(from)) && to === todayString()) {
+    return `${formatMonthLabel(from.slice(0, 7))}至今`;
+  }
+  return `${from} 至 ${to}`;
 }
 
 function sortedMembers() {

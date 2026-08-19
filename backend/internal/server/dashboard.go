@@ -31,9 +31,20 @@ func (a *app) handleDashboardMonthlyRanking(w http.ResponseWriter, r *http.Reque
 	if groupID == 0 {
 		return
 	}
-	ranking, err := a.statistics.MonthlyRanking(r.Context(), groupID, r.URL.Query().Get("month"), a.location)
+	ranking, err := a.statistics.MonthlyRanking(
+		r.Context(),
+		groupID,
+		r.URL.Query().Get("month"),
+		r.URL.Query().Get("from"),
+		r.URL.Query().Get("to"),
+		a.location,
+	)
 	if errors.Is(err, statisticsdomain.ErrInvalidMonth) {
 		writeError(w, http.StatusBadRequest, "invalid_month")
+		return
+	}
+	if errors.Is(err, statisticsdomain.ErrInvalidDateRange) {
+		writeError(w, http.StatusBadRequest, "invalid_date_range")
 		return
 	}
 	if err != nil {

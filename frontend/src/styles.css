@@ -4162,6 +4162,38 @@ textarea::placeholder {
   gap: 6px;
 }
 
+.stats-range-controls {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.stats-range-controls input {
+  width: 132px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.stats-range-controls span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stats-range-controls button {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
 .segmented-control {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(76px, 1fr));

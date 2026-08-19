@@ -22,6 +22,9 @@ export const useDashboardStore = defineStore('dashboard', {
     leaderNote: '暂无记录',
     rankingFrom: '-',
     rankingTo: '-',
+    statsFrom: '',
+    statsTo: '',
+    statsMaxDate: '',
     activeCount: 0,
   }),
   actions: {
@@ -47,6 +50,9 @@ export const useDashboardStore = defineStore('dashboard', {
         leaderNote: snapshot?.leaderNote || '暂无记录',
         rankingFrom: snapshot?.rankingFrom || '-',
         rankingTo: snapshot?.rankingTo || '-',
+        statsFrom: snapshot?.statsFrom || '',
+        statsTo: snapshot?.statsTo || '',
+        statsMaxDate: snapshot?.statsMaxDate || '',
         activeCount: Number(snapshot?.activeCount || 0),
       });
     },

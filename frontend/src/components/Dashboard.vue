@@ -2,7 +2,14 @@
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useDashboardStore } from '../stores/dashboard';
-import { openMemberCalendar, setSelectedDate, shiftSelectedDate, toggleCheckin } from '../legacy-app';
+import {
+  openMemberCalendar,
+  resetStatsRangeToMonth,
+  setSelectedDate,
+  setStatsDateRange,
+  shiftSelectedDate,
+  toggleCheckin,
+} from '../legacy-app';
 
 const store = useDashboardStore();
 const {
@@ -24,6 +31,9 @@ const {
   ranking,
   rankingFrom,
   rankingTo,
+  statsFrom,
+  statsTo,
+  statsMaxDate,
 } = storeToRefs(store);
 
 const legend = [
@@ -351,6 +361,22 @@ async function exportRankingChart() {
           </div>
           <div class="stats-center-tags">
             <button class="secondary" type="button" @click="exportRankingChart">导出柱状图 PNG</button>
+            <div class="stats-range-controls" aria-label="统计时间范围">
+              <input
+                type="date"
+                :value="statsFrom"
+                :max="statsMaxDate"
+                @change="setStatsDateRange('from', $event.target.value)"
+              />
+              <span>至</span>
+              <input
+                type="date"
+                :value="statsTo"
+                :max="statsMaxDate"
+                @change="setStatsDateRange('to', $event.target.value)"
+              />
+              <button class="ghost" type="button" @click="resetStatsRangeToMonth">本月至今</button>
+            </div>
             <div class="segmented-control" aria-label="统计展示方式">
               <button type="button" :class="{ active: statsView === 'chart' }" @click="statsView = 'chart'">柱状图</button>
               <button type="button" :class="{ active: statsView === 'table' }" @click="statsView = 'table'">板块表格</button>

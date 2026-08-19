@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-var ErrInvalidMonth = errors.New("invalid_month")
+var (
+	ErrInvalidMonth     = errors.New("invalid_month")
+	ErrInvalidDateRange = errors.New("invalid_date_range")
+)
 
 type Service struct {
 	repo Repository
@@ -26,17 +29,11 @@ func (s *Service) Summary(ctx context.Context, groupID uint64, from, to string) 
 	return SummaryVO{From: from, To: to, Summary: summary}, nil
 }
 
-func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month string, loc *time.Location) (MonthlyRankingVO, error) {
-	month = strings.TrimSpace(month)
-	now := time.Now().In(loc)
-	if month == "" {
-		month = now.Format("2006-01")
-	}
-	start, err := time.ParseInLocation("2006-01-02", month+"-01", loc)
+func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month, fromInput, toInput string, loc *time.Location) (MonthlyRankingVO, error) {
+	start, end, err := rankingRange(month, fromInput, toInput, loc)
 	if err != nil {
-		return MonthlyRankingVO{}, ErrInvalidMonth
+		return MonthlyRankingVO{}, err
 	}
-	end := start.AddDate(0, 1, -1)
 	from, to := start.Format("2006-01-02"), end.Format("2006-01-02")
 
 	members, err := s.repo.Members(ctx, groupID)
@@ -90,7 +87,54 @@ func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month stri
 		}
 		return items[i].UserID < items[j].UserID
 	})
-	return MonthlyRankingVO{Month: month, From: from, To: to, Items: items}, nil
+	return MonthlyRankingVO{Month: start.Format("2006-01"), From: from, To: to, Items: items}, nil
+}
+
+func rankingRange(month, fromInput, toInput string, loc *time.Location) (time.Time, time.Time, error) {
+	month = strings.TrimSpace(month)
+	fromInput = strings.TrimSpace(fromInput)
+	toInput = strings.TrimSpace(toInput)
+	now := time.Now().In(loc)
+	if fromInput != "" || toInput != "" {
+		if fromInput == "" {
+			fromInput = formatMonthStart(now)
+		}
+		if toInput == "" {
+			toInput = now.Format("2006-01-02")
+		}
+		start, err := time.ParseInLocation("2006-01-02", fromInput, loc)
+		if err != nil {
+			return time.Time{}, time.Time{}, ErrInvalidDateRange
+		}
+		end, err := time.ParseInLocation("2006-01-02", toInput, loc)
+		if err != nil {
+			return time.Time{}, time.Time{}, ErrInvalidDateRange
+		}
+		if end.Before(start) {
+			return time.Time{}, time.Time{}, ErrInvalidDateRange
+		}
+		return start, end, nil
+	}
+	if month == "" {
+		start, err := time.ParseInLocation("2006-01-02", formatMonthStart(now), loc)
+		if err != nil {
+			return time.Time{}, time.Time{}, ErrInvalidDateRange
+		}
+		return start, now, nil
+	}
+	start, err := time.ParseInLocation("2006-01-02", month+"-01", loc)
+	if err != nil {
+		return time.Time{}, time.Time{}, ErrInvalidMonth
+	}
+	end := start.AddDate(0, 1, -1)
+	if start.Year() == now.Year() && start.Month() == now.Month() {
+		end = now
+	}
+	return start, end, nil
+}
+
+func formatMonthStart(value time.Time) string {
+	return value.Format("2006-01") + "-01"
 }
 
 func (s *Service) MemberCalendar(ctx context.Context, groupID, userID uint64, month string, loc *time.Location) (MemberCalendarVO, error) {
