@@ -4322,7 +4322,7 @@ textarea::placeholder {
 
 .task-section-table table {
   width: 100%;
-  min-width: 620px;
+  min-width: 360px;
   border-collapse: collapse;
 }
 
@@ -4337,6 +4337,17 @@ textarea::placeholder {
 .task-section-table th:first-child,
 .task-section-table td:first-child {
   min-width: 140px;
+}
+
+.task-section-table td:first-child b,
+.task-section-table td:first-child small {
+  display: block;
+}
+
+.task-section-table td:first-child small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .task-section-table th {
@@ -4364,6 +4375,16 @@ textarea::placeholder {
 
 .completion-mark.done {
   color: #2f6b45;
+}
+
+.completion-count {
+  color: #2f6b45;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.completion-count.empty {
+  color: #9b453d;
 }
 
 .attendance-workspace {

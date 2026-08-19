@@ -66,31 +66,25 @@ const activeScopeLabel = computed(() => activeLegend.value?.label || '全部分�
 const activeLeaderName = computed(() => activeLeader.value ? `${activeLeader.value.member_name || activeLeader.value.display_name}` : '-');
 const activeLeaderNote = computed(() => activeLeader.value ? `${rankingItemTotal(activeLeader.value)} 次${activeLegend.value ? activeLegend.value.label : '打卡'}` : '暂无记录');
 const taskSections = computed(() => taskSectionDefinitions.map((definition) => {
-  const tasks = uniqueTasksByType(definition.key);
-  if (!tasks.length) {
+  const rows = ranking.value.map((item) => {
+    const count = segmentCount(item, definition.key);
     return {
-      ...definition,
-      tasks,
-      rows: [],
-      completed: 0,
-      missing: [],
+      userID: item.user_id,
+      name: item.member_name || item.display_name || item.username || '未命名成员',
+      username: item.username || '',
+      count,
+      done: count > 0,
     };
-  }
-  const rows = members.value.map((member) => {
-    const states = tasks.map((task) => member.taskStates.find((item) => item.task === task));
-    return {
-      userID: member.user_id,
-      name: member.name,
-      states,
-      done: tasks.length > 0 && states.every((state) => state?.done),
-    };
+  }).sort((left, right) => {
+    if (left.count !== right.count) return right.count - left.count;
+    return left.name.localeCompare(right.name, 'zh-CN');
   });
   return {
     ...definition,
-    tasks,
     rows,
     completed: rows.filter((row) => row.done).length,
     missing: rows.filter((row) => !row.done),
+    totalCompletions: rows.reduce((total, row) => total + row.count, 0),
   };
 }));
 
@@ -121,32 +115,6 @@ function segmentPercent(item, key) {
 
 function setActiveStat(key) {
   activeStatKey.value = activeStatKey.value === key ? 'all' : key;
-}
-
-function uniqueTasksByType(taskType) {
-  const tasks = [];
-  const seen = new Set();
-  for (const card of progressCards.value) {
-    if (card.task?.type !== taskType) continue;
-    const key = taskKey(card.task);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    tasks.push(card.task);
-  }
-  for (const member of members.value) {
-    for (const state of member.taskStates || []) {
-      if (state.task?.type !== taskType) continue;
-      const key = taskKey(state.task);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      tasks.push(state.task);
-    }
-  }
-  return tasks;
-}
-
-function taskKey(task) {
-  return `${task.type}:${task.taskID || ''}:${task.part || ''}:${task.title || ''}`;
 }
 
 function memberTaskTitle(member, state) {
@@ -473,40 +441,34 @@ async function exportRankingChart() {
             <div class="task-section-table-head">
               <div>
                 <h3>{{ section.label }}</h3>
-                <p>{{ section.tasks.length ? `${section.completed}/${section.rows.length} 人完成` : '本周未配置' }}</p>
+                <p>{{ section.totalCompletions }} 次完成 · {{ section.completed }}/{{ section.rows.length }} 人有记录</p>
               </div>
               <span class="missing-summary">
-                {{ section.tasks.length ? `未完成：${section.missing.length ? section.missing.map((item) => item.name).join('、') : '无'}` : '无需催促' }}
+                0 次：{{ section.missing.length ? section.missing.map((item) => item.name).join('、') : '无' }}
               </span>
             </div>
             <div class="table-scroll">
-              <table v-if="section.tasks.length">
+              <table>
                 <thead>
                   <tr>
                     <th>成员</th>
-                    <th v-for="task in section.tasks" :key="`${task.type}:${task.taskID || task.title}`">
-                      {{ task.title }}
-                    </th>
-                    <th>板块状态</th>
+                    <th>完成次数</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="row in section.rows" :key="row.userID">
-                    <td>{{ row.name }}</td>
-                    <td v-for="(state, index) in row.states" :key="`${row.userID}:${index}`">
-                      <span class="completion-mark" :class="{ done: state?.done }">
-                        {{ state?.done ? '✓' : '未完成' }}
-                      </span>
+                    <td>
+                      <b>{{ row.name }}</b>
+                      <small v-if="row.username">{{ row.username }}</small>
                     </td>
                     <td>
-                      <span class="completion-mark" :class="{ done: row.done }">
-                        {{ row.done ? '已完成' : '需跟进' }}
+                      <span class="completion-count" :class="{ empty: row.count === 0 }">
+                        {{ row.count }} 次
                       </span>
                     </td>
                   </tr>
                 </tbody>
               </table>
-              <div v-else class="section-not-configured">本周未配置{{ section.label }}任务</div>
             </div>
           </section>
         </div>
