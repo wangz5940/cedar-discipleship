@@ -1109,6 +1109,22 @@ input:focus, select:focus, textarea:focus {
   font-weight: 760;
 }
 
+.legend-button {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.legend-button.active {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
 .legend-item i {
   width: 10px;
   height: 10px;
@@ -4300,6 +4316,12 @@ textarea::placeholder {
 
 .task-section-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.section-not-configured {
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .completion-mark {

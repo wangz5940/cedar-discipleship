@@ -22,11 +22,8 @@ const {
   members,
   monthLabel,
   ranking,
-  leaderName,
-  leaderNote,
   rankingFrom,
   rankingTo,
-  activeCount,
 } = storeToRefs(store);
 
 const legend = [
@@ -36,18 +33,39 @@ const legend = [
   { key: 'weekly_outline', label: '背大纲' },
 ];
 
-const rankingMax = computed(() => Math.max(1, ...ranking.value.map((item) => item.total || 0)));
 const statsView = ref('chart');
+const activeStatKey = ref('all');
 const taskSectionDefinitions = [
   { key: 'daily_devotion', label: '灵修' },
   { key: 'weekly_book', label: '书籍' },
   { key: 'weekly_video', label: '视频' },
   { key: 'weekly_outline', label: '背大纲' },
 ];
+const activeLegend = computed(() => legend.find((item) => item.key === activeStatKey.value) || null);
+const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : legend));
+const rankedItems = computed(() => [...ranking.value].sort((left, right) => {
+  const leftTotal = rankingItemTotal(left);
+  const rightTotal = rankingItemTotal(right);
+  if (leftTotal !== rightTotal) return rightTotal - leftTotal;
+  return Number(left.user_id || 0) - Number(right.user_id || 0);
+}));
+const rankingMaxForView = computed(() => Math.max(1, ...rankedItems.value.map((item) => rankingItemTotal(item))));
+const activeLeader = computed(() => rankedItems.value.find((item) => rankingItemTotal(item) > 0) || null);
+const activeCountForView = computed(() => rankedItems.value.filter((item) => rankingItemTotal(item) > 0).length);
+const activeScopeLabel = computed(() => activeLegend.value?.label || '全部分项');
+const activeLeaderName = computed(() => activeLeader.value ? `${activeLeader.value.member_name || activeLeader.value.display_name}` : '-');
+const activeLeaderNote = computed(() => activeLeader.value ? `${rankingItemTotal(activeLeader.value)} 次${activeLegend.value ? activeLegend.value.label : '打卡'}` : '暂无记录');
 const taskSections = computed(() => taskSectionDefinitions.map((definition) => {
-  const tasks = progressCards.value
-    .filter((card) => card.task.type === definition.key)
-    .map((card) => card.task);
+  const tasks = uniqueTasksByType(definition.key);
+  if (!tasks.length) {
+    return {
+      ...definition,
+      tasks,
+      rows: [],
+      completed: 0,
+      missing: [],
+    };
+  }
   const rows = members.value.map((member) => {
     const states = tasks.map((task) => member.taskStates.find((item) => item.task === task));
     return {
@@ -64,15 +82,61 @@ const taskSections = computed(() => taskSectionDefinitions.map((definition) => {
     completed: rows.filter((row) => row.done).length,
     missing: rows.filter((row) => !row.done),
   };
-}).filter((section) => section.tasks.length));
+}));
 
 function segmentHeight(count, total) {
   if (!count || !total) return 0;
   return Math.max(8, Math.round((count / total) * 100));
 }
 
-function stackHeight(total) {
-  return Math.max(4, Math.round(((total || 0) / rankingMax.value) * 100));
+function stackHeight(item) {
+  return Math.max(4, Math.round((rankingItemTotal(item) / rankingMaxForView.value) * 100));
+}
+
+function rankingItemTotal(item) {
+  if (!activeLegend.value) return Number(item.total || 0);
+  return Number(item.counts?.[activeLegend.value.key] || 0);
+}
+
+function segmentCount(item, key) {
+  return Number(item.counts?.[key] || 0);
+}
+
+function segmentPercent(item, key) {
+  const total = rankingItemTotal(item);
+  if (!total) return 0;
+  if (activeLegend.value) return 100;
+  return segmentHeight(segmentCount(item, key), total);
+}
+
+function setActiveStat(key) {
+  activeStatKey.value = activeStatKey.value === key ? 'all' : key;
+}
+
+function uniqueTasksByType(taskType) {
+  const tasks = [];
+  const seen = new Set();
+  for (const card of progressCards.value) {
+    if (card.task?.type !== taskType) continue;
+    const key = taskKey(card.task);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tasks.push(card.task);
+  }
+  for (const member of members.value) {
+    for (const state of member.taskStates || []) {
+      if (state.task?.type !== taskType) continue;
+      const key = taskKey(state.task);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tasks.push(state.task);
+    }
+  }
+  return tasks;
+}
+
+function taskKey(task) {
+  return `${task.type}:${task.taskID || ''}:${task.part || ''}:${task.title || ''}`;
 }
 
 function memberTaskTitle(member, state) {
@@ -88,7 +152,7 @@ async function exportRankingChart() {
   const bottom = 120;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
-  const items = ranking.value;
+  const items = rankedItems.value;
   const colors = {
     daily_devotion: '#0a84ff',
     weekly_book: '#8b5cf6',
@@ -97,8 +161,8 @@ async function exportRankingChart() {
   };
   const slotWidth = chartWidth / Math.max(1, items.length);
   const barWidth = Math.max(26, Math.min(42, slotWidth * 0.48));
-  const maxTotal = Math.max(1, ...items.map((item) => item.total || 0));
-  const legendSvg = legend.map((item, index) => `
+  const maxTotal = rankingMaxForView.value;
+  const legendSvg = visibleLegend.value.map((item, index) => `
     <g transform="translate(${left + index * 170}, 54)">
       <rect width="14" height="14" rx="4" fill="${colors[item.key]}" />
       <text x="24" y="12" font-size="16" fill="#3b4452">${item.label}</text>
@@ -107,8 +171,9 @@ async function exportRankingChart() {
   const barSvg = items.map((item, index) => {
     const x = left + slotWidth * index + (slotWidth - barWidth) / 2;
     let offset = 0;
-    const segments = legend.map((part) => {
-      const count = Number(item.counts?.[part.key] || 0);
+    const total = rankingItemTotal(item);
+    const segments = visibleLegend.value.map((part) => {
+      const count = segmentCount(item, part.key);
       if (!count) return '';
       const segmentHeightPx = Math.max(0, (count / maxTotal) * chartHeight);
       offset += segmentHeightPx;
@@ -122,7 +187,7 @@ async function exportRankingChart() {
         <rect x="${x}" y="${top}" width="${barWidth}" height="${chartHeight}" rx="12" fill="rgba(15,23,42,0.05)" />
         ${segments}
         <text x="${x + barWidth / 2}" y="${top + chartHeight + 28}" text-anchor="middle" font-size="16" fill="#1f2937">${label}</text>
-        <text x="${x + barWidth / 2}" y="${top + chartHeight + 52}" text-anchor="middle" font-size="13" fill="#6b7280">${item.total || 0} 次</text>
+        <text x="${x + barWidth / 2}" y="${top + chartHeight + 52}" text-anchor="middle" font-size="13" fill="#6b7280">${total} 次</text>
       </g>
     `;
   }).join('');
@@ -140,7 +205,7 @@ async function exportRankingChart() {
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
       <rect width="100%" height="100%" rx="32" fill="#ffffff"/>
       <text x="${left}" y="40" font-size="28" font-weight="700" fill="#111827">香柏木数据统计中心</text>
-      <text x="${left}" y="80" font-size="18" fill="#6b7280">${monthLabel.value} 分项总榜</text>
+      <text x="${left}" y="80" font-size="18" fill="#6b7280">${monthLabel.value} ${activeScopeLabel.value}统计</text>
       ${legendSvg}
       ${gridSvg}
       ${barSvg}
@@ -299,9 +364,9 @@ async function exportRankingChart() {
 
         <div class="grid cols-3 stats-mini-cards">
           <div class="card stat compact-stat">
-            <span class="stat-title">分项总榜</span>
-            <strong>{{ leaderName }}</strong>
-            <span class="stat-note">{{ leaderNote }}</span>
+            <span class="stat-title">{{ activeScopeLabel }}榜首</span>
+            <strong>{{ activeLeaderName }}</strong>
+            <span class="stat-note">{{ activeLeaderNote }}</span>
           </div>
           <div class="card stat compact-stat">
             <span class="stat-title">统计范围</span>
@@ -310,54 +375,69 @@ async function exportRankingChart() {
           </div>
           <div class="card stat compact-stat">
             <span class="stat-title">活跃成员</span>
-            <strong>{{ activeCount }}人</strong>
-            <span class="stat-note">本月至少完成 1 次打卡</span>
+            <strong>{{ activeCountForView }}人</strong>
+            <span class="stat-note">{{ activeScopeLabel }}至少完成 1 次</span>
           </div>
         </div>
 
         <div v-if="statsView === 'chart'" class="bar-chart-card">
           <div class="bar-chart-meta">
-            <strong>分项总榜</strong>
+            <strong>{{ activeScopeLabel }}统计</strong>
             <div class="bar-legend">
-              <span v-for="item in legend" :key="item.key" class="legend-item" :class="`legend-${item.key}`">
+              <button
+                class="legend-item legend-button"
+                :class="{ active: activeStatKey === 'all' }"
+                type="button"
+                @click="activeStatKey = 'all'"
+              >
+                <span>全部</span>
+              </button>
+              <button
+                v-for="item in legend"
+                :key="item.key"
+                class="legend-item legend-button"
+                :class="[`legend-${item.key}`, { active: activeStatKey === item.key }]"
+                type="button"
+                @click="setActiveStat(item.key)"
+              >
                 <i></i>
                 <span>{{ item.label }}</span>
-              </span>
+              </button>
             </div>
           </div>
           <div class="bar-chart">
-            <div v-for="member in ranking" :key="member.user_id || member.member_name" class="bar-item">
+            <div v-for="member in rankedItems" :key="member.user_id || member.member_name" class="bar-item">
               <div class="bar-track">
-                <div v-if="member.total" class="bar-stack" :style="{ height: `${stackHeight(member.total)}%` }">
+                <div v-if="rankingItemTotal(member)" class="bar-stack" :style="{ height: `${stackHeight(member)}%` }">
                   <span
-                    v-if="member.counts?.daily_devotion"
+                    v-if="segmentCount(member, 'daily_devotion') && (!activeLegend || activeLegend.key === 'daily_devotion')"
                     class="bar-segment devotion"
-                    :style="{ height: `${segmentHeight(member.counts.daily_devotion, member.total)}%` }"
-                    :title="`灵修 ${member.counts.daily_devotion} 次`"
+                    :style="{ height: `${segmentPercent(member, 'daily_devotion')}%` }"
+                    :title="`灵修 ${segmentCount(member, 'daily_devotion')} 次`"
                   ></span>
                   <span
-                    v-if="member.counts?.weekly_book"
+                    v-if="segmentCount(member, 'weekly_book') && (!activeLegend || activeLegend.key === 'weekly_book')"
                     class="bar-segment book"
-                    :style="{ height: `${segmentHeight(member.counts.weekly_book, member.total)}%` }"
-                    :title="`书籍 ${member.counts.weekly_book} 次`"
+                    :style="{ height: `${segmentPercent(member, 'weekly_book')}%` }"
+                    :title="`书籍 ${segmentCount(member, 'weekly_book')} 次`"
                   ></span>
                   <span
-                    v-if="member.counts?.weekly_video"
+                    v-if="segmentCount(member, 'weekly_video') && (!activeLegend || activeLegend.key === 'weekly_video')"
                     class="bar-segment video"
-                    :style="{ height: `${segmentHeight(member.counts.weekly_video, member.total)}%` }"
-                    :title="`视频 ${member.counts.weekly_video} 次`"
+                    :style="{ height: `${segmentPercent(member, 'weekly_video')}%` }"
+                    :title="`视频 ${segmentCount(member, 'weekly_video')} 次`"
                   ></span>
                   <span
-                    v-if="member.counts?.weekly_outline"
+                    v-if="segmentCount(member, 'weekly_outline') && (!activeLegend || activeLegend.key === 'weekly_outline')"
                     class="bar-segment outline"
-                    :style="{ height: `${segmentHeight(member.counts.weekly_outline, member.total)}%` }"
-                    :title="`背大纲 ${member.counts.weekly_outline} 次`"
+                    :style="{ height: `${segmentPercent(member, 'weekly_outline')}%` }"
+                    :title="`背大纲 ${segmentCount(member, 'weekly_outline')} 次`"
                   ></span>
                 </div>
                 <span v-else class="bar-empty"></span>
               </div>
               <span class="bar-label">{{ (member.member_name || member.display_name || '?').slice(0, 4) }}</span>
-              <small>{{ member.total || 0 }} 次</small>
+              <small>{{ rankingItemTotal(member) }} 次</small>
             </div>
           </div>
         </div>
@@ -367,14 +447,14 @@ async function exportRankingChart() {
             <div class="task-section-table-head">
               <div>
                 <h3>{{ section.label }}</h3>
-                <p>{{ section.completed }}/{{ section.rows.length }} 人完成</p>
+                <p>{{ section.tasks.length ? `${section.completed}/${section.rows.length} 人完成` : '本周未配置' }}</p>
               </div>
               <span class="missing-summary">
-                未完成：{{ section.missing.length ? section.missing.map((item) => item.name).join('、') : '无' }}
+                {{ section.tasks.length ? `未完成：${section.missing.length ? section.missing.map((item) => item.name).join('、') : '无'}` : '无需催促' }}
               </span>
             </div>
             <div class="table-scroll">
-              <table>
+              <table v-if="section.tasks.length">
                 <thead>
                   <tr>
                     <th>成员</th>
@@ -400,9 +480,9 @@ async function exportRankingChart() {
                   </tr>
                 </tbody>
               </table>
+              <div v-else class="section-not-configured">本周未配置{{ section.label }}任务</div>
             </div>
           </section>
-          <div v-if="!taskSections.length" class="empty">当前周尚未配置可统计的学习板块。</div>
         </div>
       </section>
     </div>

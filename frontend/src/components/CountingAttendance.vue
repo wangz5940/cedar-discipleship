@@ -12,7 +12,7 @@ import {
 import { api, toast as showToast } from '../legacy-app';
 
 const props = defineProps({
-  groupID: {
+  groupId: {
     type: Number,
     required: true,
   },
@@ -54,7 +54,7 @@ const sortedMembers = computed(() => {
 });
 
 watch(
-  () => [props.active, props.groupID],
+  () => [props.active, props.groupId],
   async ([active]) => {
     if (active) await loadAttendance();
   },
@@ -67,7 +67,7 @@ onMounted(async () => {
 async function loadAttendance() {
   loading.value = true;
   try {
-    sheet.value = await api(`/ministry-groups/${props.groupID}/attendance?month=${month.value}`);
+    sheet.value = await api(`/ministry-groups/${props.groupId}/attendance?month=${month.value}`);
     weekdays.value = [...(sheet.value.settings?.weekdays || [])];
     extraDates.value = [...(sheet.value.settings?.extra_dates || [])];
   } catch (error) {
@@ -104,7 +104,7 @@ function removeExtraDate(date) {
 async function saveSettings() {
   saving.value = true;
   try {
-    await api(`/ministry-groups/${props.groupID}/attendance/settings`, {
+    await api(`/ministry-groups/${props.groupId}/attendance/settings`, {
       method: 'PUT',
       body: JSON.stringify({
         weekdays: weekdays.value,
@@ -125,7 +125,7 @@ async function toggleAttendance(member, date) {
   const present = !member.present?.[date];
   saving.value = true;
   try {
-    await api(`/ministry-groups/${props.groupID}/attendance/${date}/members/${member.user_id}`, {
+    await api(`/ministry-groups/${props.groupId}/attendance/${date}/members/${member.user_id}`, {
       method: 'PUT',
       body: JSON.stringify({ present }),
     });
@@ -141,7 +141,7 @@ async function toggleAttendance(member, date) {
 
 async function exportAttendance() {
   try {
-    const response = await fetch(`/api/ministry-groups/${props.groupID}/attendance/export?month=${month.value}`, {
+    const response = await fetch(`/api/ministry-groups/${props.groupId}/attendance/export?month=${month.value}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('agp_token') || ''}` },
     });
     if (!response.ok) {
@@ -199,7 +199,6 @@ function currentMonth() {
         <div class="attendance-settings-head">
           <div>
             <h4>固定考勤日</h4>
-            <p>默认周一、周日，可按实际聚会安排调整。</p>
           </div>
           <button class="icon-text-button" type="button" :disabled="saving" @click="saveSettings">
             <Save :size="16" /> 保存设置
