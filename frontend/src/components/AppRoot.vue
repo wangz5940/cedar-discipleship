@@ -358,7 +358,7 @@ async function selectCalendarDate(day) {
       <div class="sidebar-logo">
         <div class="brand-mark">知</div>
         <div>
-          <b>纸间知行</b>
+          <b>知行</b>
           <div class="muted">{{ user?.display_name || '' }}</div>
         </div>
       </div>

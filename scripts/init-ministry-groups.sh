@@ -92,7 +92,7 @@ probe_compose_login() {
   local database="$3"
 
   compose exec -T -e MYSQL_PWD="$password" mysql \
-    mysql -h 127.0.0.1 -u"$user" "$database" -e "SELECT 1" >/dev/null 2>&1
+    mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u"$user" "$database" -e "SELECT 1" >/dev/null 2>&1
 }
 
 run_compose_mysql_file() {
@@ -102,7 +102,7 @@ run_compose_mysql_file() {
   local file="$4"
 
   compose exec -T -e MYSQL_PWD="$password" mysql \
-    mysql -h 127.0.0.1 -u"$user" "$database" < "$file"
+    mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u"$user" "$database" < "$file"
 }
 
 run_compose_init() {
@@ -186,6 +186,7 @@ run_with_local_mysql() {
   if [ -f "$SCHEMA_FILE" ]; then
     echo "执行建表 SQL: $SCHEMA_FILE"
     MYSQL_PWD="$MYSQL_PASSWORD" mysql \
+      --default-character-set=utf8mb4 \
       -h "$MYSQL_HOST" \
       -P "$MYSQL_PORT" \
       -u "$MYSQL_USER" \
@@ -193,6 +194,7 @@ run_with_local_mysql() {
   fi
 
   MYSQL_PWD="$MYSQL_PASSWORD" mysql \
+    --default-character-set=utf8mb4 \
     -h "$MYSQL_HOST" \
     -P "$MYSQL_PORT" \
     -u "$MYSQL_USER" \
