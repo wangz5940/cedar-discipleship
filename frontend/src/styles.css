@@ -6262,6 +6262,31 @@ button.ministry-join-button {
     display: none;
   }
 
+  .ministry-directory-label-toggle {
+    display: flex;
+    flex: 0 0 128px;
+    align-self: stretch;
+    align-items: center;
+    justify-content: center;
+    min-height: 58px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--muted);
+    text-transform: none;
+  }
+
+  .ministry-directory-label-toggle > span {
+    display: none;
+  }
+
+  .ministry-directory-label-toggle .ministry-directory-toggle {
+    width: 100%;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+
   button.ministry-group-row,
   .ministry-group-row-available {
     width: 190px;
