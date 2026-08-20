@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
+import { ChevronDown, ChevronUp, ChevronsUpDown } from '@lucide/vue';
 import { useDashboardStore } from '../stores/dashboard';
 import {
   openMemberCalendar,
@@ -51,6 +52,7 @@ const legend = [
 const statsView = ref('chart');
 const activeStatKey = ref('all');
 const activeRuleSaving = ref(false);
+const matrixSort = ref({ key: 'total', direction: 'desc' });
 const activeLegend = computed(() => legend.find((item) => item.key === activeStatKey.value) || null);
 const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : legend));
 const rankedItems = computed(() => [...ranking.value].sort((left, right) => {
@@ -73,9 +75,21 @@ const periodRows = computed(() => ranking.value.map((item) => {
     counts,
     total: legend.reduce((sum, part) => sum + counts[part.key], 0),
   };
-}).sort((left, right) => {
-  if (left.total !== right.total) return right.total - left.total;
-  return left.name.localeCompare(right.name, 'zh-CN');
+}));
+const sortedPeriodRows = computed(() => [...periodRows.value].sort((left, right) => {
+  const { key, direction } = matrixSort.value;
+  let comparison;
+  if (key === 'name') {
+    comparison = left.name.localeCompare(right.name, 'zh-CN');
+  } else {
+    const leftValue = key === 'total' ? left.total : left.counts[key];
+    const rightValue = key === 'total' ? right.total : right.counts[key];
+    comparison = leftValue - rightValue;
+  }
+  if (comparison === 0) {
+    comparison = left.name.localeCompare(right.name, 'zh-CN');
+  }
+  return direction === 'asc' ? comparison : -comparison;
 }));
 const periodTotals = computed(() => {
   const totals = Object.fromEntries(legend.map((part) => [part.key, 0]));
@@ -119,6 +133,18 @@ function segmentPercent(item, key) {
 
 function setActiveStat(key) {
   activeStatKey.value = activeStatKey.value === key ? 'all' : key;
+}
+
+function setMatrixSort(key) {
+  matrixSort.value = {
+    key,
+    direction: matrixSort.value.key === key && matrixSort.value.direction === 'desc' ? 'asc' : 'desc',
+  };
+}
+
+function matrixSortAria(key) {
+  if (matrixSort.value.key !== key) return 'none';
+  return matrixSort.value.direction === 'asc' ? 'ascending' : 'descending';
 }
 
 async function toggleActiveRuleTask(key) {
@@ -514,13 +540,34 @@ async function exportRankingChart() {
               <table class="period-matrix-table">
                 <thead>
                   <tr>
-                    <th>成员</th>
-                    <th v-for="item in legend" :key="item.key">{{ item.label }}</th>
-                    <th>合计</th>
+                    <th :aria-sort="matrixSortAria('name')">
+                      <button class="matrix-sort-button" type="button" @click="setMatrixSort('name')">
+                        <span>成员</span>
+                        <ChevronUp v-if="matrixSort.key === 'name' && matrixSort.direction === 'asc'" :size="14" />
+                        <ChevronDown v-else-if="matrixSort.key === 'name'" :size="14" />
+                        <ChevronsUpDown v-else :size="14" />
+                      </button>
+                    </th>
+                    <th v-for="item in legend" :key="item.key" :aria-sort="matrixSortAria(item.key)">
+                      <button class="matrix-sort-button" type="button" @click="setMatrixSort(item.key)">
+                        <span>{{ item.label }}</span>
+                        <ChevronUp v-if="matrixSort.key === item.key && matrixSort.direction === 'asc'" :size="14" />
+                        <ChevronDown v-else-if="matrixSort.key === item.key" :size="14" />
+                        <ChevronsUpDown v-else :size="14" />
+                      </button>
+                    </th>
+                    <th :aria-sort="matrixSortAria('total')">
+                      <button class="matrix-sort-button" type="button" @click="setMatrixSort('total')">
+                        <span>合计</span>
+                        <ChevronUp v-if="matrixSort.key === 'total' && matrixSort.direction === 'asc'" :size="14" />
+                        <ChevronDown v-else-if="matrixSort.key === 'total'" :size="14" />
+                        <ChevronsUpDown v-else :size="14" />
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="row in periodRows" :key="row.userID">
+                  <tr v-for="row in sortedPeriodRows" :key="row.userID">
                     <td>
                       <b>{{ row.name }}</b>
                       <small v-if="row.username">{{ row.username }}</small>

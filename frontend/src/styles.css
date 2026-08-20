@@ -4395,10 +4395,44 @@ textarea::placeholder {
 }
 
 .task-section-table th {
+  padding: 0;
   background: var(--surface-muted);
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.matrix-sort-button {
+  display: inline-flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.task-section-table th:first-child .matrix-sort-button {
+  justify-content: flex-start;
+}
+
+.matrix-sort-button:hover,
+.matrix-sort-button:focus-visible {
+  transform: none;
+  background: #e8ede7;
+  color: var(--text);
+  box-shadow: none;
+}
+
+.matrix-sort-button svg {
+  flex: 0 0 auto;
 }
 
 .task-section-table tbody tr:last-child td {
