@@ -173,6 +173,10 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 	grouped := map[string][]LibraryItem{}
 	for _, item := range items {
 		key := firstNonEmpty(item.Category, "uploaded")
+		itemType := inferTaskBindingType("", "", firstNonEmpty(item.OriginalName, item.MimeType))
+		if key == "outline" {
+			itemType = "image"
+		}
 		grouped[key] = append(grouped[key], LibraryItem{
 			ID:           item.ID,
 			Title:        item.Title,
@@ -180,7 +184,7 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 			URL:          fmt.Sprintf("/api/assets/%d/download", item.ID),
 			Category:     key,
 			Source:       "uploaded",
-			Type:         inferTaskBindingType("", "", firstNonEmpty(item.OriginalName, item.MimeType)),
+			Type:         itemType,
 		})
 	}
 	keys := make([]string, 0, len(grouped))
@@ -253,12 +257,21 @@ func inferTaskBindingType(taskType, urlValue, fileName string) string {
 	switch {
 	case strings.Contains(text, "video") || strings.HasSuffix(text, ".mp4") || strings.HasSuffix(text, ".webm") || strings.HasSuffix(text, ".mov") || strings.HasSuffix(text, ".m4v"):
 		return "video"
-	case strings.Contains(text, "outline") || strings.Contains(text, "提纲"):
-		return "outline"
+	case strings.Contains(text, "outline") || strings.Contains(text, "提纲") || hasImageExtension(text):
+		return "image"
 	case strings.HasSuffix(text, ".md"):
 		return "markdown"
 	default:
 		return "reading"
+	}
+}
+
+func hasImageExtension(value string) bool {
+	switch filepath.Ext(strings.TrimSpace(value)) {
+	case ".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".tif", ".tiff", ".webp":
+		return true
+	default:
+		return false
 	}
 }
 

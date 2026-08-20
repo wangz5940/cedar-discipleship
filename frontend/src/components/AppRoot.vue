@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Download } from '@lucide/vue';
+import { ChevronDown, ChevronRight, Download } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
@@ -87,6 +87,8 @@ const uploadInput = ref(null);
 const studyWeeksImportInput = ref(null);
 const localBackupImportInput = ref(null);
 const selectedResourceKeys = ref(new Set());
+const collapsedResourceSections = ref(new Set());
+const collapsedAdminResourceSections = ref(new Set());
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const canManageRoles = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))));
@@ -124,7 +126,9 @@ const readingOptions = computed(() => libraryItems.value.filter((item) => (
   ['book', 'passage'].includes(item.category) || ['pdf', 'reading'].includes(item.type)
 )));
 const videoOptions = computed(() => libraryItems.value.filter((item) => item.type === 'video'));
-const outlineOptions = computed(() => libraryItems.value.filter((item) => item.type === 'image'));
+const outlineOptions = computed(() => libraryItems.value.filter((item) => (
+  item.type === 'image' || item.type === 'outline' || item.category === 'outline'
+)));
 const resourceCategoryCount = computed(() => new Set(resources.value.map((item) => item.category).filter(Boolean)).size);
 const resourcePrimaryCategory = computed(() => {
   const first = resources.value.find((item) => item.category);
@@ -168,6 +172,24 @@ function navLabel(item) {
 
 function selectAdmin(section) {
   setAdminSection(section);
+}
+
+function resourceSectionKey(section) {
+  return String(section.key || section.label);
+}
+
+function resourceSectionCollapsed(section, admin = false) {
+  const collapsed = admin ? collapsedAdminResourceSections.value : collapsedResourceSections.value;
+  return collapsed.has(resourceSectionKey(section));
+}
+
+function toggleResourceSection(section, admin = false) {
+  const state = admin ? collapsedAdminResourceSections : collapsedResourceSections;
+  const next = new Set(state.value);
+  const key = resourceSectionKey(section);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  state.value = next;
 }
 
 async function submitLogin() {
@@ -558,10 +580,23 @@ async function selectCalendarDate(day) {
                   <h3>{{ section.label }}</h3>
                   <p class="muted">{{ section.description }}</p>
                 </div>
-                <span class="pill">{{ section.items.length }} 份资料</span>
+                <div class="resource-section-controls">
+                  <span class="pill">{{ section.items.length }} 份资料</span>
+                  <button
+                    class="ghost resource-collapse-button"
+                    type="button"
+                    :title="resourceSectionCollapsed(section) ? '展开分类' : '收起分类'"
+                    :aria-label="resourceSectionCollapsed(section) ? `展开${section.label}` : `收起${section.label}`"
+                    :aria-expanded="!resourceSectionCollapsed(section)"
+                    @click="toggleResourceSection(section)"
+                  >
+                    <ChevronRight v-if="resourceSectionCollapsed(section)" :size="18" />
+                    <ChevronDown v-else :size="18" />
+                  </button>
+                </div>
               </div>
 
-              <div class="grid cols-2">
+              <div v-if="!resourceSectionCollapsed(section)" class="grid cols-2">
                 <div v-for="asset in section.items" :key="resourceSelectionKey(asset)" class="card resource-browser-card">
                   <div class="resource-browser-meta">
                     <label class="resource-card-selector">
@@ -795,9 +830,27 @@ async function selectCalendarDate(day) {
                     </div>
                   </div>
                 </div>
-                <div v-for="section in resourceLibrary" :key="section.key || section.label" class="card resource-section">
-                  <div class="section-title"><h2>{{ section.label }} · {{ section.count || 0 }}</h2></div>
-                  <div v-if="section.items?.length" class="resource-list">
+                <div
+                  v-for="section in resourceLibrary"
+                  :key="section.key || section.label"
+                  class="card resource-section"
+                  :class="{ 'is-collapsed': resourceSectionCollapsed(section, true) }"
+                >
+                  <div class="section-title resource-admin-section-head">
+                    <h2>{{ section.label }} · {{ section.count || 0 }}</h2>
+                    <button
+                      class="ghost resource-collapse-button"
+                      type="button"
+                      :title="resourceSectionCollapsed(section, true) ? '展开分类' : '收起分类'"
+                      :aria-label="resourceSectionCollapsed(section, true) ? `展开${section.label}` : `收起${section.label}`"
+                      :aria-expanded="!resourceSectionCollapsed(section, true)"
+                      @click="toggleResourceSection(section, true)"
+                    >
+                      <ChevronRight v-if="resourceSectionCollapsed(section, true)" :size="18" />
+                      <ChevronDown v-else :size="18" />
+                    </button>
+                  </div>
+                  <div v-if="section.items?.length && !resourceSectionCollapsed(section, true)" class="resource-list">
                     <div v-for="item in section.items" :key="item.id || item.url || item.title" class="resource-item">
                       <div>
                         <b>{{ item.title || item.original_name || '未命名资源' }}</b>
@@ -806,7 +859,7 @@ async function selectCalendarDate(day) {
                       <button class="secondary" type="button" @click="previewLibraryItem(item)">查看</button>
                     </div>
                   </div>
-                  <div v-else class="empty">当前分类暂无文件。</div>
+                  <div v-else-if="!resourceSectionCollapsed(section, true)" class="empty">当前分类暂无文件。</div>
                 </div>
               </div>
             </section>

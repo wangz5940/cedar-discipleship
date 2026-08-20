@@ -30,6 +30,34 @@ func TestServiceUploadDeletesStoredFileWhenMetadataCreateFails(t *testing.T) {
 	}
 }
 
+func TestInferTaskBindingType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		taskType string
+		url      string
+		fileName string
+		want     string
+	}{
+		{name: "PNG image", fileName: "本周提纲.png", want: "image"},
+		{name: "JPEG image without outline in name", fileName: "week-12.jpeg", want: "image"},
+		{name: "WebP image", fileName: "diagram.webp", want: "image"},
+		{name: "video", fileName: "lesson.mp4", want: "video"},
+		{name: "markdown", fileName: "lesson.md", want: "markdown"},
+		{name: "PDF reading", fileName: "lesson.pdf", want: "reading"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := inferTaskBindingType(tt.taskType, tt.url, tt.fileName); got != tt.want {
+				t.Fatalf("inferTaskBindingType(%q, %q, %q) = %q, want %q", tt.taskType, tt.url, tt.fileName, got, tt.want)
+			}
+		})
+	}
+}
+
 type fakeRepository struct {
 	createErr error
 }
