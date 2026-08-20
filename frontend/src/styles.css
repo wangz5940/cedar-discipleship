@@ -6202,6 +6202,10 @@ button.ministry-join-button {
   font-size: 12px;
 }
 
+.ministry-summary-toggle {
+  margin-top: 8px;
+}
+
 .ministry-markdown {
   margin-top: 12px;
   color: #263041;

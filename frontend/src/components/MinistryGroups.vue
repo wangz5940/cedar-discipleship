@@ -836,16 +836,16 @@ function localDateTimeValue() {
                   </header>
                   <p v-if="!feedExpanded('share', share.id)" class="ministry-feed-summary">{{ feedPreview(share.body_markdown, 120) }}</p>
                   <div v-else class="ministry-markdown" v-html="markdownToSafeHTML(share.body_markdown)"></div>
-                  <footer v-if="feedExpandable(share.body_markdown, 120) || share.can_edit || share.can_delete || share.can_review || share.can_pin" class="inline-actions ministry-compact-actions">
-                    <button
-                      v-if="feedExpandable(share.body_markdown, 120)"
-                      class="ghost ministry-compact-toggle"
-                      type="button"
-                      :aria-expanded="feedExpanded('share', share.id)"
-                      @click="toggleFeedItem('share', share.id)"
-                    >
-                      {{ feedToggleLabel('share', share.id) }}
-                    </button>
+                  <button
+                    v-if="feedExpandable(share.body_markdown, 120)"
+                    class="ghost ministry-compact-toggle ministry-summary-toggle"
+                    type="button"
+                    :aria-expanded="feedExpanded('share', share.id)"
+                    @click="toggleFeedItem('share', share.id)"
+                  >
+                    {{ feedToggleLabel('share', share.id) }}
+                  </button>
+                  <footer v-if="share.can_edit || share.can_delete || share.can_review || share.can_pin" class="inline-actions ministry-compact-actions">
                     <button
                       v-if="share.can_pin"
                       class="secondary icon-text-button"
@@ -937,6 +937,15 @@ function localDateTimeValue() {
                   </header>
                   <p v-if="!feedExpanded('progress', item.id)" class="ministry-feed-summary">{{ feedPreview(item.content_markdown, 110) }}</p>
                   <div v-else class="ministry-markdown" v-html="markdownToSafeHTML(item.content_markdown)"></div>
+                  <button
+                    v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length"
+                    class="ghost ministry-compact-toggle ministry-summary-toggle"
+                    type="button"
+                    :aria-expanded="feedExpanded('progress', item.id)"
+                    @click="toggleFeedItem('progress', item.id)"
+                  >
+                    {{ feedToggleLabel('progress', item.id, item.attachments.length) }}
+                  </button>
                   <div v-if="item.attachments.length && feedExpanded('progress', item.id)" class="ministry-file-grid">
                     <div
                       v-for="asset in item.attachments"
@@ -975,15 +984,7 @@ function localDateTimeValue() {
                       </button>
                     </div>
                   </div>
-                  <footer v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length || item.can_delete" class="inline-actions ministry-compact-actions">
-                    <button
-                      class="ghost ministry-compact-toggle"
-                      type="button"
-                      :aria-expanded="feedExpanded('progress', item.id)"
-                      @click="toggleFeedItem('progress', item.id)"
-                    >
-                      {{ feedToggleLabel('progress', item.id, item.attachments.length) }}
-                    </button>
+                  <footer v-if="item.can_delete" class="inline-actions ministry-compact-actions">
                     <button
                       v-if="item.can_delete"
                       class="danger icon-text-button"
