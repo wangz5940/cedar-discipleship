@@ -151,7 +151,7 @@ func (a *app) addMember(ctx context.Context, groupID, userID uint64, memberName 
 }
 
 func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID uint64, before, after any, r *http.Request) {
-	_ = a.audits.Create(r.Context(), auditdomain.CreateLogInput{
+	err := a.audits.Create(r.Context(), auditdomain.CreateLogInput{
 		GroupID:    groupID,
 		ActorID:    actorID,
 		Action:     action,
@@ -162,6 +162,18 @@ func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID
 		IP:         clientIP(r),
 		UserAgent:  r.UserAgent(),
 	}, time.Now())
+	if err != nil {
+		slog.ErrorContext(
+			r.Context(),
+			"audit log write failed",
+			"action", action,
+			"target_type", targetType,
+			"target_id", targetID,
+			"actor_id", actorID,
+			"group_id", groupID,
+			"error", err,
+		)
+	}
 }
 
 func (a *app) signToken(c tokenClaims) (string, error) {

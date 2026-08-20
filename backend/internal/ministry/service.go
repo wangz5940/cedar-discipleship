@@ -17,6 +17,7 @@ var (
 	ErrRequestAlreadyReviewed = errors.New("ministry_request_already_reviewed")
 	ErrRequestNotFound        = errors.New("ministry_request_not_found")
 	ErrShareNotFound          = errors.New("ministry_share_not_found")
+	ErrProgressNotFound       = errors.New("ministry_progress_not_found")
 	ErrShareAlreadyReviewed   = errors.New("ministry_share_already_reviewed")
 	ErrContentRequired        = errors.New("ministry_content_required")
 	ErrInvalidVisibility      = errors.New("ministry_invalid_visibility")
@@ -93,11 +94,35 @@ func (s *Service) Detail(ctx context.Context, studyGroupID, groupID uint64, acto
 	if err != nil {
 		return nil, err
 	}
+	deletedShares, err := s.repo.ListDeletedShares(
+		ctx,
+		studyGroupID,
+		groupID,
+		actor.UserID,
+		group.CanManage,
+		100,
+	)
+	if err != nil {
+		return nil, err
+	}
+	deletedProgress, err := s.repo.ListDeletedProgress(
+		ctx,
+		studyGroupID,
+		groupID,
+		actor.UserID,
+		group.CanManage,
+		100,
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &GroupDetail{
-		Group:    *group,
-		Members:  memberVOs,
-		Shares:   shareVOs(shares, actor, access),
-		Progress: progressVOs(progress),
+		Group:           *group,
+		Members:         memberVOs,
+		Shares:          shareVOs(shares, actor, access),
+		Progress:        progressVOs(progress, actor, access),
+		DeletedShares:   shareVOs(deletedShares, actor, access),
+		DeletedProgress: progressVOs(deletedProgress, actor, access),
 	}, nil
 }
 
@@ -406,6 +431,48 @@ func (s *Service) SetSharePinned(
 	return s.repo.SetSharePinned(ctx, studyGroupID, groupID, shareID, actor.UserID, pinned, at)
 }
 
+func (s *Service) DeleteShare(
+	ctx context.Context,
+	studyGroupID, groupID, shareID uint64,
+	actor Actor,
+	at time.Time,
+) error {
+	access, err := s.repo.Access(ctx, studyGroupID, groupID, actor.UserID)
+	if err != nil {
+		return ErrGroupNotFound
+	}
+	return s.repo.DeleteShare(
+		ctx,
+		studyGroupID,
+		groupID,
+		shareID,
+		actor.UserID,
+		canManage(actor, access),
+		at,
+	)
+}
+
+func (s *Service) RestoreShare(
+	ctx context.Context,
+	studyGroupID, groupID, shareID uint64,
+	actor Actor,
+	at time.Time,
+) error {
+	access, err := s.repo.Access(ctx, studyGroupID, groupID, actor.UserID)
+	if err != nil {
+		return ErrGroupNotFound
+	}
+	return s.repo.RestoreShare(
+		ctx,
+		studyGroupID,
+		groupID,
+		shareID,
+		actor.UserID,
+		canManage(actor, access),
+		at,
+	)
+}
+
 func (s *Service) CreateProgress(
 	ctx context.Context,
 	studyGroupID, groupID uint64,
@@ -428,6 +495,48 @@ func (s *Service) CreateProgress(
 		input.OccurredAt = at
 	}
 	return s.repo.CreateProgress(ctx, studyGroupID, groupID, actor.UserID, input, at)
+}
+
+func (s *Service) DeleteProgress(
+	ctx context.Context,
+	studyGroupID, groupID, progressID uint64,
+	actor Actor,
+	at time.Time,
+) error {
+	access, err := s.repo.Access(ctx, studyGroupID, groupID, actor.UserID)
+	if err != nil {
+		return ErrGroupNotFound
+	}
+	return s.repo.DeleteProgress(
+		ctx,
+		studyGroupID,
+		groupID,
+		progressID,
+		actor.UserID,
+		canManage(actor, access),
+		at,
+	)
+}
+
+func (s *Service) RestoreProgress(
+	ctx context.Context,
+	studyGroupID, groupID, progressID uint64,
+	actor Actor,
+	at time.Time,
+) error {
+	access, err := s.repo.Access(ctx, studyGroupID, groupID, actor.UserID)
+	if err != nil {
+		return ErrGroupNotFound
+	}
+	return s.repo.RestoreProgress(
+		ctx,
+		studyGroupID,
+		groupID,
+		progressID,
+		actor.UserID,
+		canManage(actor, access),
+		at,
+	)
 }
 
 func (s *Service) CanContribute(
@@ -481,16 +590,19 @@ func shareVOs(items []Share, actor Actor, access Access) []ShareVO {
 			ID: item.ID, GroupID: item.GroupID, AuthorID: item.AuthorID,
 			AuthorName: item.AuthorName, Title: item.Title, Body: item.Body,
 			Status: item.Status, IsPinned: item.IsPinned,
-			CanEdit:     item.AuthorID == actor.UserID || canManage(actor, access),
-			CanReview:   canReviewShares(actor, access) && item.Status == StatusPending,
-			CanPin:      canReviewShares(actor, access) && item.Status == StatusPublished,
+			CanEdit:     item.DeletedAt == nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
+			CanDelete:   item.DeletedAt == nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
+			CanRestore:  item.DeletedAt != nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
+			CanReview:   item.DeletedAt == nil && canReviewShares(actor, access) && item.Status == StatusPending,
+			CanPin:      item.DeletedAt == nil && canReviewShares(actor, access) && item.Status == StatusPublished,
 			PublishedAt: item.PublishedAt, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+			DeletedAt: item.DeletedAt,
 		})
 	}
 	return out
 }
 
-func progressVOs(items []Progress) []ProgressVO {
+func progressVOs(items []Progress, actor Actor, access Access) []ProgressVO {
 	out := make([]ProgressVO, 0, len(items))
 	for _, item := range items {
 		attachments := make([]AttachmentVO, 0, len(item.Attachments))
@@ -505,6 +617,9 @@ func progressVOs(items []Progress) []ProgressVO {
 			ID: item.ID, GroupID: item.GroupID, AuthorID: item.AuthorID,
 			AuthorName: item.AuthorName, OccurredAt: item.OccurredAt,
 			Content: item.Content, Attachments: attachments, CreatedAt: item.CreatedAt,
+			CanDelete:  item.DeletedAt == nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
+			CanRestore: item.DeletedAt != nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
+			DeletedAt:  item.DeletedAt,
 		})
 	}
 	return out

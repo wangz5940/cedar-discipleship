@@ -521,6 +521,70 @@ func (a *app) handleMinistrySharePin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (a *app) handleMinistryDeleteShare(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	shareID := pathUint64(r, "share_id")
+	if err := a.ministry.DeleteShare(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		shareID,
+		ministryActor(user),
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"delete_ministry_share",
+		"ministry_shares",
+		shareID,
+		map[string]any{"ministry_group_id": groupID, "deleted": false},
+		map[string]any{"ministry_group_id": groupID, "deleted": true},
+		r,
+	)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleMinistryRestoreShare(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	shareID := pathUint64(r, "share_id")
+	if err := a.ministry.RestoreShare(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		shareID,
+		ministryActor(user),
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"restore_ministry_share",
+		"ministry_shares",
+		shareID,
+		map[string]any{"ministry_group_id": groupID, "deleted": true},
+		map[string]any{"ministry_group_id": groupID, "deleted": false},
+		r,
+	)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (a *app) handleMinistryCreateProgress(w http.ResponseWriter, r *http.Request) {
 	user := mustUser(r)
 	studyGroupID := requireGroupID(w, user)
@@ -544,6 +608,70 @@ func (a *app) handleMinistryCreateProgress(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": progressID})
+}
+
+func (a *app) handleMinistryDeleteProgress(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	progressID := pathUint64(r, "progress_id")
+	if err := a.ministry.DeleteProgress(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		progressID,
+		ministryActor(user),
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"delete_ministry_progress",
+		"ministry_progress",
+		progressID,
+		map[string]any{"ministry_group_id": groupID, "deleted": false},
+		map[string]any{"ministry_group_id": groupID, "deleted": true},
+		r,
+	)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleMinistryRestoreProgress(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	progressID := pathUint64(r, "progress_id")
+	if err := a.ministry.RestoreProgress(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		progressID,
+		ministryActor(user),
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"restore_ministry_progress",
+		"ministry_progress",
+		progressID,
+		map[string]any{"ministry_group_id": groupID, "deleted": true},
+		map[string]any{"ministry_group_id": groupID, "deleted": false},
+		r,
+	)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *app) handleMinistryAttachment(w http.ResponseWriter, r *http.Request) {
@@ -626,7 +754,8 @@ func (a *app) writeMinistryError(w http.ResponseWriter, r *http.Request, err err
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, ministrydomain.ErrGroupNotFound),
 		errors.Is(err, ministrydomain.ErrRequestNotFound),
-		errors.Is(err, ministrydomain.ErrShareNotFound):
+		errors.Is(err, ministrydomain.ErrShareNotFound),
+		errors.Is(err, ministrydomain.ErrProgressNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ministrydomain.ErrAlreadyMember),
 		errors.Is(err, ministrydomain.ErrRequestAlreadyReviewed),

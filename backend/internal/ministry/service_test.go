@@ -9,17 +9,22 @@ import (
 
 type serviceTestRepository struct {
 	Repository
-	group           GroupSummary
-	access          Access
-	members         []Member
-	request         Request
-	decideCalls     int
-	createdShare    Status
-	joinAutoApprove bool
-	createdGroup    GroupInput
-	updatedGroup    GroupInput
-	deletedGroupID  uint64
-	pinnedShare     bool
+	group            GroupSummary
+	access           Access
+	members          []Member
+	request          Request
+	decideCalls      int
+	createdShare     Status
+	joinAutoApprove  bool
+	createdGroup     GroupInput
+	updatedGroup     GroupInput
+	deletedGroupID   uint64
+	pinnedShare      bool
+	deletedShare     bool
+	restoredShare    bool
+	deletedProgress  bool
+	restoredProgress bool
+	deleteCanManage  bool
 }
 
 func (r *serviceTestRepository) EnsureCatalog(context.Context, uint64, time.Time) error {
@@ -55,6 +60,28 @@ func (r *serviceTestRepository) ListShares(
 }
 
 func (r *serviceTestRepository) ListProgress(context.Context, uint64, uint64, int) ([]Progress, error) {
+	return []Progress{}, nil
+}
+
+func (r *serviceTestRepository) ListDeletedShares(
+	context.Context,
+	uint64,
+	uint64,
+	uint64,
+	bool,
+	int,
+) ([]Share, error) {
+	return []Share{}, nil
+}
+
+func (r *serviceTestRepository) ListDeletedProgress(
+	context.Context,
+	uint64,
+	uint64,
+	uint64,
+	bool,
+	int,
+) ([]Progress, error) {
 	return []Progress{}, nil
 }
 
@@ -144,6 +171,50 @@ func (r *serviceTestRepository) SetSharePinned(
 	_ time.Time,
 ) error {
 	r.pinnedShare = pinned
+	return nil
+}
+
+func (r *serviceTestRepository) DeleteShare(
+	_ context.Context,
+	_, _, _, _ uint64,
+	canManage bool,
+	_ time.Time,
+) error {
+	r.deletedShare = true
+	r.deleteCanManage = canManage
+	return nil
+}
+
+func (r *serviceTestRepository) RestoreShare(
+	_ context.Context,
+	_, _, _, _ uint64,
+	canManage bool,
+	_ time.Time,
+) error {
+	r.restoredShare = true
+	r.deleteCanManage = canManage
+	return nil
+}
+
+func (r *serviceTestRepository) DeleteProgress(
+	_ context.Context,
+	_, _, _, _ uint64,
+	canManage bool,
+	_ time.Time,
+) error {
+	r.deletedProgress = true
+	r.deleteCanManage = canManage
+	return nil
+}
+
+func (r *serviceTestRepository) RestoreProgress(
+	_ context.Context,
+	_, _, _, _ uint64,
+	canManage bool,
+	_ time.Time,
+) error {
+	r.restoredProgress = true
+	r.deleteCanManage = canManage
 	return nil
 }
 
@@ -461,6 +532,155 @@ func TestServiceSetSharePinnedRequiresShareAdmin(t *testing.T) {
 			}
 			if test.wantErr == nil && !repo.pinnedShare {
 				t.Fatal("SetSharePinned() did not call repository")
+			}
+		})
+	}
+}
+
+func TestServiceContentDeletionUsesRepositoryAuthorization(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		actor         Actor
+		access        Access
+		wantCanManage bool
+		run           func(*Service, Actor) error
+		called        func(*serviceTestRepository) bool
+	}{
+		{
+			name:   "author deletes share",
+			actor:  Actor{UserID: 7},
+			access: Access{IsMember: true},
+			run: func(service *Service, actor Actor) error {
+				return service.DeleteShare(context.Background(), 1, 3, 12, actor, time.Now())
+			},
+			called: func(repo *serviceTestRepository) bool { return repo.deletedShare },
+		},
+		{
+			name:          "ministry admin restores share",
+			actor:         Actor{UserID: 8},
+			access:        Access{IsMember: true, IsAdmin: true},
+			wantCanManage: true,
+			run: func(service *Service, actor Actor) error {
+				return service.RestoreShare(context.Background(), 1, 3, 12, actor, time.Now())
+			},
+			called: func(repo *serviceTestRepository) bool { return repo.restoredShare },
+		},
+		{
+			name:   "author deletes progress",
+			actor:  Actor{UserID: 7},
+			access: Access{IsMember: true},
+			run: func(service *Service, actor Actor) error {
+				return service.DeleteProgress(context.Background(), 1, 3, 15, actor, time.Now())
+			},
+			called: func(repo *serviceTestRepository) bool { return repo.deletedProgress },
+		},
+		{
+			name:          "study admin restores progress",
+			actor:         Actor{UserID: 9, IsStudyAdmin: true},
+			wantCanManage: true,
+			run: func(service *Service, actor Actor) error {
+				return service.RestoreProgress(context.Background(), 1, 3, 15, actor, time.Now())
+			},
+			called: func(repo *serviceTestRepository) bool { return repo.restoredProgress },
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &serviceTestRepository{access: test.access}
+			if err := test.run(NewService(repo), test.actor); err != nil {
+				t.Fatalf("content mutation returned error: %v", err)
+			}
+			if !test.called(repo) {
+				t.Fatal("repository mutation was not called")
+			}
+			if repo.deleteCanManage != test.wantCanManage {
+				t.Fatalf("canManage = %v, want %v", repo.deleteCanManage, test.wantCanManage)
+			}
+		})
+	}
+}
+
+func TestContentVODeletionPermissions(t *testing.T) {
+	t.Parallel()
+
+	deletedAt := time.Now()
+	tests := []struct {
+		name        string
+		actor       Actor
+		access      Access
+		deletedAt   *time.Time
+		wantDelete  bool
+		wantRestore bool
+		wantEdit    bool
+		wantPin     bool
+	}{
+		{
+			name:       "author can delete active content",
+			actor:      Actor{UserID: 7},
+			wantDelete: true,
+			wantEdit:   true,
+		},
+		{
+			name:        "author can restore deleted content",
+			actor:       Actor{UserID: 7},
+			deletedAt:   &deletedAt,
+			wantRestore: true,
+		},
+		{
+			name:       "ministry admin can delete active content",
+			actor:      Actor{UserID: 8},
+			access:     Access{IsAdmin: true},
+			wantDelete: true,
+			wantEdit:   true,
+			wantPin:    true,
+		},
+		{
+			name:   "another member cannot mutate content",
+			actor:  Actor{UserID: 8},
+			access: Access{IsMember: true},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			shares := shareVOs([]Share{{
+				ID: 1, AuthorID: 7, Status: StatusPublished, DeletedAt: test.deletedAt,
+			}}, test.actor, test.access)
+			if shares[0].CanDelete != test.wantDelete || shares[0].CanRestore != test.wantRestore {
+				t.Fatalf(
+					"share permissions delete=%v restore=%v, want delete=%v restore=%v",
+					shares[0].CanDelete,
+					shares[0].CanRestore,
+					test.wantDelete,
+					test.wantRestore,
+				)
+			}
+			if shares[0].CanEdit != test.wantEdit || shares[0].CanPin != test.wantPin {
+				t.Fatalf(
+					"share active permissions edit=%v pin=%v, want edit=%v pin=%v",
+					shares[0].CanEdit,
+					shares[0].CanPin,
+					test.wantEdit,
+					test.wantPin,
+				)
+			}
+
+			progress := progressVOs([]Progress{{
+				ID: 1, AuthorID: 7, DeletedAt: test.deletedAt,
+			}}, test.actor, test.access)
+			if progress[0].CanDelete != test.wantDelete || progress[0].CanRestore != test.wantRestore {
+				t.Fatalf(
+					"progress permissions delete=%v restore=%v, want delete=%v restore=%v",
+					progress[0].CanDelete,
+					progress[0].CanRestore,
+					test.wantDelete,
+					test.wantRestore,
+				)
 			}
 		})
 	}

@@ -32,9 +32,15 @@ type Repository interface {
 	UpdateShare(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, input ShareInput, status Status, canManage bool, at time.Time) error
 	DecideShare(ctx context.Context, studyGroupID, groupID, shareID, reviewerID uint64, decision Status, at time.Time) error
 	SetSharePinned(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, pinned bool, at time.Time) error
+	ListDeletedShares(ctx context.Context, studyGroupID, groupID, actorID uint64, canManage bool, limit int) ([]Share, error)
+	DeleteShare(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, canManage bool, at time.Time) error
+	RestoreShare(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, canManage bool, at time.Time) error
 
 	ListProgress(ctx context.Context, studyGroupID, groupID uint64, limit int) ([]Progress, error)
 	CreateProgress(ctx context.Context, studyGroupID, groupID, authorID uint64, input ProgressInput, at time.Time) (uint64, error)
+	ListDeletedProgress(ctx context.Context, studyGroupID, groupID, actorID uint64, canManage bool, limit int) ([]Progress, error)
+	DeleteProgress(ctx context.Context, studyGroupID, groupID, progressID, actorID uint64, canManage bool, at time.Time) error
+	RestoreProgress(ctx context.Context, studyGroupID, groupID, progressID, actorID uint64, canManage bool, at time.Time) error
 
 	AttendanceSettings(ctx context.Context, studyGroupID, groupID uint64) ([]int, []string, error)
 	AttendanceGroupCode(ctx context.Context, studyGroupID, groupID uint64) (string, error)

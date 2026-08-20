@@ -60,11 +60,14 @@ type ShareVO struct {
 	Status      Status     `json:"status"`
 	IsPinned    bool       `json:"is_pinned"`
 	CanEdit     bool       `json:"can_edit"`
+	CanDelete   bool       `json:"can_delete"`
+	CanRestore  bool       `json:"can_restore"`
 	CanReview   bool       `json:"can_review"`
 	CanPin      bool       `json:"can_pin"`
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
 type AttachmentVO struct {
@@ -84,13 +87,18 @@ type ProgressVO struct {
 	Content     string         `json:"content_markdown"`
 	Attachments []AttachmentVO `json:"attachments"`
 	CreatedAt   time.Time      `json:"created_at"`
+	CanDelete   bool           `json:"can_delete"`
+	CanRestore  bool           `json:"can_restore"`
+	DeletedAt   *time.Time     `json:"deleted_at,omitempty"`
 }
 
 type GroupDetail struct {
-	Group    GroupSummary `json:"group"`
-	Members  []MemberVO   `json:"members"`
-	Shares   []ShareVO    `json:"shares"`
-	Progress []ProgressVO `json:"progress"`
+	Group           GroupSummary `json:"group"`
+	Members         []MemberVO   `json:"members"`
+	Shares          []ShareVO    `json:"shares"`
+	Progress        []ProgressVO `json:"progress"`
+	DeletedShares   []ShareVO    `json:"deleted_shares"`
+	DeletedProgress []ProgressVO `json:"deleted_progress"`
 }
 
 type AttendanceSettingsInput struct {

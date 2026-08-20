@@ -15,12 +15,14 @@ import {
   LogOut,
   Paperclip,
   Pin,
+  RotateCcw,
   Send,
   Settings,
   ShieldCheck,
   Upload,
   UserPlus,
   Users,
+  Trash2,
   X,
 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
@@ -66,6 +68,9 @@ const showAvailableGroupList = computed(() => !joinedGroups.value.length || show
 const selectedRequests = computed(() => requests.value.filter((request) => Number(request.group_id) === Number(selectedGroupID.value)));
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length);
 const canContribute = computed(() => Boolean(detail.value?.group?.joined || detail.value?.group?.can_manage));
+const deletedContentCount = computed(() => (
+  (detail.value?.deleted_shares?.length || 0) + (detail.value?.deleted_progress?.length || 0)
+));
 const progressAttachments = computed(() => {
   const assets = (detail.value?.progress || []).flatMap((item) => item.attachments || []);
   return [...new Map(assets.map((asset) => [attachmentKey(asset), asset])).values()];
@@ -283,6 +288,45 @@ async function setSharePinned(share, pinned) {
     });
     showToast(pinned ? '分享已置顶' : '已取消置顶');
     await selectGroup(group.id);
+  });
+}
+
+async function deleteShare(share) {
+  const group = detail.value?.group;
+  if (!group || !window.confirm(`确认删除分享“${share.title}”？删除后可在回收站恢复。`)) return;
+  await runMutation(async () => {
+    await api(`/ministry-groups/${group.id}/shares/${share.id}`, { method: 'DELETE' });
+    if (Number(shareID.value) === Number(share.id)) resetShareForm();
+    showToast('分享已移至回收站');
+    await selectGroup(group.id);
+    activeView.value = 'shares';
+  });
+}
+
+async function deleteProgress(item) {
+  const group = detail.value?.group;
+  if (!group || !window.confirm('确认删除这条进展？正文和附件关联会保留，可在回收站恢复。')) return;
+  await runMutation(async () => {
+    await api(`/ministry-groups/${group.id}/progress/${item.id}`, { method: 'DELETE' });
+    showToast('进展已移至回收站');
+    await selectGroup(group.id);
+    activeView.value = 'progress';
+  });
+}
+
+async function restoreContent(kind, item) {
+  const group = detail.value?.group;
+  if (!group) return;
+  const label = kind === 'share' ? '分享' : '进展';
+  if (!window.confirm(`确认恢复这条${label}？`)) return;
+  await runMutation(async () => {
+    const path = kind === 'share'
+      ? `/ministry-groups/${group.id}/shares/${item.id}/restore`
+      : `/ministry-groups/${group.id}/progress/${item.id}/restore`;
+    await api(path, { method: 'POST' });
+    showToast(`${label}已恢复`);
+    await selectGroup(group.id);
+    activeView.value = kind === 'share' ? 'shares' : 'progress';
   });
 }
 
@@ -687,6 +731,15 @@ function localDateTimeValue() {
               <button :class="{ active: activeView === 'shares' }" type="button" @click="activeView = 'shares'"><BookOpen :size="16" />分享</button>
               <button :class="{ active: activeView === 'progress' }" type="button" @click="activeView = 'progress'"><Activity :size="16" />进展</button>
               <button
+                v-if="canContribute || deletedContentCount"
+                :class="{ active: activeView === 'trash' }"
+                type="button"
+                @click="activeView = 'trash'"
+              >
+                <Trash2 :size="16" />回收站
+                <span v-if="deletedContentCount" class="tab-count">{{ deletedContentCount }}</span>
+              </button>
+              <button
                 v-if="detail.group.code === 'counting' && (detail.group.joined || detail.group.can_manage)"
                 :class="{ active: activeView === 'attendance' }"
                 type="button"
@@ -772,7 +825,7 @@ function localDateTimeValue() {
                   </header>
                   <p v-if="!feedExpanded('share', share.id)" class="ministry-feed-summary">{{ feedPreview(share.body_markdown, 120) }}</p>
                   <div v-else class="ministry-markdown" v-html="markdownToSafeHTML(share.body_markdown)"></div>
-                  <footer v-if="feedExpandable(share.body_markdown, 120) || share.can_edit || share.can_review || share.can_pin" class="inline-actions ministry-compact-actions">
+                  <footer v-if="feedExpandable(share.body_markdown, 120) || share.can_edit || share.can_delete || share.can_review || share.can_pin" class="inline-actions ministry-compact-actions">
                     <button
                       v-if="feedExpandable(share.body_markdown, 120)"
                       class="ghost ministry-compact-toggle"
@@ -792,6 +845,15 @@ function localDateTimeValue() {
                       <Pin :size="15" />{{ share.is_pinned ? '取消置顶' : '置顶' }}
                     </button>
                     <button v-if="share.can_edit" class="secondary" type="button" @click="editShare(share)">修改</button>
+                    <button
+                      v-if="share.can_delete"
+                      class="danger icon-text-button"
+                      type="button"
+                      :disabled="saving"
+                      @click="deleteShare(share)"
+                    >
+                      <Trash2 :size="15" />删除
+                    </button>
                     <button v-if="share.can_review" class="ok icon-text-button" type="button" @click="decideShare(share, 'published')"><Check :size="15" />通过</button>
                     <button v-if="share.can_review" class="danger icon-text-button" type="button" @click="decideShare(share, 'rejected')"><X :size="15" />拒绝</button>
                   </footer>
@@ -902,7 +964,7 @@ function localDateTimeValue() {
                       </button>
                     </div>
                   </div>
-                  <footer v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length" class="inline-actions ministry-compact-actions">
+                  <footer v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length || item.can_delete" class="inline-actions ministry-compact-actions">
                     <button
                       class="ghost ministry-compact-toggle"
                       type="button"
@@ -911,9 +973,67 @@ function localDateTimeValue() {
                     >
                       {{ feedToggleLabel('progress', item.id, item.attachments.length) }}
                     </button>
+                    <button
+                      v-if="item.can_delete"
+                      class="danger icon-text-button"
+                      type="button"
+                      :disabled="saving"
+                      @click="deleteProgress(item)"
+                    >
+                      <Trash2 :size="15" />删除
+                    </button>
                   </footer>
                 </article>
                 <div v-if="!detail.progress.length" class="empty">暂无进展记录</div>
+              </div>
+            </section>
+
+            <section v-else-if="activeView === 'trash'" class="ministry-view">
+              <div class="ministry-view-head">
+                <div>
+                  <h3>回收站</h3>
+                  <p class="muted">删除不会移除正文或附件，恢复后将回到原列表。</p>
+                </div>
+                <span class="ministry-count">{{ deletedContentCount }} 条</span>
+              </div>
+
+              <div class="ministry-trash-list">
+                <article v-for="share in detail.deleted_shares || []" :key="`share-${share.id}`" class="ministry-trash-item">
+                  <div class="ministry-trash-type"><BookOpen :size="16" />分享</div>
+                  <div class="ministry-trash-copy">
+                    <b>{{ share.title }}</b>
+                    <small>{{ share.author_name }} · 删除于 {{ formatDate(share.deleted_at) }}</small>
+                    <p>{{ feedPreview(share.body_markdown, 100) }}</p>
+                  </div>
+                  <button
+                    v-if="share.can_restore"
+                    class="secondary icon-text-button"
+                    type="button"
+                    :disabled="saving"
+                    @click="restoreContent('share', share)"
+                  >
+                    <RotateCcw :size="15" />恢复
+                  </button>
+                </article>
+
+                <article v-for="item in detail.deleted_progress || []" :key="`progress-${item.id}`" class="ministry-trash-item">
+                  <div class="ministry-trash-type"><Activity :size="16" />进展</div>
+                  <div class="ministry-trash-copy">
+                    <b>{{ item.author_name }} · {{ formatDate(item.occurred_at) }}</b>
+                    <small>删除于 {{ formatDate(item.deleted_at) }} · 保留 {{ item.attachments.length }} 个附件</small>
+                    <p>{{ feedPreview(item.content_markdown, 100) }}</p>
+                  </div>
+                  <button
+                    v-if="item.can_restore"
+                    class="secondary icon-text-button"
+                    type="button"
+                    :disabled="saving"
+                    @click="restoreContent('progress', item)"
+                  >
+                    <RotateCcw :size="15" />恢复
+                  </button>
+                </article>
+                <div v-if="!deletedContentCount" class="empty">回收站为空</div>
               </div>
             </section>
 

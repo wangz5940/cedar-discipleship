@@ -107,6 +107,8 @@ type Share struct {
 	PublishedAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	DeletedBy   uint64
+	DeletedAt   *time.Time
 }
 
 type Attachment struct {
@@ -126,4 +128,6 @@ type Progress struct {
 	Content     string
 	Attachments []Attachment
 	CreatedAt   time.Time
+	DeletedBy   uint64
+	DeletedAt   *time.Time
 }

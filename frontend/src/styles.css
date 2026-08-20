@@ -7175,3 +7175,64 @@ button.ministry-join-button {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.ministry-trash-list {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.ministry-trash-item {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ministry-trash-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ministry-trash-copy {
+  min-width: 0;
+}
+
+.ministry-trash-copy b,
+.ministry-trash-copy small {
+  display: block;
+}
+
+.ministry-trash-copy b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ministry-trash-copy small {
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.ministry-trash-copy p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .ministry-trash-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .ministry-trash-type {
+    grid-column: 1 / -1;
+  }
+}

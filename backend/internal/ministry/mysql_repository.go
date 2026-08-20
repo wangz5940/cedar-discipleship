@@ -907,6 +907,10 @@ func (r *MySQLRepository) ListShares(
 		     ON pin.share_id=s.id AND pin.study_group_id=s.study_group_id
 		  WHERE s.study_group_id=? AND s.ministry_group_id=?
 		    AND (s.status='published' OR s.author_user_id=? OR ?)
+		    AND NOT EXISTS (
+		      SELECT 1 FROM ministry_content_deletions d
+		       WHERE d.content_type='share' AND d.content_id=s.id AND d.restored_at IS NULL
+		    )
 		  ORDER BY CASE WHEN s.status='published' THEN 0 ELSE 1 END,
 		           CASE WHEN pin.share_id IS NULL THEN 1 ELSE 0 END,
 		           COALESCE(s.published_at,s.updated_at) DESC,s.id DESC`,
@@ -947,6 +951,76 @@ func (r *MySQLRepository) ListShares(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating ministry shares: %w", err)
+	}
+	return items, nil
+}
+
+func (r *MySQLRepository) ListDeletedShares(
+	ctx context.Context,
+	studyGroupID, groupID, actorID uint64,
+	canManage bool,
+	limit int,
+) ([]Share, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(
+		ctx,
+		`SELECT s.id,s.ministry_group_id,s.author_user_id,u.display_name,
+		        s.title,s.body_markdown,s.status,CASE WHEN pin.share_id IS NULL THEN 0 ELSE 1 END,
+		        COALESCE(s.reviewed_by,0),s.published_at,s.created_at,s.updated_at,
+		        d.deleted_by,d.deleted_at
+		   FROM ministry_shares s
+		   JOIN users u ON u.id=s.author_user_id
+		   JOIN ministry_content_deletions d
+		     ON d.content_type='share' AND d.content_id=s.id AND d.restored_at IS NULL
+		   LEFT JOIN ministry_share_pins pin
+		     ON pin.share_id=s.id AND pin.study_group_id=s.study_group_id
+		  WHERE s.study_group_id=? AND s.ministry_group_id=?
+		    AND (s.author_user_id=? OR ?)
+		  ORDER BY d.deleted_at DESC,s.id DESC LIMIT ?`,
+		studyGroupID,
+		groupID,
+		actorID,
+		canManage,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing deleted ministry shares: %w", err)
+	}
+	defer rows.Close()
+
+	items := []Share{}
+	for rows.Next() {
+		var item Share
+		var publishedAt sql.NullTime
+		var deletedAt time.Time
+		if err := rows.Scan(
+			&item.ID,
+			&item.GroupID,
+			&item.AuthorID,
+			&item.AuthorName,
+			&item.Title,
+			&item.Body,
+			&item.Status,
+			&item.IsPinned,
+			&item.ReviewedBy,
+			&publishedAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+			&item.DeletedBy,
+			&deletedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning deleted ministry share: %w", err)
+		}
+		if publishedAt.Valid {
+			item.PublishedAt = &publishedAt.Time
+		}
+		item.DeletedAt = &deletedAt
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating deleted ministry shares: %w", err)
 	}
 	return items, nil
 }
@@ -1019,6 +1093,10 @@ func (r *MySQLRepository) UpdateShare(
 		    SET title=?,body_markdown=?,status=?,reviewed_by=NULL,reviewed_at=NULL,
 		        published_at=?,updated_at=?
 		  WHERE id=? AND study_group_id=? AND ministry_group_id=?
+		    AND NOT EXISTS (
+		      SELECT 1 FROM ministry_content_deletions d
+		       WHERE d.content_type='share' AND d.content_id=ministry_shares.id AND d.restored_at IS NULL
+		    )
 		    AND (author_user_id=? OR ?)`,
 		input.Title,
 		input.Body,
@@ -1071,7 +1149,12 @@ func (r *MySQLRepository) DecideShare(
 		ctx,
 		`SELECT ministry_group_id,author_user_id,title,status
 		   FROM ministry_shares
-		  WHERE id=? AND study_group_id=? AND ministry_group_id=? FOR UPDATE`,
+		  WHERE id=? AND study_group_id=? AND ministry_group_id=?
+		    AND NOT EXISTS (
+		      SELECT 1 FROM ministry_content_deletions d
+		       WHERE d.content_type='share' AND d.content_id=ministry_shares.id AND d.restored_at IS NULL
+		    )
+		  FOR UPDATE`,
 		shareID,
 		studyGroupID,
 		groupID,
@@ -1132,6 +1215,70 @@ func (r *MySQLRepository) DecideShare(
 	return nil
 }
 
+func (r *MySQLRepository) DeleteShare(
+	ctx context.Context,
+	studyGroupID, groupID, shareID, actorID uint64,
+	canManage bool,
+	at time.Time,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO ministry_content_deletions
+			(content_type,content_id,study_group_id,ministry_group_id,deleted_by,deleted_at,restored_by,restored_at)
+		 SELECT 'share',id,study_group_id,ministry_group_id,?,?,NULL,NULL
+		   FROM ministry_shares
+		  WHERE id=? AND study_group_id=? AND ministry_group_id=?
+		    AND (author_user_id=? OR ?)
+		 ON DUPLICATE KEY UPDATE
+		    study_group_id=VALUES(study_group_id),
+		    ministry_group_id=VALUES(ministry_group_id),
+		    deleted_by=VALUES(deleted_by),
+		    deleted_at=VALUES(deleted_at),
+		    restored_by=NULL,
+		    restored_at=NULL`,
+		actorID,
+		at,
+		shareID,
+		studyGroupID,
+		groupID,
+		actorID,
+		canManage,
+	)
+	if err != nil {
+		return fmt.Errorf("deleting ministry share: %w", err)
+	}
+	return requireAtLeastOneRow(result, ErrShareNotFound)
+}
+
+func (r *MySQLRepository) RestoreShare(
+	ctx context.Context,
+	studyGroupID, groupID, shareID, actorID uint64,
+	canManage bool,
+	at time.Time,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE ministry_content_deletions d
+		   JOIN ministry_shares s
+		     ON s.id=d.content_id AND d.content_type='share'
+		    SET d.restored_by=?,d.restored_at=?
+		  WHERE d.content_id=? AND d.study_group_id=? AND d.ministry_group_id=?
+		    AND d.restored_at IS NULL
+		    AND (s.author_user_id=? OR ?)`,
+		actorID,
+		at,
+		shareID,
+		studyGroupID,
+		groupID,
+		actorID,
+		canManage,
+	)
+	if err != nil {
+		return fmt.Errorf("restoring ministry share: %w", err)
+	}
+	return requireOneRow(result, ErrShareNotFound)
+}
+
 func (r *MySQLRepository) ListProgress(
 	ctx context.Context,
 	studyGroupID, groupID uint64,
@@ -1147,6 +1294,10 @@ func (r *MySQLRepository) ListProgress(
 		   FROM ministry_progress p
 		   JOIN users u ON u.id=p.author_user_id
 		  WHERE p.study_group_id=? AND p.ministry_group_id=?
+		    AND NOT EXISTS (
+		      SELECT 1 FROM ministry_content_deletions d
+		       WHERE d.content_type='progress' AND d.content_id=p.id AND d.restored_at IS NULL
+		    )
 		  ORDER BY p.occurred_at DESC,p.id DESC LIMIT ?`,
 		studyGroupID,
 		groupID,
@@ -1158,7 +1309,6 @@ func (r *MySQLRepository) ListProgress(
 	defer rows.Close()
 
 	items := []Progress{}
-	byID := map[uint64]int{}
 	for rows.Next() {
 		var item Progress
 		item.Attachments = []Attachment{}
@@ -1173,14 +1323,83 @@ func (r *MySQLRepository) ListProgress(
 		); err != nil {
 			return nil, fmt.Errorf("scanning ministry progress: %w", err)
 		}
-		byID[item.ID] = len(items)
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating ministry progress: %w", err)
 	}
+	return r.loadProgressAttachments(ctx, studyGroupID, groupID, items)
+}
+
+func (r *MySQLRepository) ListDeletedProgress(
+	ctx context.Context,
+	studyGroupID, groupID, actorID uint64,
+	canManage bool,
+	limit int,
+) ([]Progress, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(
+		ctx,
+		`SELECT p.id,p.ministry_group_id,p.author_user_id,u.display_name,
+		        p.occurred_at,p.content_markdown,p.created_at,d.deleted_by,d.deleted_at
+		   FROM ministry_progress p
+		   JOIN users u ON u.id=p.author_user_id
+		   JOIN ministry_content_deletions d
+		     ON d.content_type='progress' AND d.content_id=p.id AND d.restored_at IS NULL
+		  WHERE p.study_group_id=? AND p.ministry_group_id=?
+		    AND (p.author_user_id=? OR ?)
+		  ORDER BY d.deleted_at DESC,p.id DESC LIMIT ?`,
+		studyGroupID,
+		groupID,
+		actorID,
+		canManage,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing deleted ministry progress: %w", err)
+	}
+	defer rows.Close()
+
+	items := []Progress{}
+	for rows.Next() {
+		var item Progress
+		var deletedAt time.Time
+		item.Attachments = []Attachment{}
+		if err := rows.Scan(
+			&item.ID,
+			&item.GroupID,
+			&item.AuthorID,
+			&item.AuthorName,
+			&item.OccurredAt,
+			&item.Content,
+			&item.CreatedAt,
+			&item.DeletedBy,
+			&deletedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning deleted ministry progress: %w", err)
+		}
+		item.DeletedAt = &deletedAt
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating deleted ministry progress: %w", err)
+	}
+	return r.loadProgressAttachments(ctx, studyGroupID, groupID, items)
+}
+
+func (r *MySQLRepository) loadProgressAttachments(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	items []Progress,
+) ([]Progress, error) {
 	if len(items) == 0 {
 		return items, nil
+	}
+	byID := make(map[uint64]int, len(items))
+	for index := range items {
+		byID[items[index].ID] = index
 	}
 
 	assetRows, err := r.db.QueryContext(
@@ -1224,6 +1443,70 @@ func (r *MySQLRepository) ListProgress(
 	return items, nil
 }
 
+func (r *MySQLRepository) DeleteProgress(
+	ctx context.Context,
+	studyGroupID, groupID, progressID, actorID uint64,
+	canManage bool,
+	at time.Time,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO ministry_content_deletions
+			(content_type,content_id,study_group_id,ministry_group_id,deleted_by,deleted_at,restored_by,restored_at)
+		 SELECT 'progress',id,study_group_id,ministry_group_id,?,?,NULL,NULL
+		   FROM ministry_progress
+		  WHERE id=? AND study_group_id=? AND ministry_group_id=?
+		    AND (author_user_id=? OR ?)
+		 ON DUPLICATE KEY UPDATE
+		    study_group_id=VALUES(study_group_id),
+		    ministry_group_id=VALUES(ministry_group_id),
+		    deleted_by=VALUES(deleted_by),
+		    deleted_at=VALUES(deleted_at),
+		    restored_by=NULL,
+		    restored_at=NULL`,
+		actorID,
+		at,
+		progressID,
+		studyGroupID,
+		groupID,
+		actorID,
+		canManage,
+	)
+	if err != nil {
+		return fmt.Errorf("deleting ministry progress: %w", err)
+	}
+	return requireAtLeastOneRow(result, ErrProgressNotFound)
+}
+
+func (r *MySQLRepository) RestoreProgress(
+	ctx context.Context,
+	studyGroupID, groupID, progressID, actorID uint64,
+	canManage bool,
+	at time.Time,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE ministry_content_deletions d
+		   JOIN ministry_progress p
+		     ON p.id=d.content_id AND d.content_type='progress'
+		    SET d.restored_by=?,d.restored_at=?
+		  WHERE d.content_id=? AND d.study_group_id=? AND d.ministry_group_id=?
+		    AND d.restored_at IS NULL
+		    AND (p.author_user_id=? OR ?)`,
+		actorID,
+		at,
+		progressID,
+		studyGroupID,
+		groupID,
+		actorID,
+		canManage,
+	)
+	if err != nil {
+		return fmt.Errorf("restoring ministry progress: %w", err)
+	}
+	return requireOneRow(result, ErrProgressNotFound)
+}
+
 func (r *MySQLRepository) SetSharePinned(
 	ctx context.Context,
 	studyGroupID, groupID, shareID, actorID uint64,
@@ -1236,7 +1519,10 @@ func (r *MySQLRepository) SetSharePinned(
 			`DELETE pin FROM ministry_share_pins pin
 			  JOIN ministry_shares share ON share.id=pin.share_id
 			   AND share.study_group_id=pin.study_group_id
-			 WHERE pin.study_group_id=? AND share.ministry_group_id=? AND pin.share_id=?`,
+			  LEFT JOIN ministry_content_deletions d
+			    ON d.content_type='share' AND d.content_id=share.id AND d.restored_at IS NULL
+			 WHERE pin.study_group_id=? AND share.ministry_group_id=? AND pin.share_id=?
+			   AND d.content_id IS NULL`,
 			studyGroupID,
 			groupID,
 			shareID,
@@ -1253,6 +1539,10 @@ func (r *MySQLRepository) SetSharePinned(
 		 SELECT study_group_id,id,?,?
 		   FROM ministry_shares
 		  WHERE id=? AND study_group_id=? AND ministry_group_id=? AND status='published'
+		    AND NOT EXISTS (
+		      SELECT 1 FROM ministry_content_deletions d
+		       WHERE d.content_type='share' AND d.content_id=ministry_shares.id AND d.restored_at IS NULL
+		    )
 		 ON DUPLICATE KEY UPDATE pinned_by=VALUES(pinned_by),pinned_at=VALUES(pinned_at)`,
 		actorID,
 		at,
