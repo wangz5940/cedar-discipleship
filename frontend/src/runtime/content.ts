@@ -22,6 +22,25 @@ export function normalizeLegacyStaticAssetURL(value: unknown): string {
   return `/${match[1].replace(/^\/+/, '')}`;
 }
 
+export type AttachmentPresentation = {
+  action: 'preview' | 'download';
+  type: 'pdf' | 'image' | 'video' | 'audio' | 'markdown' | 'download';
+};
+
+export function classifyAttachment(input: { filename?: unknown; mimeType?: unknown }): AttachmentPresentation {
+  const filename = String(input.filename || '').trim().toLowerCase();
+  const mimeType = String(input.mimeType || '').trim().toLowerCase();
+
+  if (mimeType.includes('pdf') || filename.endsWith('.pdf')) return { action: 'preview', type: 'pdf' };
+  if (mimeType.startsWith('image/') || /\.(avif|gif|jpe?g|png|svg|webp)$/.test(filename)) return { action: 'preview', type: 'image' };
+  if (mimeType.startsWith('video/') || /\.(m4v|mov|mp4|webm)$/.test(filename)) return { action: 'preview', type: 'video' };
+  if (mimeType.startsWith('audio/') || /\.(aac|flac|m4a|ma4|mp3|ogg|opus|wav|weba)$/.test(filename)) return { action: 'preview', type: 'audio' };
+  if (mimeType.includes('markdown') || mimeType.startsWith('text/') || /\.(markdown|md|txt)$/.test(filename)) {
+    return { action: 'preview', type: 'markdown' };
+  }
+  return { action: 'download', type: 'download' };
+}
+
 export function weeklyTitleFromContent(input: {
   title?: unknown;
   book_enabled?: unknown;

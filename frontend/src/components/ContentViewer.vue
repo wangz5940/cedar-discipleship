@@ -35,6 +35,7 @@ const hasRelatedSidebar = computed(() => relatedSections.value.length > 0);
 const relatedItemCount = computed(() => relatedSections.value.reduce((total, section) => total + (section.items?.length || 0), 0));
 const viewerTypeLabel = computed(() => {
   if (viewer.value?.type === 'video') return '视频资料';
+  if (viewer.value?.type === 'audio') return '音频资料';
   if (viewer.value?.type === 'markdown') return '文字材料';
   if (viewer.value?.type === 'image') return '图像资料';
   return 'PDF 资料';
@@ -210,6 +211,7 @@ function openAdjacentItem(item) {
           class="viewer-main"
           :class="{
             'viewer-main-video': viewer.type === 'video',
+            'viewer-main-audio': viewer.type === 'audio',
             'viewer-main-pdf': viewer.type === 'pdf',
           }"
         >
@@ -239,6 +241,9 @@ function openAdjacentItem(item) {
               controls
               playsinline
             ></video>
+          </div>
+          <div v-else-if="viewer.type === 'audio'" class="viewer-audio-shell">
+            <audio class="viewer-audio" :src="viewer.url" controls></audio>
           </div>
           <iframe
             v-else

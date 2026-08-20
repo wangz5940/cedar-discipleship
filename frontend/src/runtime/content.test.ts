@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyPdfPageRangeToTitle,
+  classifyAttachment,
   deepMerge,
   enabledFlag,
   extractPdfPageRange,
@@ -28,6 +29,15 @@ describe('content runtime helpers', () => {
     expect(parsePdfPageRangeParts('第 9 页')).toEqual({ pageStart: '9', pageEnd: '9' });
     expect(applyPdfPageRangeToTitle('读物 3-4页', '8', '6')).toBe('读物 8-8页');
     expect(applyPdfPageRangeToTitle('读物 3-4页', '', '')).toBe('读物');
+  });
+
+  it('classifies attachments into previewable and download-only types', () => {
+    expect(classifyAttachment({ filename: '主日信息.pdf' })).toEqual({ action: 'preview', type: 'pdf' });
+    expect(classifyAttachment({ filename: '录音.m4a' })).toEqual({ action: 'preview', type: 'audio' });
+    expect(classifyAttachment({ mimeType: 'video/mp4', filename: '现场记录' })).toEqual({ action: 'preview', type: 'video' });
+    expect(classifyAttachment({ filename: '服事安排.pptx' })).toEqual({ action: 'download', type: 'download' });
+    expect(classifyAttachment({ filename: '成员清单.xlsx' })).toEqual({ action: 'download', type: 'download' });
+    expect(classifyAttachment({ filename: '资料.unknown' })).toEqual({ action: 'download', type: 'download' });
   });
 
   it('keeps search matching and configuration merging deterministic', () => {

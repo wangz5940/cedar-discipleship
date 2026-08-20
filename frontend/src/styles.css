@@ -6649,3 +6649,47 @@ button.ministry-join-button {
     font-size: 16px;
   }
 }
+
+.viewer-main.viewer-main-audio {
+  display: grid;
+  align-content: start;
+}
+
+.viewer-audio-shell {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.viewer-audio {
+  width: 100%;
+}
+
+.ministry-file-grid button {
+  justify-content: flex-start;
+}
+
+.ministry-file-grid .ministry-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ministry-file-grid .ministry-file-action {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.ministry-file-grid .ministry-file-download {
+  background: #fffaf1;
+}

@@ -299,6 +299,20 @@ export async function downloadAdminExport(path, fallbackName, successMessage = '
   toast(successMessage);
 }
 
+export async function downloadContentTarget(target) {
+  const sourceURL = normalizeLegacyStaticAssetURL(target?.url);
+  if (!sourceURL) throw new Error('attachment_url_missing');
+  const res = await fetch(sourceURL, {
+    headers: sourceURL.startsWith('/api/') ? authHeaders() : {},
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  const fallbackName = target?.original_name || target?.filename || target?.title || 'attachment';
+  triggerDownload(await res.blob(), parseDownloadName(res, fallbackName));
+}
+
 export async function importStudyWeeksExcel(fileInput) {
   const file = fileInput?.files?.[0];
   if (!file) {
@@ -608,6 +622,7 @@ function inferResourceType(url, fallback = 'iframe') {
   if (/\.(pdf)$/.test(clean)) return 'pdf';
   if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(clean)) return 'image';
   if (/\.(mp4|webm|mov|m4v)$/.test(clean)) return 'video';
+  if (/\.(mp3|m4a|ma4|aac|ogg|opus|wav|flac|weba)$/.test(clean)) return 'audio';
   return fallback;
 }
 
@@ -617,6 +632,7 @@ function inferResourceTypeFromMime(mime, fallback = 'iframe') {
   if (clean.includes('markdown') || clean.startsWith('text/plain') || clean.startsWith('text/markdown')) return 'markdown';
   if (clean.startsWith('image/')) return 'image';
   if (clean.startsWith('video/')) return 'video';
+  if (clean.startsWith('audio/')) return 'audio';
   return fallback;
 }
 

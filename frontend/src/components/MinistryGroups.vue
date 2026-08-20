@@ -8,9 +8,9 @@ import {
   CalendarCheck,
   Check,
   ChevronRight,
+  Download,
   Eye,
   EyeOff,
-  FileText,
   LoaderCircle,
   LogOut,
   Paperclip,
@@ -24,8 +24,8 @@ import {
   X,
 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
-import { api, openContentTarget, toast as showToast } from '../legacy-app';
-import { markdownToSafeHTML } from '../runtime/content';
+import { api, downloadContentTarget, openContentTarget, toast as showToast } from '../legacy-app';
+import { classifyAttachment, markdownToSafeHTML } from '../runtime/content';
 import CountingAttendance from './CountingAttendance.vue';
 
 const app = useAppStateStore();
@@ -282,26 +282,36 @@ async function openAttachment(asset) {
     showToast('附件地址缺失');
     return;
   }
+  const presentation = attachmentPresentation(asset);
   try {
+    if (presentation.action === 'download') {
+      await downloadContentTarget({
+        url,
+        original_name: asset.original_name || asset.title || '附件',
+      });
+      showToast(`已开始下载：${asset.original_name || asset.title || '附件'}`);
+      return;
+    }
     await openContentTarget({
       title: asset.title || asset.original_name || '附件',
       original_name: asset.original_name || '',
       url,
-      type: attachmentType(asset),
+      type: presentation.type,
     });
   } catch (error) {
-    showToast(`附件打开失败：${error.message}`);
+    showToast(`${presentation.action === 'download' ? '附件下载' : '附件打开'}失败：${error.message}`);
   }
 }
 
-function attachmentType(asset) {
-  const mime = String(asset.mime_type || '').toLowerCase();
-  const name = String(asset.original_name || asset.title || asset.url || '').toLowerCase();
-  if (mime.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
-  if (mime.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/.test(name)) return 'image';
-  if (mime.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/.test(name)) return 'video';
-  if (mime.includes('markdown') || mime.startsWith('text/') || name.endsWith('.md')) return 'markdown';
-  return 'iframe';
+function attachmentPresentation(asset) {
+  return classifyAttachment({
+    filename: asset.original_name || asset.title || asset.url,
+    mimeType: asset.mime_type,
+  });
+}
+
+function attachmentActionLabel(asset) {
+  return attachmentPresentation(asset).action === 'download' ? '下载' : '预览';
 }
 
 async function uploadAttachments() {
@@ -796,11 +806,15 @@ function localDateTimeValue() {
                       v-for="asset in item.attachments"
                       :key="asset.id"
                       class="ministry-file-button"
+                      :class="{ 'ministry-file-download': attachmentPresentation(asset).action === 'download' }"
                       type="button"
+                      :title="attachmentActionLabel(asset) === '下载' ? '下载附件' : '预览附件'"
                       @click="openAttachment(asset)"
                     >
-                      <FileText :size="18" />
-                      <span>{{ asset.original_name }}</span>
+                      <Download v-if="attachmentPresentation(asset).action === 'download'" :size="18" />
+                      <Eye v-else :size="18" />
+                      <span class="ministry-file-name">{{ asset.original_name }}</span>
+                      <span class="ministry-file-action">{{ attachmentActionLabel(asset) }}</span>
                     </button>
                   </div>
                   <footer v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length" class="inline-actions ministry-compact-actions">
