@@ -80,7 +80,6 @@ type TodayRecord struct {
 type TodayVO struct {
 	Date        string         `json:"date"`
 	Title       string         `json:"title"`
-	Subtitle    string         `json:"subtitle"`
 	CurrentWeek map[string]any `json:"current_week,omitempty"`
 	Progress    TodayProgress  `json:"progress"`
 	Tasks       []TodayTaskVO  `json:"tasks"`

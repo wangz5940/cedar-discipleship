@@ -34,7 +34,7 @@ import CountingAttendance from './CountingAttendance.vue';
 
 const app = useAppStateStore();
 const downloadManager = useDownloadManagerStore();
-const { authenticated, currentGroupID, tab } = storeToRefs(app);
+const { authenticated, currentGroupID, learningConfig, tab } = storeToRefs(app);
 
 const groups = ref([]);
 const detail = ref(null);
@@ -68,6 +68,7 @@ const showAvailableGroupList = computed(() => !joinedGroups.value.length || show
 const selectedRequests = computed(() => requests.value.filter((request) => Number(request.group_id) === Number(selectedGroupID.value)));
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length);
 const canContribute = computed(() => Boolean(detail.value?.group?.joined || detail.value?.group?.can_manage));
+const showRecycleBin = computed(() => learningConfig.value?.ministry?.show_recycle_bin === true);
 const deletedContentCount = computed(() => (
   (detail.value?.deleted_shares?.length || 0) + (detail.value?.deleted_progress?.length || 0)
 ));
@@ -85,6 +86,10 @@ watch(
   },
   { immediate: true },
 );
+
+watch(showRecycleBin, (isVisible) => {
+  if (!isVisible && activeView.value === 'trash') activeView.value = 'members';
+});
 
 async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
   loading.value = true;
@@ -293,11 +298,11 @@ async function setSharePinned(share, pinned) {
 
 async function deleteShare(share) {
   const group = detail.value?.group;
-  if (!group || !window.confirm(`确认删除分享“${share.title}”？删除后可在回收站恢复。`)) return;
+  if (!group || !window.confirm(`确认删除分享“${share.title}”？`)) return;
   await runMutation(async () => {
     await api(`/ministry-groups/${group.id}/shares/${share.id}`, { method: 'DELETE' });
     if (Number(shareID.value) === Number(share.id)) resetShareForm();
-    showToast('分享已移至回收站');
+    showToast('分享已删除');
     await selectGroup(group.id);
     activeView.value = 'shares';
   });
@@ -305,10 +310,10 @@ async function deleteShare(share) {
 
 async function deleteProgress(item) {
   const group = detail.value?.group;
-  if (!group || !window.confirm('确认删除这条进展？正文和附件关联会保留，可在回收站恢复。')) return;
+  if (!group || !window.confirm('确认删除这条进展？')) return;
   await runMutation(async () => {
     await api(`/ministry-groups/${group.id}/progress/${item.id}`, { method: 'DELETE' });
-    showToast('进展已移至回收站');
+    showToast('进展已删除');
     await selectGroup(group.id);
     activeView.value = 'progress';
   });
@@ -573,7 +578,6 @@ function localDateTimeValue() {
         <div>
           <div class="eyebrow">专项协作</div>
           <h2>小组与服事进展</h2>
-          <p class="muted">成员 · 分享 · 进展</p>
         </div>
         <div class="ministry-header-actions">
           <span class="ministry-count"><Users :size="17" /> 已加入 {{ joinedGroups.length }} 组</span>
@@ -731,7 +735,7 @@ function localDateTimeValue() {
               <button :class="{ active: activeView === 'shares' }" type="button" @click="activeView = 'shares'"><BookOpen :size="16" />分享</button>
               <button :class="{ active: activeView === 'progress' }" type="button" @click="activeView = 'progress'"><Activity :size="16" />进展</button>
               <button
-                v-if="canContribute || deletedContentCount"
+                v-if="showRecycleBin && (canContribute || deletedContentCount)"
                 :class="{ active: activeView === 'trash' }"
                 type="button"
                 @click="activeView = 'trash'"
@@ -988,12 +992,9 @@ function localDateTimeValue() {
               </div>
             </section>
 
-            <section v-else-if="activeView === 'trash'" class="ministry-view">
+            <section v-else-if="showRecycleBin && activeView === 'trash'" class="ministry-view">
               <div class="ministry-view-head">
-                <div>
-                  <h3>回收站</h3>
-                  <p class="muted">删除不会移除正文或附件，恢复后将回到原列表。</p>
-                </div>
+                <h3>回收站</h3>
                 <span class="ministry-count">{{ deletedContentCount }} 条</span>
               </div>
 

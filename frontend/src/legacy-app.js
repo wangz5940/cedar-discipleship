@@ -138,7 +138,6 @@ function checkinSnapshot() {
     maxDate: todayString(),
     selectedDateLabel: selectedDateDisplay(),
     title: state.todayHub?.title || (isTodaySelected() ? '今日学习' : '学习回顾'),
-    weekText: state.todayHub?.subtitle || (state.bootstrap?.current_week ? `${state.bootstrap.current_week.start} - ${state.bootstrap.current_week.end}` : '当前日期暂无周计划，仍可完成每日灵修。'),
     completed,
     total,
     isToday: isTodaySelected(),
@@ -208,7 +207,6 @@ function dashboardSnapshot() {
     maxDate: todayString(),
     isToday: isTodaySelected(),
     groupName: state.user?.study_groups?.find((item) => item.id === state.user?.current_group_id)?.name || '当前小组',
-    weekText: state.bootstrap?.current_week ? `${state.bootstrap.current_week.start} - ${state.bootstrap.current_week.end}` : '当前日期暂无周计划。',
     overallPercent,
     doneSlots,
     totalSlots,
@@ -1670,17 +1668,20 @@ export function updateLearningValue(path, value) {
   render();
 }
 
-export async function saveLearningConfig() {
+export async function saveLearningConfig(successMessage = '学习内容配置已保存') {
+  const message = typeof successMessage === 'string' ? successMessage : '学习内容配置已保存';
   try {
     const result = await api('/admin/learning-config', {
       method: 'PUT',
       body: JSON.stringify(state.learningConfig || currentLearningSettings()),
     });
     state.learningConfig = result.settings || state.learningConfig;
-    toast('学习内容配置已保存');
+    toast(message);
     await loadAll();
+    return true;
   } catch (error) {
     toast(error.message);
+    return false;
   }
 }
 

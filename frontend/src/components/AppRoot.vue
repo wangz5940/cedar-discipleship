@@ -413,18 +413,16 @@ async function selectCalendarDate(day) {
       <div class="brand-mark">知</div>
       <div class="eyebrow">Cedar Discipleship</div>
       <h1>继续今天的学习</h1>
-      <p>在一个安静、清晰的空间里，完成每日学习，回顾小组进度。</p>
       <div class="form-stack">
         <label class="auth-field">
           <span>账号</span>
-          <input v-model="loginUsername" autocomplete="username" placeholder="例如 zhangjiale" @keydown.enter="submitLogin" />
+          <input v-model="loginUsername" autocomplete="username" @keydown.enter="submitLogin" />
         </label>
         <label class="auth-field">
           <span>密码</span>
-          <input v-model="loginPassword" autocomplete="current-password" placeholder="请输入密码" type="password" @keydown.enter="submitLogin" />
+          <input v-model="loginPassword" autocomplete="current-password" type="password" @keydown.enter="submitLogin" />
         </label>
         <button type="button" @click="submitLogin">登录</button>
-        <p class="muted">没有公开注册入口，请联系组长或超级管理员创建账号。</p>
       </div>
     </div>
   </div>
@@ -530,7 +528,6 @@ async function selectCalendarDate(day) {
               <div class="resource-library-copy">
                 <div class="eyebrow">学习资料</div>
                 <h3>当前小组资料库</h3>
-                <p>读物、讲义和视频统一收进一处，按资料卡片直接进入阅读或播放。</p>
               </div>
               <div class="resource-library-stats">
                 <div class="resource-library-stat">
@@ -609,7 +606,6 @@ async function selectCalendarDate(day) {
                   <p class="muted">{{ asset.original_name }}</p>
                   <div class="resource-browser-footnotes">
                     <span>来源：{{ asset.source === 'static' ? '内置资料' : '资源库归档' }}</span>
-                    <span>建议：直接打开阅读</span>
                   </div>
                   <div class="resource-browser-actions">
                     <button class="secondary" type="button" @click="openAsset(asset)">打开</button>
@@ -676,7 +672,6 @@ async function selectCalendarDate(day) {
                   </div>
                 </div>
                 <div v-if="currentGroupID">
-                  <p class="muted admin-hint">组长可以将普通成员设为本组管理员，也可以将普通成员从当前小组移除。</p>
                   <div class="member-list admin-member-list">
                     <div v-for="member in members" :key="member.member_id" class="member-card admin-member-card">
                       <div class="member-main">
@@ -869,7 +864,6 @@ async function selectCalendarDate(day) {
               <div class="grid cols-2 admin-grid">
                 <div class="card">
                   <h2>数据导出</h2>
-                  <p class="muted">导出当前小组的打卡、汇总、任务、反馈和本地备份文件。</p>
                   <div class="action-grid">
                     <button type="button" @click="runAdminExport('/admin/exports/checkins-detail', 'checkins-detail.csv', '打卡明细 CSV 已开始下载')">导出打卡明细 CSV</button>
                     <button type="button" @click="runAdminExport('/admin/exports/daily-summary', 'daily-summary.csv', '每日汇总 CSV 已开始下载')">导出每日汇总 CSV</button>

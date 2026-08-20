@@ -21,7 +21,6 @@ const {
   maxDate,
   isToday,
   groupName,
-  weekText,
   overallPercent,
   doneSlots,
   totalSlots,
@@ -286,7 +285,6 @@ async function exportRankingChart() {
         <div class="today-copy">
           <div class="eyebrow">{{ groupName }}</div>
           <h2>小组打卡情况与统计</h2>
-          <p>{{ weekText }}</p>
           <div class="today-meta-pills">
             <span class="pill">{{ memberCount }} 位成员</span>
             <span class="pill">{{ doneSlots }}/{{ totalSlots }} 已完成</span>
@@ -384,7 +382,6 @@ async function exportRankingChart() {
           <div>
             <div class="eyebrow">月度统计</div>
             <h2>香柏木数据统计中心</h2>
-            <p class="muted">{{ monthLabel }}分项总榜按灵修、书籍、视频、背大纲累计打卡次数排序。</p>
           </div>
           <div class="stats-center-tags">
             <button class="secondary" type="button" @click="exportRankingChart">导出柱状图 PNG</button>

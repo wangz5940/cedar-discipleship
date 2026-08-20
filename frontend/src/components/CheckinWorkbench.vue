@@ -10,7 +10,6 @@ const {
   maxDate,
   selectedDateLabel,
   title,
-  weekText,
   completed,
   total,
   isToday,
@@ -45,7 +44,6 @@ function taskSubtitle(task) {
         <div class="today-copy">
           <div class="eyebrow">{{ selectedDateLabel }}</div>
           <h2>{{ title }}</h2>
-          <p>{{ weekText }}</p>
           <div class="today-meta-pills">
             <span class="pill">{{ total }} 项学习</span>
             <span class="pill">{{ isToday ? '今日视图' : '回顾视图' }}</span>

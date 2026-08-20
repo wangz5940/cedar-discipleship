@@ -1,18 +1,24 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { Plus, Save, Trash2 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
-import { api, toast as showToast } from '../legacy-app';
+import {
+  api,
+  saveLearningConfig,
+  toast as showToast,
+  updateLearningValue,
+} from '../legacy-app';
 
 const app = useAppStateStore();
-const { currentGroupID } = storeToRefs(app);
+const { currentGroupID, learningConfig } = storeToRefs(app);
 
 const groups = ref([]);
 const drafts = ref({});
 const newGroupName = ref('');
 const loading = ref(false);
 const saving = ref(false);
+const showRecycleBin = computed(() => learningConfig.value?.ministry?.show_recycle_bin === true);
 
 watch(currentGroupID, loadGroups, { immediate: true });
 
@@ -76,6 +82,18 @@ async function deleteGroup(group) {
   });
 }
 
+async function setRecycleBinVisible(event) {
+  const previousValue = showRecycleBin.value;
+  saving.value = true;
+  try {
+    updateLearningValue(['ministry', 'show_recycle_bin'], event.target.checked);
+    const saved = await saveLearningConfig('回收站显示设置已保存');
+    if (!saved) updateLearningValue(['ministry', 'show_recycle_bin'], previousValue);
+  } finally {
+    saving.value = false;
+  }
+}
+
 async function mutate(action) {
   saving.value = true;
   try {
@@ -93,7 +111,6 @@ async function mutate(action) {
     <div class="section-title">
       <div>
         <h2>专项小组管理</h2>
-        <p class="muted">维护当前学习小组可使用的专项小组目录</p>
       </div>
     </div>
 
@@ -104,7 +121,18 @@ async function mutate(action) {
           <h2>专项小组目录</h2>
           <p class="muted">新增、修改名称或停用不再使用的专项小组</p>
         </div>
-        <span class="pill">{{ groups.length }} 组</span>
+        <div class="inline-actions">
+          <label class="admin-toggle">
+            <input
+              type="checkbox"
+              :checked="showRecycleBin"
+              :disabled="saving"
+              @change="setRecycleBinVisible"
+            />
+            <span>显示回收站</span>
+          </label>
+          <span class="pill">{{ groups.length }} 组</span>
+        </div>
       </div>
 
       <div class="ministry-catalog-create">

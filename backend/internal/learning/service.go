@@ -149,15 +149,9 @@ func (s *Service) TodayHub(ctx context.Context, groupID, userID uint64, date str
 	if date != now.Format("2006-01-02") {
 		title = "学习回顾"
 	}
-	subtitle := "打开内容完成学习，系统会记录到你的今日进度。"
-	if week != nil {
-		subtitle = fmt.Sprintf("%s - %s · %s", asString(week["start"]), asString(week["end"]), firstNonEmpty(asString(week["title"]), "本周学习计划"))
-	}
-
 	return TodayVO{
 		Date:        date,
 		Title:       title,
-		Subtitle:    subtitle,
 		CurrentWeek: week,
 		Progress:    TodayProgress{Completed: completed, Total: total, Percent: percent},
 		Tasks:       tasks,
