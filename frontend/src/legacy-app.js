@@ -299,20 +299,6 @@ export async function downloadAdminExport(path, fallbackName, successMessage = '
   toast(successMessage);
 }
 
-export async function downloadContentTarget(target) {
-  const sourceURL = normalizeLegacyStaticAssetURL(target?.url);
-  if (!sourceURL) throw new Error('attachment_url_missing');
-  const res = await fetch(sourceURL, {
-    headers: sourceURL.startsWith('/api/') ? authHeaders() : {},
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-  const fallbackName = target?.original_name || target?.filename || target?.title || 'attachment';
-  triggerDownload(await res.blob(), parseDownloadName(res, fallbackName));
-}
-
 export async function importStudyWeeksExcel(fileInput) {
   const file = fileInput?.files?.[0];
   if (!file) {
@@ -916,8 +902,11 @@ export function closeViewer() {
 
 export async function openContentTarget(target) {
   const sourceURL = resolveContentSourceURL(target);
+  const downloadURL = normalizeLegacyStaticAssetURL(target.downloadURL || target.url);
   const type = String(target.type || inferResourceType(target.url)).toLowerCase();
   const title = target.title || target.label || '阅读内容';
+  const originalName = target.original_name || target.filename || '';
+  const downloadSource = target.downloadSource || 'learning';
   const pageRange = target.pageRange || extractPdfPageRange(title);
   if (preferStandalonePDFViewer(type)) {
     const popup = openPendingViewerWindow(title);
@@ -960,6 +949,9 @@ export async function openContentTarget(target) {
         title,
         html: lines.length ? markdownToHTML(lines) : '<div class="viewer-empty">未找到对应内容。</div>',
         sourceURL: sourceURL,
+        downloadURL,
+        downloadSource,
+        originalName,
         externalURL: target.hideExternalLink ? '' : sourceURL,
         relatedSections: target.relatedSections || [],
       };
@@ -974,6 +966,9 @@ export async function openContentTarget(target) {
         title,
         url: viewerURL,
         sourceURL: sourceURL,
+        downloadURL,
+        downloadSource,
+        originalName,
         revokeURL: objectURL,
         externalURL: target.hideExternalLink ? '' : objectURL,
         pageRange,
@@ -994,6 +989,9 @@ export async function openContentTarget(target) {
       title,
       html: lines.length ? markdownToHTML(lines) : '<div class="viewer-empty">未找到对应内容。</div>',
       sourceURL: sourceURL,
+      downloadURL,
+      downloadSource,
+      originalName,
       externalURL: target.hideExternalLink ? '' : sourceURL,
       pageRange,
       relatedSections: target.relatedSections || [],
@@ -1008,6 +1006,9 @@ export async function openContentTarget(target) {
     title,
     url: viewerURL,
     sourceURL: sourceURL,
+    downloadURL,
+    downloadSource,
+    originalName,
     externalURL: target.hideExternalLink ? '' : sourceURL,
     pageRange,
     relatedSections: target.relatedSections || (type === 'video' ? buildVideoViewerSections({ ...target, sourceURL, url: viewerURL, type, title }) : []),
@@ -2009,8 +2010,10 @@ export async function uploadLibraryFile(fileInput, category) {
 export function previewLibraryItem(item) {
   openContentTarget({
     title: item.title || item.original_name || '资源预览',
+    original_name: item.original_name || '',
     url: item.url,
     type: item.type || inferResourceType(item.url),
+    downloadSource: item.downloadSource || 'learning',
   }).catch((error) => toast(`打开失败：${error.message}`));
 }
 

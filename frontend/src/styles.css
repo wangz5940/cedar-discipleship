@@ -6693,3 +6693,435 @@ button.ministry-join-button {
 .ministry-file-grid .ministry-file-download {
   background: #fffaf1;
 }
+
+/* Unified download center */
+.download-center {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 1200;
+}
+
+.download-center-trigger {
+  position: relative;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: #1f3a2f;
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(20, 45, 34, 0.26);
+}
+
+.download-center-trigger:hover {
+  transform: translateY(-1px);
+  background: #284b3c;
+}
+
+.download-center-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  background: #d14b3f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.download-center-panel {
+  position: absolute;
+  right: 0;
+  bottom: 60px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(680px, calc(100dvh - 100px));
+  overflow: hidden;
+  border: 1px solid #d8ddd8;
+  border-radius: 8px;
+  background: #f8faf8;
+  box-shadow: 0 22px 54px rgba(22, 36, 29, 0.22);
+}
+
+.download-center-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 17px 18px 13px;
+  border-bottom: 1px solid #e1e5e1;
+  background: #fff;
+}
+
+.download-center-head .eyebrow {
+  margin: 0 0 2px;
+}
+
+.download-center-head h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.download-center .icon-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  place-items: center;
+}
+
+.download-center-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0 14px;
+  border-bottom: 1px solid #e1e5e1;
+  background: #fff;
+}
+
+.download-center-tabs button {
+  min-height: 42px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.download-center-tabs button:hover {
+  transform: none;
+  background: #f5f7f5;
+  box-shadow: none;
+}
+
+.download-center-tabs button.active {
+  border-bottom-color: #2f6b50;
+  color: #234b39;
+}
+
+.download-center-tabs button span {
+  margin-left: 5px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.download-center-notice {
+  margin: 0;
+  padding: 9px 18px;
+  border-bottom: 1px solid #e1e5e1;
+  background: #eef5f0;
+  color: #365846;
+  font-size: 12px;
+}
+
+.download-center-list {
+  max-height: min(540px, calc(100dvh - 250px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.download-task,
+.download-history-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e1e5e1;
+  background: #fff;
+}
+
+.download-task-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #d7dfd9;
+  border-radius: 6px;
+  background: #eef4ef;
+  color: #326247;
+}
+
+.download-task-icon.kind-video,
+.download-task-icon.kind-audio {
+  background: #edf3f8;
+  color: #315f7a;
+}
+
+.download-task-icon.kind-document,
+.download-task-icon.kind-spreadsheet,
+.download-task-icon.kind-presentation {
+  background: #fff4e5;
+  color: #8a5b1e;
+}
+
+.download-task-main {
+  min-width: 0;
+}
+
+.download-task-main > strong,
+.download-task-title-row strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-task-title-row,
+.download-task-state,
+.download-task-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.download-task-title-row > span {
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.download-task-state {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.download-progress {
+  position: relative;
+  height: 5px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e6eae6;
+}
+
+.download-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #3f8060;
+  transition: width 0.18s ease;
+}
+
+.download-progress.indeterminate > span {
+  width: 38% !important;
+  animation: download-progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes download-progress-indeterminate {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(300%); }
+}
+
+.download-task-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.download-task-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.download-task-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 7px 0 0;
+  color: #a23d35;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.download-task-error svg {
+  flex: 0 0 auto;
+}
+
+.download-center-empty {
+  display: grid;
+  min-height: 150px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.download-clear-button {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .download-center {
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .download-center-panel {
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: calc(100dvh - 16px);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .download-center-list {
+    max-height: calc(100dvh - 220px - env(safe-area-inset-bottom));
+  }
+
+  .download-task,
+  .download-history-item {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    padding: 13px 12px;
+  }
+
+  .download-task-icon {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-progress.indeterminate > span {
+    animation: none;
+  }
+}
+
+.resource-download-toolbar {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.resource-download-toolbar > .muted {
+  margin-right: auto;
+  font-size: 12px;
+}
+
+.resource-select-all,
+.resource-card-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.resource-select-all input,
+.resource-card-selector input,
+.ministry-file-selector input {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  accent-color: #356b50;
+}
+
+.resource-browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ministry-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ministry-file-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.ministry-file-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 34px;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.ministry-file-selector {
+  display: grid;
+  width: 28px;
+  height: 34px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.ministry-file-row > .ministry-file-button {
+  width: 100%;
+}
+
+.ministry-file-row > .ministry-file-download-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  place-items: center;
+}
+
+.ministry-file-row > .ministry-file-download-button:hover {
+  background: #eef2ed;
+}
+
+@media (max-width: 640px) {
+  .resource-download-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .resource-download-toolbar > .muted {
+    margin: 0;
+  }
+
+  .resource-download-toolbar > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .ministry-view-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .ministry-view-actions > button {
+    flex: 1 1 auto;
+  }
+
+  .ministry-file-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

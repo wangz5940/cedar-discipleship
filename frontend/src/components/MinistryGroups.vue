@@ -24,11 +24,14 @@ import {
   X,
 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
-import { api, downloadContentTarget, openContentTarget, toast as showToast } from '../legacy-app';
+import { useDownloadManagerStore } from '../stores/downloadManager';
+import { api, openContentTarget, toast as showToast } from '../legacy-app';
 import { classifyAttachment, markdownToSafeHTML } from '../runtime/content';
+import { downloadErrorMessage } from '../runtime/downloads';
 import CountingAttendance from './CountingAttendance.vue';
 
 const app = useAppStateStore();
+const downloadManager = useDownloadManagerStore();
 const { authenticated, currentGroupID, tab } = storeToRefs(app);
 
 const groups = ref([]);
@@ -45,6 +48,7 @@ const showAvailableGroups = ref(false);
 const showShareComposer = ref(false);
 const showProgressComposer = ref(false);
 const expandedFeedItems = ref(new Set());
+const selectedAttachmentKeys = ref(new Set());
 
 const shareID = ref(0);
 const shareTitle = ref('');
@@ -62,6 +66,11 @@ const showAvailableGroupList = computed(() => !joinedGroups.value.length || show
 const selectedRequests = computed(() => requests.value.filter((request) => Number(request.group_id) === Number(selectedGroupID.value)));
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length);
 const canContribute = computed(() => Boolean(detail.value?.group?.joined || detail.value?.group?.can_manage));
+const progressAttachments = computed(() => {
+  const assets = (detail.value?.progress || []).flatMap((item) => item.attachments || []);
+  return [...new Map(assets.map((asset) => [attachmentKey(asset), asset])).values()];
+});
+const selectedAttachments = computed(() => progressAttachments.value.filter(attachmentSelected));
 
 watch(
   [visible, currentGroupID],
@@ -100,6 +109,7 @@ async function selectGroup(groupID) {
   selectedGroupID.value = Number(groupID);
   activeView.value = 'members';
   expandedFeedItems.value = new Set();
+  selectedAttachmentKeys.value = new Set();
   detailLoading.value = true;
   try {
     detail.value = await api(`/ministry-groups/${groupID}`);
@@ -285,11 +295,7 @@ async function openAttachment(asset) {
   const presentation = attachmentPresentation(asset);
   try {
     if (presentation.action === 'download') {
-      await downloadContentTarget({
-        url,
-        original_name: asset.original_name || asset.title || '附件',
-      });
-      showToast(`已开始下载：${asset.original_name || asset.title || '附件'}`);
+      queueAttachments([asset]);
       return;
     }
     await openContentTarget({
@@ -297,10 +303,57 @@ async function openAttachment(asset) {
       original_name: asset.original_name || '',
       url,
       type: presentation.type,
+      downloadSource: 'ministry',
     });
   } catch (error) {
     showToast(`${presentation.action === 'download' ? '附件下载' : '附件打开'}失败：${error.message}`);
   }
+}
+
+function attachmentKey(asset) {
+  return String(asset.id || asset.url || asset.original_name || asset.title);
+}
+
+function attachmentDownloadInput(asset) {
+  return {
+    id: asset.id,
+    title: asset.title || asset.original_name || '专项附件',
+    original_name: asset.original_name || '',
+    url: asset.url || `/api/assets/${asset.id}/download`,
+    mime_type: asset.mime_type,
+    file_size: asset.file_size,
+    source: 'ministry',
+  };
+}
+
+function attachmentSelected(asset) {
+  return selectedAttachmentKeys.value.has(attachmentKey(asset));
+}
+
+function toggleAttachmentSelection(asset) {
+  const next = new Set(selectedAttachmentKeys.value);
+  const key = attachmentKey(asset);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  selectedAttachmentKeys.value = next;
+}
+
+function queueAttachments(assets) {
+  try {
+    const added = downloadManager.enqueue(assets.map(attachmentDownloadInput));
+    showToast(added ? `已加入 ${added} 个下载任务` : '所选附件已在下载队列中');
+  } catch (error) {
+    showToast(downloadErrorMessage(error.message));
+  }
+}
+
+function downloadSelectedAttachments() {
+  if (!selectedAttachments.value.length) {
+    showToast('请先选择附件');
+    return;
+  }
+  queueAttachments(selectedAttachments.value);
+  selectedAttachmentKeys.value = new Set();
 }
 
 function attachmentPresentation(asset) {
@@ -753,14 +806,24 @@ function localDateTimeValue() {
                   <h3>最近进展</h3>
                   <p class="muted">{{ detail.progress.length }} 条</p>
                 </div>
-                <button
-                  v-if="canContribute && !showProgressComposer"
-                  class="secondary icon-text-button"
-                  type="button"
-                  @click="startProgressDraft"
-                >
-                  <Activity :size="16" />记进展
-                </button>
+                <div class="ministry-view-actions">
+                  <button
+                    v-if="selectedAttachments.length"
+                    class="secondary icon-text-button"
+                    type="button"
+                    @click="downloadSelectedAttachments"
+                  >
+                    <Download :size="16" />下载所选（{{ selectedAttachments.length }}）
+                  </button>
+                  <button
+                    v-if="canContribute && !showProgressComposer"
+                    class="secondary icon-text-button"
+                    type="button"
+                    @click="startProgressDraft"
+                  >
+                    <Activity :size="16" />记进展
+                  </button>
+                </div>
               </div>
 
               <div v-if="canContribute && showProgressComposer" class="ministry-composer ministry-compact-composer">
@@ -802,20 +865,42 @@ function localDateTimeValue() {
                   <p v-if="!feedExpanded('progress', item.id)" class="ministry-feed-summary">{{ feedPreview(item.content_markdown, 110) }}</p>
                   <div v-else class="ministry-markdown" v-html="markdownToSafeHTML(item.content_markdown)"></div>
                   <div v-if="item.attachments.length && feedExpanded('progress', item.id)" class="ministry-file-grid">
-                    <button
+                    <div
                       v-for="asset in item.attachments"
                       :key="asset.id"
-                      class="ministry-file-button"
-                      :class="{ 'ministry-file-download': attachmentPresentation(asset).action === 'download' }"
-                      type="button"
-                      :title="attachmentActionLabel(asset) === '下载' ? '下载附件' : '预览附件'"
-                      @click="openAttachment(asset)"
+                      class="ministry-file-row"
                     >
-                      <Download v-if="attachmentPresentation(asset).action === 'download'" :size="18" />
-                      <Eye v-else :size="18" />
-                      <span class="ministry-file-name">{{ asset.original_name }}</span>
-                      <span class="ministry-file-action">{{ attachmentActionLabel(asset) }}</span>
-                    </button>
+                      <label class="ministry-file-selector" title="选择附件">
+                        <input
+                          type="checkbox"
+                          :checked="attachmentSelected(asset)"
+                          :aria-label="`选择附件 ${asset.original_name}`"
+                          @change="toggleAttachmentSelection(asset)"
+                        />
+                      </label>
+                      <button
+                        class="ministry-file-button"
+                        :class="{ 'ministry-file-download': attachmentPresentation(asset).action === 'download' }"
+                        type="button"
+                        :title="attachmentActionLabel(asset) === '下载' ? '下载附件' : '预览附件'"
+                        @click="openAttachment(asset)"
+                      >
+                        <Download v-if="attachmentPresentation(asset).action === 'download'" :size="18" />
+                        <Eye v-else :size="18" />
+                        <span class="ministry-file-name">{{ asset.original_name }}</span>
+                        <span class="ministry-file-action">{{ attachmentActionLabel(asset) }}</span>
+                      </button>
+                      <button
+                        v-if="attachmentPresentation(asset).action === 'preview'"
+                        class="ghost ministry-file-download-button"
+                        type="button"
+                        title="下载附件"
+                        :aria-label="`下载附件 ${asset.original_name}`"
+                        @click="queueAttachments([asset])"
+                      >
+                        <Download :size="16" />
+                      </button>
+                    </div>
                   </div>
                   <footer v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length" class="inline-actions ministry-compact-actions">
                     <button

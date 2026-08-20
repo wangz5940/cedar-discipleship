@@ -1,7 +1,10 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
+import { Download } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
+import { useDownloadManagerStore } from '../stores/downloadManager';
+import { downloadErrorMessage } from '../runtime/downloads';
 import MinistryCatalogAdmin from './MinistryCatalogAdmin.vue';
 import {
   addWeekBinding,
@@ -44,6 +47,7 @@ import {
 } from '../legacy-app';
 
 const app = useAppStateStore();
+const downloadManager = useDownloadManagerStore();
 const {
   authenticated,
   user,
@@ -82,6 +86,7 @@ const uploadCategory = ref('markdown');
 const uploadInput = ref(null);
 const studyWeeksImportInput = ref(null);
 const localBackupImportInput = ref(null);
+const selectedResourceKeys = ref(new Set());
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const canManageRoles = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))));
@@ -271,7 +276,65 @@ function openAsset(asset) {
           : asset.category === 'markdown'
             ? 'markdown'
             : 'pdf'),
+    downloadSource: 'learning',
   });
+}
+
+function resourceSelectionKey(asset) {
+  return String(asset.id || asset.url || asset.original_name || asset.title);
+}
+
+function resourceDownloadInput(asset) {
+  return {
+    id: asset.id,
+    title: asset.title || asset.original_name || '学习资料',
+    original_name: asset.original_name || '',
+    url: asset.url || `/api/assets/${asset.id}/download`,
+    type: asset.type,
+    category: asset.category,
+    mime_type: asset.mime_type,
+    file_size: asset.file_size,
+    source: 'learning',
+  };
+}
+
+function resourceSelected(asset) {
+  return selectedResourceKeys.value.has(resourceSelectionKey(asset));
+}
+
+function toggleResourceSelection(asset) {
+  const next = new Set(selectedResourceKeys.value);
+  const key = resourceSelectionKey(asset);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  selectedResourceKeys.value = next;
+}
+
+function toggleAllResources() {
+  if (selectedResourceKeys.value.size === resources.value.length) {
+    selectedResourceKeys.value = new Set();
+    return;
+  }
+  selectedResourceKeys.value = new Set(resources.value.map(resourceSelectionKey));
+}
+
+function enqueueResources(items) {
+  try {
+    const added = downloadManager.enqueue(items.map(resourceDownloadInput));
+    showToast(added ? `已加入 ${added} 个下载任务` : '所选资源已在下载队列中');
+  } catch (error) {
+    showToast(downloadErrorMessage(error.message));
+  }
+}
+
+function downloadSelectedResources() {
+  const selected = resources.value.filter(resourceSelected);
+  if (!selected.length) {
+    showToast('请先选择要下载的资源');
+    return;
+  }
+  enqueueResources(selected);
+  selectedResourceKeys.value = new Set();
 }
 
 function resourceTypeLabel(asset) {
@@ -463,6 +526,27 @@ async function selectCalendarDate(day) {
               </div>
             </section>
 
+            <div class="resource-download-toolbar">
+              <label class="resource-select-all">
+                <input
+                  type="checkbox"
+                  :checked="selectedResourceKeys.size === resources.length"
+                  :indeterminate="selectedResourceKeys.size > 0 && selectedResourceKeys.size < resources.length"
+                  @change="toggleAllResources"
+                />
+                <span>选择全部</span>
+              </label>
+              <span class="muted">已选择 {{ selectedResourceKeys.size }} 项</span>
+              <button
+                class="secondary icon-text-button"
+                type="button"
+                :disabled="!selectedResourceKeys.size"
+                @click="downloadSelectedResources"
+              >
+                <Download :size="16" />下载所选
+              </button>
+            </div>
+
             <section
               v-for="section in groupedResources"
               :key="section.key"
@@ -478,9 +562,12 @@ async function selectCalendarDate(day) {
               </div>
 
               <div class="grid cols-2">
-                <div v-for="asset in section.items" :key="asset.id" class="card resource-browser-card">
+                <div v-for="asset in section.items" :key="resourceSelectionKey(asset)" class="card resource-browser-card">
                   <div class="resource-browser-meta">
-                    <span class="pill">{{ resourceTypeLabel(asset) }}</span>
+                    <label class="resource-card-selector">
+                      <input type="checkbox" :checked="resourceSelected(asset)" @change="toggleResourceSelection(asset)" />
+                      <span class="pill">{{ resourceTypeLabel(asset) }}</span>
+                    </label>
                     <span class="resource-browser-index">{{ asset.source === 'static' ? '内置' : `#${asset.id}` }}</span>
                   </div>
                   <h3>{{ asset.title }}</h3>
@@ -491,6 +578,9 @@ async function selectCalendarDate(day) {
                   </div>
                   <div class="resource-browser-actions">
                     <button class="secondary" type="button" @click="openAsset(asset)">打开</button>
+                    <button class="ghost icon-text-button" type="button" @click="enqueueResources([asset])">
+                      <Download :size="16" />下载
+                    </button>
                   </div>
                 </div>
               </div>

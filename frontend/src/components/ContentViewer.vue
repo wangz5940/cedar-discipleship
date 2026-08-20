@@ -1,7 +1,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import { Download } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
+import { useDownloadManagerStore } from '../stores/downloadManager';
+import { downloadErrorMessage } from '../runtime/downloads';
 import {
   closeViewer,
   extractPdfPageRange,
@@ -12,6 +15,7 @@ import {
 } from '../legacy-app';
 
 const viewerStore = useContentViewerStore();
+const downloadManager = useDownloadManagerStore();
 const { viewer } = storeToRefs(viewerStore);
 
 const readerPreferenceKey = 'agp_reader_preferences_v1';
@@ -105,6 +109,23 @@ function openAdjacentItem(item) {
   if (!item) return;
   openItem(item);
 }
+
+function downloadCurrent() {
+  const current = viewer.value;
+  if (!current?.downloadURL) return;
+  try {
+    downloadManager.enqueue([{
+      title: current.title,
+      original_name: current.originalName || '',
+      url: current.downloadURL,
+      type: current.type,
+      source: current.downloadSource || 'learning',
+    }]);
+    toast('已加入下载队列');
+  } catch (error) {
+    toast(`加入下载失败：${downloadErrorMessage(error.message)}`);
+  }
+}
 </script>
 
 <template>
@@ -160,6 +181,14 @@ function openAdjacentItem(item) {
           >
             新窗口打开
           </a>
+          <button
+            v-if="viewer.downloadURL"
+            class="secondary icon-text-button"
+            type="button"
+            @click="downloadCurrent"
+          >
+            <Download :size="16" />下载
+          </button>
           <button class="ghost" type="button" @click="closeViewer">关闭</button>
         </div>
       </div>
