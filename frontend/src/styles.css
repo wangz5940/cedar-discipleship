@@ -6327,9 +6327,20 @@ button.ministry-join-button {
   margin-top: 12px;
 }
 
-.ministry-catalog-manager {
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+.admin-ministry-catalog {
+  max-width: 860px;
+}
+
+.admin-ministry-catalog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-ministry-catalog-head h2 {
+  margin-bottom: 4px;
 }
 
 .ministry-catalog-create {

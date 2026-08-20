@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAppStateStore } from '../stores/appState';
+import MinistryCatalogAdmin from './MinistryCatalogAdmin.vue';
 import {
   addWeekBinding,
   api,
@@ -84,6 +85,7 @@ const localBackupImportInput = ref(null);
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const canManageRoles = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))));
+const canManageMinistryCatalog = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.includes('group_admin')));
 const settings = computed(() => learningConfig.value || {});
 const daily = computed(() => settings.value.task_sections?.daily || {});
 const devotion = computed(() => daily.value.devotion || {});
@@ -503,11 +505,19 @@ async function selectCalendarDate(day) {
             <div class="admin-tabs">
               <button :class="{ active: adminSection === 'learning' }" type="button" @click="selectAdmin('learning')">学习内容</button>
               <button :class="{ active: adminSection === 'members' }" type="button" @click="selectAdmin('members')">人员管理</button>
+              <button
+                v-if="canManageMinistryCatalog"
+                :class="{ active: adminSection === 'ministry' }"
+                type="button"
+                @click="selectAdmin('ministry')"
+              >
+                专项小组
+              </button>
               <button :class="{ active: adminSection === 'library' }" type="button" @click="selectAdmin('library')">资源库</button>
               <button :class="{ active: adminSection === 'data' }" type="button" @click="selectAdmin('data')">数据工具</button>
             </div>
 
-            <div v-if="adminLoading && adminSection !== 'members'" class="empty">正在加载管理配置…</div>
+            <div v-if="adminLoading && !['members', 'ministry'].includes(adminSection)" class="empty">正在加载管理配置…</div>
 
             <section v-else-if="adminSection === 'members'">
               <div class="section-title"><h2>成员与权限管理</h2></div>
@@ -577,6 +587,8 @@ async function selectCalendarDate(day) {
                 </div>
               </div>
             </section>
+
+            <MinistryCatalogAdmin v-else-if="adminSection === 'ministry' && canManageMinistryCatalog" />
 
             <section v-else-if="adminSection === 'learning'">
               <div class="section-title"><h2>学习内容管理</h2></div>
