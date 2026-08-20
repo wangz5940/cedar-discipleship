@@ -13,6 +13,7 @@ import (
 	"time"
 
 	assetdomain "agp/backend/internal/asset"
+	statisticsdomain "agp/backend/internal/statistics"
 )
 
 func TestSignTokenPermanentByDefault(t *testing.T) {
@@ -164,6 +165,63 @@ func TestValidCheckinTaskType(t *testing.T) {
 	}
 	if validCheckinTaskType("reflection") {
 		t.Fatal("validCheckinTaskType accepted an unsupported task type")
+	}
+}
+
+func TestNormalizeActiveMemberRule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		input     statisticsdomain.ActiveMemberRuleVO
+		wantValid bool
+		wantMode  string
+		wantTypes []string
+	}{
+		{
+			name:      "union keeps configured task order",
+			input:     statisticsdomain.ActiveMemberRuleVO{Mode: "ANY", TaskTypes: []string{"weekly_video", "daily_devotion"}},
+			wantValid: true,
+			wantMode:  "any",
+			wantTypes: []string{"daily_devotion", "weekly_video"},
+		},
+		{
+			name:      "intersection removes duplicate tasks",
+			input:     statisticsdomain.ActiveMemberRuleVO{Mode: "all", TaskTypes: []string{"weekly_book", "weekly_book"}},
+			wantValid: true,
+			wantMode:  "all",
+			wantTypes: []string{"weekly_book"},
+		},
+		{
+			name:  "empty selection rejected",
+			input: statisticsdomain.ActiveMemberRuleVO{Mode: "any"},
+		},
+		{
+			name:  "unknown task rejected",
+			input: statisticsdomain.ActiveMemberRuleVO{Mode: "any", TaskTypes: []string{"weekly_verse"}},
+		},
+		{
+			name:  "unknown mode rejected",
+			input: statisticsdomain.ActiveMemberRuleVO{Mode: "none", TaskTypes: []string{"daily_devotion"}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, valid := normalizeActiveMemberRule(test.input)
+			if valid != test.wantValid {
+				t.Fatalf("normalizeActiveMemberRule() valid = %v, want %v", valid, test.wantValid)
+			}
+			if !test.wantValid {
+				return
+			}
+			if got.Mode != test.wantMode {
+				t.Fatalf("mode = %q, want %q", got.Mode, test.wantMode)
+			}
+			if strings.Join(got.TaskTypes, ",") != strings.Join(test.wantTypes, ",") {
+				t.Fatalf("task types = %v, want %v", got.TaskTypes, test.wantTypes)
+			}
+		})
 	}
 }
 

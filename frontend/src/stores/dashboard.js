@@ -26,6 +26,8 @@ export const useDashboardStore = defineStore('dashboard', {
     statsTo: '',
     statsMaxDate: '',
     activeCount: 0,
+    activeMemberRule: { mode: 'any', task_types: ['weekly_outline'] },
+    canManageActiveRule: false,
   }),
   actions: {
     setSnapshot(snapshot) {
@@ -54,6 +56,8 @@ export const useDashboardStore = defineStore('dashboard', {
         statsTo: snapshot?.statsTo || '',
         statsMaxDate: snapshot?.statsMaxDate || '',
         activeCount: Number(snapshot?.activeCount || 0),
+        activeMemberRule: snapshot?.activeMemberRule || { mode: 'any', task_types: ['weekly_outline'] },
+        canManageActiveRule: Boolean(snapshot?.canManageActiveRule),
       });
     },
     hide() {

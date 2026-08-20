@@ -1071,6 +1071,46 @@ input:focus, select:focus, textarea:focus {
   margin-top: -2px;
 }
 
+.active-rule-card {
+  align-content: start;
+  gap: 8px;
+}
+
+.active-rule-editor {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.active-rule-task-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.active-rule-task-buttons button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.active-rule-task-buttons button.active {
+  border-color: #9db8a5;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.active-rule-mode {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .bar-chart-card {
   overflow-x: auto;
   padding: 22px;

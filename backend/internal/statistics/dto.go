@@ -17,10 +17,17 @@ type MonthlyRankingItemVO struct {
 }
 
 type MonthlyRankingVO struct {
-	Month string                 `json:"month"`
-	From  string                 `json:"from"`
-	To    string                 `json:"to"`
-	Items []MonthlyRankingItemVO `json:"items"`
+	Month               string                 `json:"month"`
+	From                string                 `json:"from"`
+	To                  string                 `json:"to"`
+	Items               []MonthlyRankingItemVO `json:"items"`
+	ActiveRule          ActiveMemberRuleVO     `json:"active_rule"`
+	CanManageActiveRule bool                   `json:"can_manage_active_rule"`
+}
+
+type ActiveMemberRuleVO struct {
+	Mode      string   `json:"mode"`
+	TaskTypes []string `json:"task_types"`
 }
 
 type CalendarItemVO struct {

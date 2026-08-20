@@ -215,6 +215,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/today", a.auth(a.handleToday))
 	mux.HandleFunc("GET /api/dashboard/summary", a.auth(a.handleDashboardSummary))
 	mux.HandleFunc("GET /api/dashboard/monthly-ranking", a.auth(a.handleDashboardMonthlyRanking))
+	mux.HandleFunc("PUT /api/dashboard/active-rule", a.auth(a.requireRole(roleGroupAdmin, a.handleDashboardActiveRule)))
 	mux.HandleFunc("GET /api/members", a.auth(a.handleMembers))
 	mux.HandleFunc("GET /api/members/{id}/calendar", a.auth(a.handleMemberCalendar))
 

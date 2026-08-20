@@ -167,7 +167,8 @@ function dashboardSnapshot() {
   const monthLabel = formatDateRangeLabel(rankingFrom, rankingTo);
   const ranking = monthlyRankingItems();
   const leader = ranking[0];
-  const activeCount = ranking.filter((item) => item.total > 0).length;
+  const activeMemberRule = normalizeActiveMemberRule(state.monthlyRanking?.active_rule);
+  const activeCount = ranking.filter((item) => matchesActiveMemberRule(item, activeMemberRule)).length;
   const progressCards = tasks.map((task) => {
     const count = [...matrix.byUser.values()].filter((states) => states.some((item) => item.task === task && item.record)).length;
     return {
@@ -226,6 +227,8 @@ function dashboardSnapshot() {
     statsTo: state.statsTo,
     statsMaxDate: todayString(),
     activeCount,
+    activeMemberRule,
+    canManageActiveRule: Boolean(state.monthlyRanking?.can_manage_active_rule),
   };
 }
 
@@ -559,6 +562,22 @@ export async function resetStatsRangeToMonth() {
   } catch (error) {
     toast(error.message);
   }
+}
+
+export async function saveActiveMemberRule(rule) {
+  const response = await api('/dashboard/active-rule', {
+    method: 'PUT',
+    body: JSON.stringify(rule),
+  });
+  state.monthlyRanking = {
+    ...(state.monthlyRanking || {}),
+    active_rule: response.active_rule,
+  };
+  state.learningConfig = {
+    ...(state.learningConfig || {}),
+    active_member_rule: response.active_rule,
+  };
+  render();
 }
 
 async function loadMonthlyRanking() {
@@ -1493,6 +1512,21 @@ function buildCheckinMatrix(tasks) {
 
 function monthlyRankingItems() {
   return [...(state.monthlyRanking?.items || [])];
+}
+
+function normalizeActiveMemberRule(rule) {
+  const validTypes = ['daily_devotion', 'weekly_book', 'weekly_video', 'weekly_outline'];
+  const requested = new Set(Array.isArray(rule?.task_types) ? rule.task_types : ['weekly_outline']);
+  const taskTypes = validTypes.filter((taskType) => requested.has(taskType));
+  return {
+    mode: rule?.mode === 'all' ? 'all' : 'any',
+    task_types: taskTypes.length ? taskTypes : ['weekly_outline'],
+  };
+}
+
+function matchesActiveMemberRule(item, rule) {
+  const completed = rule.task_types.map((taskType) => Number(item.counts?.[taskType] || 0) > 0);
+  return rule.mode === 'all' ? completed.every(Boolean) : completed.some(Boolean);
 }
 
 function normalizeStatsRange() {

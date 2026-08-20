@@ -5,9 +5,11 @@ import { useDashboardStore } from '../stores/dashboard';
 import {
   openMemberCalendar,
   resetStatsRangeToMonth,
+  saveActiveMemberRule,
   setSelectedDate,
   setStatsDateRange,
   shiftSelectedDate,
+  toast as showToast,
   toggleCheckin,
 } from '../legacy-app';
 
@@ -34,6 +36,9 @@ const {
   statsFrom,
   statsTo,
   statsMaxDate,
+  activeCount,
+  activeMemberRule,
+  canManageActiveRule,
 } = storeToRefs(store);
 
 const legend = [
@@ -45,6 +50,7 @@ const legend = [
 
 const statsView = ref('chart');
 const activeStatKey = ref('all');
+const activeRuleSaving = ref(false);
 const activeLegend = computed(() => legend.find((item) => item.key === activeStatKey.value) || null);
 const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : legend));
 const rankedItems = computed(() => [...ranking.value].sort((left, right) => {
@@ -55,7 +61,6 @@ const rankedItems = computed(() => [...ranking.value].sort((left, right) => {
 }));
 const rankingMaxForView = computed(() => Math.max(1, ...rankedItems.value.map((item) => rankingItemTotal(item))));
 const activeLeader = computed(() => rankedItems.value.find((item) => rankingItemTotal(item) > 0) || null);
-const activeCountForView = computed(() => rankedItems.value.filter((item) => rankingItemTotal(item) > 0).length);
 const activeScopeLabel = computed(() => activeLegend.value?.label || '全部分项');
 const activeLeaderName = computed(() => activeLeader.value ? `${activeLeader.value.member_name || activeLeader.value.display_name}` : '-');
 const activeLeaderNote = computed(() => activeLeader.value ? `${rankingItemTotal(activeLeader.value)} 次${activeLegend.value ? activeLegend.value.label : '打卡'}` : '暂无记录');
@@ -114,6 +119,35 @@ function segmentPercent(item, key) {
 
 function setActiveStat(key) {
   activeStatKey.value = activeStatKey.value === key ? 'all' : key;
+}
+
+async function toggleActiveRuleTask(key) {
+  if (activeRuleSaving.value) return;
+  const selected = [...activeMemberRule.value.task_types];
+  const index = selected.indexOf(key);
+  if (index >= 0) {
+    if (selected.length === 1) return;
+    selected.splice(index, 1);
+  } else {
+    selected.push(key);
+  }
+  await updateActiveRule({ ...activeMemberRule.value, task_types: selected });
+}
+
+async function setActiveRuleMode(mode) {
+  if (activeRuleSaving.value || activeMemberRule.value.mode === mode) return;
+  await updateActiveRule({ ...activeMemberRule.value, mode });
+}
+
+async function updateActiveRule(rule) {
+  activeRuleSaving.value = true;
+  try {
+    await saveActiveMemberRule(rule);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    activeRuleSaving.value = false;
+  }
 }
 
 function memberTaskTitle(member, state) {
@@ -366,10 +400,42 @@ async function exportRankingChart() {
             <strong>{{ monthLabel }}</strong>
             <span class="stat-note">{{ rankingFrom }} 至 {{ rankingTo }}</span>
           </div>
-          <div class="card stat compact-stat">
+          <div class="card stat compact-stat active-rule-card">
             <span class="stat-title">活跃成员</span>
-            <strong>{{ activeCountForView }}人</strong>
-            <span class="stat-note">{{ activeScopeLabel }}至少完成 1 次</span>
+            <strong>{{ activeCount }}人</strong>
+            <div v-if="canManageActiveRule" class="active-rule-editor">
+              <div class="active-rule-task-buttons">
+                <button
+                  v-for="item in legend"
+                  :key="item.key"
+                  type="button"
+                  :class="{ active: activeMemberRule.task_types.includes(item.key) }"
+                  :aria-pressed="activeMemberRule.task_types.includes(item.key)"
+                  :disabled="activeRuleSaving"
+                  @click="toggleActiveRuleTask(item.key)"
+                >
+                  {{ item.label }}
+                </button>
+              </div>
+              <div class="segmented-control active-rule-mode" aria-label="活跃成员组合方式">
+                <button
+                  type="button"
+                  :class="{ active: activeMemberRule.mode === 'any' }"
+                  :disabled="activeRuleSaving"
+                  @click="setActiveRuleMode('any')"
+                >
+                  并集
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: activeMemberRule.mode === 'all' }"
+                  :disabled="activeRuleSaving"
+                  @click="setActiveRuleMode('all')"
+                >
+                  交集
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
