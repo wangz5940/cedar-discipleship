@@ -22,6 +22,7 @@ var (
 	ErrInvalidVisibility      = errors.New("ministry_invalid_visibility")
 	ErrInvalidRole            = errors.New("ministry_invalid_role")
 	ErrInvalidAttachment      = errors.New("ministry_invalid_attachment")
+	ErrInvalidGroupName       = errors.New("ministry_invalid_group_name")
 )
 
 type Service struct {
@@ -98,6 +99,52 @@ func (s *Service) Detail(ctx context.Context, studyGroupID, groupID uint64, acto
 		Shares:   shareVOs(shares, actor, access),
 		Progress: progressVOs(progress),
 	}, nil
+}
+
+func (s *Service) CreateGroup(
+	ctx context.Context,
+	studyGroupID uint64,
+	actor Actor,
+	input GroupInput,
+	at time.Time,
+) (uint64, error) {
+	if !actor.IsSuperAdmin && !actor.IsStudyAdmin {
+		return 0, ErrForbidden
+	}
+	input, err := validGroupInput(input)
+	if err != nil {
+		return 0, err
+	}
+	return s.repo.CreateGroup(ctx, studyGroupID, input, at)
+}
+
+func (s *Service) UpdateGroup(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	actor Actor,
+	input GroupInput,
+	at time.Time,
+) error {
+	if !actor.IsSuperAdmin && !actor.IsStudyAdmin {
+		return ErrForbidden
+	}
+	input, err := validGroupInput(input)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdateGroup(ctx, studyGroupID, groupID, input, at)
+}
+
+func (s *Service) DeleteGroup(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	actor Actor,
+	at time.Time,
+) error {
+	if !actor.IsSuperAdmin && !actor.IsStudyAdmin {
+		return ErrForbidden
+	}
+	return s.repo.DeleteGroup(ctx, studyGroupID, groupID, at)
 }
 
 func (s *Service) RequestJoin(
@@ -342,6 +389,23 @@ func (s *Service) DecideShare(
 	return s.repo.DecideShare(ctx, studyGroupID, groupID, shareID, actor.UserID, decision, at)
 }
 
+func (s *Service) SetSharePinned(
+	ctx context.Context,
+	studyGroupID, groupID, shareID uint64,
+	actor Actor,
+	pinned bool,
+	at time.Time,
+) error {
+	access, err := s.repo.Access(ctx, studyGroupID, groupID, actor.UserID)
+	if err != nil {
+		return ErrGroupNotFound
+	}
+	if !canReviewShares(actor, access) {
+		return ErrForbidden
+	}
+	return s.repo.SetSharePinned(ctx, studyGroupID, groupID, shareID, actor.UserID, pinned, at)
+}
+
 func (s *Service) CreateProgress(
 	ctx context.Context,
 	studyGroupID, groupID uint64,
@@ -393,6 +457,15 @@ func canContribute(actor Actor, access Access) bool {
 	return actor.IsSuperAdmin || actor.IsStudyAdmin || access.IsMember
 }
 
+func validGroupInput(input GroupInput) (GroupInput, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	if input.Name == "" || len([]rune(input.Name)) > 128 || len([]rune(input.Description)) > 512 {
+		return GroupInput{}, ErrInvalidGroupName
+	}
+	return input, nil
+}
+
 func requestVO(item Request) RequestVO {
 	return RequestVO{
 		ID: item.ID, GroupID: item.GroupID, UserID: item.UserID,
@@ -407,8 +480,10 @@ func shareVOs(items []Share, actor Actor, access Access) []ShareVO {
 		out = append(out, ShareVO{
 			ID: item.ID, GroupID: item.GroupID, AuthorID: item.AuthorID,
 			AuthorName: item.AuthorName, Title: item.Title, Body: item.Body,
-			Status: item.Status, CanEdit: item.AuthorID == actor.UserID || canManage(actor, access),
+			Status: item.Status, IsPinned: item.IsPinned,
+			CanEdit:     item.AuthorID == actor.UserID || canManage(actor, access),
 			CanReview:   canReviewShares(actor, access) && item.Status == StatusPending,
+			CanPin:      canReviewShares(actor, access) && item.Status == StatusPublished,
 			PublishedAt: item.PublishedAt, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 		})
 	}

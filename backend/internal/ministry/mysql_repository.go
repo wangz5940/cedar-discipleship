@@ -2,7 +2,9 @@ package ministry
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -21,21 +23,18 @@ var defaultCatalog = []struct {
 	code string
 	name string
 }{
-	{code: "leading", name: "领会组"},
-	{code: "hosting", name: "主持组"},
-	{code: "catering", name: "伙食组"},
-	{code: "logistics", name: "后勤组"},
-	{code: "cleaning", name: "整洁组"},
-	{code: "technology", name: "技术组"},
-	{code: "planning", name: "策划组"},
-	{code: "counting", name: "数点组"},
-	{code: "visitation", name: "探望组"},
-	{code: "reporting", name: "回报组"},
-	{code: "children", name: "娃娃组"},
-	{code: "intercession", name: "守望组"},
-	{code: "discipleship-counting", name: "门训数点组"},
-	{code: "discipleship-planning", name: "门训规划发布组"},
-	{code: "discipleship-review", name: "门训批改组"},
+	{code: "leading", name: "领会"},
+	{code: "hosting", name: "主持"},
+	{code: "catering", name: "伙食"},
+	{code: "logistics", name: "后勤"},
+	{code: "cleaning", name: "整洁"},
+	{code: "technology", name: "技术"},
+	{code: "planning", name: "策划"},
+	{code: "counting", name: "数点"},
+	{code: "reporting", name: "汇报"},
+	{code: "children", name: "主日学"},
+	{code: "discipleship-counting", name: "门训数点"},
+	{code: "discipleship-planning", name: "门训规划"},
 }
 
 func (r *MySQLRepository) EnsureCatalog(ctx context.Context, studyGroupID uint64, at time.Time) error {
@@ -144,6 +143,75 @@ func (r *MySQLRepository) Group(
 		}
 	}
 	return nil, sql.ErrNoRows
+}
+
+func (r *MySQLRepository) CreateGroup(
+	ctx context.Context,
+	studyGroupID uint64,
+	input GroupInput,
+	at time.Time,
+) (uint64, error) {
+	code, err := randomMinistryCode()
+	if err != nil {
+		return 0, err
+	}
+	result, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO ministry_groups
+			(study_group_id,code,name,description,created_at,updated_at)
+		 VALUES (?,?,?,?,?,?)`,
+		studyGroupID,
+		code,
+		input.Name,
+		input.Description,
+		at,
+		at,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("creating ministry group: %w", err)
+	}
+	return lastInsertID(result)
+}
+
+func (r *MySQLRepository) UpdateGroup(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	input GroupInput,
+	at time.Time,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE ministry_groups SET name=?,description=?,updated_at=?
+		  WHERE id=? AND study_group_id=? AND status=1`,
+		input.Name,
+		input.Description,
+		at,
+		groupID,
+		studyGroupID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating ministry group: %w", err)
+	}
+	return requireOneRow(result, ErrGroupNotFound)
+}
+
+func (r *MySQLRepository) DeleteGroup(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	at time.Time,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE ministry_groups SET status=0,leader_user_id=NULL,updated_at=?
+		  WHERE id=? AND study_group_id=? AND status=1`,
+		at,
+		groupID,
+		studyGroupID,
+	)
+	if err != nil {
+		return fmt.Errorf("deleting ministry group: %w", err)
+	}
+	return requireOneRow(result, ErrGroupNotFound)
 }
 
 func (r *MySQLRepository) Access(
@@ -830,13 +898,17 @@ func (r *MySQLRepository) ListShares(
 	rows, err := r.db.QueryContext(
 		ctx,
 		`SELECT s.id,s.ministry_group_id,s.author_user_id,u.display_name,
-		        s.title,s.body_markdown,s.status,COALESCE(s.reviewed_by,0),
+		        s.title,s.body_markdown,s.status,CASE WHEN pin.share_id IS NULL THEN 0 ELSE 1 END,
+		        COALESCE(s.reviewed_by,0),
 		        s.published_at,s.created_at,s.updated_at
 		   FROM ministry_shares s
 		   JOIN users u ON u.id=s.author_user_id
+		   LEFT JOIN ministry_share_pins pin
+		     ON pin.share_id=s.id AND pin.study_group_id=s.study_group_id
 		  WHERE s.study_group_id=? AND s.ministry_group_id=?
 		    AND (s.status='published' OR s.author_user_id=? OR ?)
 		  ORDER BY CASE WHEN s.status='published' THEN 0 ELSE 1 END,
+		           CASE WHEN pin.share_id IS NULL THEN 1 ELSE 0 END,
 		           COALESCE(s.published_at,s.updated_at) DESC,s.id DESC`,
 		studyGroupID,
 		groupID,
@@ -860,6 +932,7 @@ func (r *MySQLRepository) ListShares(
 			&item.Title,
 			&item.Body,
 			&item.Status,
+			&item.IsPinned,
 			&item.ReviewedBy,
 			&publishedAt,
 			&item.CreatedAt,
@@ -1151,6 +1224,48 @@ func (r *MySQLRepository) ListProgress(
 	return items, nil
 }
 
+func (r *MySQLRepository) SetSharePinned(
+	ctx context.Context,
+	studyGroupID, groupID, shareID, actorID uint64,
+	pinned bool,
+	at time.Time,
+) error {
+	if !pinned {
+		result, err := r.db.ExecContext(
+			ctx,
+			`DELETE pin FROM ministry_share_pins pin
+			  JOIN ministry_shares share ON share.id=pin.share_id
+			   AND share.study_group_id=pin.study_group_id
+			 WHERE pin.study_group_id=? AND share.ministry_group_id=? AND pin.share_id=?`,
+			studyGroupID,
+			groupID,
+			shareID,
+		)
+		if err != nil {
+			return fmt.Errorf("unpinning ministry share: %w", err)
+		}
+		return requireOneRow(result, ErrShareNotFound)
+	}
+	result, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO ministry_share_pins
+			(study_group_id,share_id,pinned_by,pinned_at)
+		 SELECT study_group_id,id,?,?
+		   FROM ministry_shares
+		  WHERE id=? AND study_group_id=? AND ministry_group_id=? AND status='published'
+		 ON DUPLICATE KEY UPDATE pinned_by=VALUES(pinned_by),pinned_at=VALUES(pinned_at)`,
+		actorID,
+		at,
+		shareID,
+		studyGroupID,
+		groupID,
+	)
+	if err != nil {
+		return fmt.Errorf("pinning ministry share: %w", err)
+	}
+	return requireAtLeastOneRow(result, ErrShareNotFound)
+}
+
 func (r *MySQLRepository) CreateProgress(
 	ctx context.Context,
 	studyGroupID, groupID, authorID uint64,
@@ -1401,4 +1516,23 @@ func requireOneRow(result sql.Result, notFound error) error {
 		return notFound
 	}
 	return nil
+}
+
+func requireAtLeastOneRow(result sql.Result, notFound error) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("reading affected rows: %w", err)
+	}
+	if affected < 1 {
+		return notFound
+	}
+	return nil
+}
+
+func randomMinistryCode() (string, error) {
+	var value [12]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generating ministry group code: %w", err)
+	}
+	return "custom-" + hex.EncodeToString(value[:]), nil
 }

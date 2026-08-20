@@ -14,9 +14,13 @@ import {
   LoaderCircle,
   LogOut,
   Paperclip,
+  Pin,
+  Plus,
+  Save,
   Send,
   Settings,
   ShieldCheck,
+  Trash2,
   Upload,
   UserPlus,
   Users,
@@ -41,6 +45,9 @@ const detailLoading = ref(false);
 const saving = ref(false);
 const showNotifications = ref(false);
 const showAvailableGroups = ref(false);
+const canManageCatalog = ref(false);
+const newGroupName = ref('');
+const catalogDrafts = ref({});
 
 const shareID = ref(0);
 const shareTitle = ref('');
@@ -77,6 +84,8 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
       api('/ministry-requests'),
     ]);
     groups.value = groupResult.groups || [];
+    canManageCatalog.value = Boolean(groupResult.can_manage_catalog);
+    catalogDrafts.value = Object.fromEntries(groups.value.map((group) => [group.id, group.name]));
     notifications.value = notificationResult.notifications || [];
     requests.value = requestResult.requests || [];
     showAvailableGroups.value = !joinedGroups.value.length;
@@ -248,6 +257,69 @@ async function decideShare(share, decision) {
     });
     showToast(decision === 'published' ? '分享已发布' : '分享已拒绝');
     await selectGroup(group.id);
+  });
+}
+
+async function setSharePinned(share, pinned) {
+  const group = detail.value?.group;
+  if (!group) return;
+  await runMutation(async () => {
+    await api(`/ministry-groups/${group.id}/shares/${share.id}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ pinned }),
+    });
+    showToast(pinned ? '分享已置顶' : '已取消置顶');
+    await selectGroup(group.id);
+  });
+}
+
+async function createCatalogGroup() {
+  const name = newGroupName.value.trim();
+  if (!name) {
+    showToast('请填写专项小组名称');
+    return;
+  }
+  await runMutation(async () => {
+    const result = await api('/ministry-groups', {
+      method: 'POST',
+      body: JSON.stringify({ name, description: '' }),
+    });
+    newGroupName.value = '';
+    showToast('专项小组已新增');
+    await loadWorkspace(result.id);
+    activeView.value = 'manage';
+  });
+}
+
+async function updateCatalogGroup(group) {
+  const name = String(catalogDrafts.value[group.id] || '').trim();
+  if (!name) {
+    showToast('专项小组名称不能为空');
+    return;
+  }
+  await runMutation(async () => {
+    await api(`/ministry-groups/${group.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, description: group.description || '' }),
+    });
+    showToast('专项小组已更新');
+    await loadWorkspace(group.id);
+    activeView.value = 'manage';
+  });
+}
+
+async function deleteCatalogGroup(group) {
+  if (!window.confirm(`确认删除“${group.name}”？该组将停止显示，历史成员、分享和考勤记录会保留。`)) return;
+  await runMutation(async () => {
+    await api(`/ministry-groups/${group.id}`, { method: 'DELETE' });
+    showToast('专项小组已删除');
+    const deletedSelected = Number(selectedGroupID.value) === Number(group.id);
+    if (deletedSelected) {
+      selectedGroupID.value = 0;
+      detail.value = null;
+    }
+    await loadWorkspace(deletedSelected ? 0 : selectedGroupID.value);
+    activeView.value = 'manage';
   });
 }
 
@@ -577,10 +649,22 @@ function localDateTimeValue() {
                       <h3>{{ share.title }}</h3>
                       <small>{{ share.author_name }} · {{ formatDate(share.updated_at) }}</small>
                     </div>
-                    <span class="pill" :class="{ 'pending-pill': share.status === 'pending' }">{{ shareStatusLabel(share.status) }}</span>
+                    <div class="ministry-share-badges">
+                      <span v-if="share.is_pinned" class="pill pinned-pill"><Pin :size="13" />置顶</span>
+                      <span class="pill" :class="{ 'pending-pill': share.status === 'pending' }">{{ shareStatusLabel(share.status) }}</span>
+                    </div>
                   </header>
                   <div class="ministry-markdown" v-html="markdownToSafeHTML(share.body_markdown)"></div>
-                  <footer v-if="share.can_edit || share.can_review" class="inline-actions">
+                  <footer v-if="share.can_edit || share.can_review || share.can_pin" class="inline-actions">
+                    <button
+                      v-if="share.can_pin"
+                      class="secondary icon-text-button"
+                      type="button"
+                      :disabled="saving"
+                      @click="setSharePinned(share, !share.is_pinned)"
+                    >
+                      <Pin :size="15" />{{ share.is_pinned ? '取消置顶' : '置顶' }}
+                    </button>
                     <button v-if="share.can_edit" class="secondary" type="button" @click="editShare(share)">修改</button>
                     <button v-if="share.can_review" class="ok icon-text-button" type="button" @click="decideShare(share, 'published')"><Check :size="15" />通过</button>
                     <button v-if="share.can_review" class="danger icon-text-button" type="button" @click="decideShare(share, 'rejected')"><X :size="15" />拒绝</button>
@@ -643,6 +727,53 @@ function localDateTimeValue() {
             />
 
             <section v-else-if="activeView === 'manage' && detail.group.can_manage" class="ministry-view">
+              <div v-if="canManageCatalog" class="ministry-management-section ministry-catalog-manager">
+                <div class="ministry-view-head">
+                  <div>
+                    <h3>专项小组目录</h3>
+                    <p class="muted">学习小组管理员可新增、改名或删除专项小组</p>
+                  </div>
+                  <span class="ministry-count">{{ groups.length }} 组</span>
+                </div>
+                <div class="ministry-catalog-create">
+                  <input
+                    v-model="newGroupName"
+                    maxlength="128"
+                    placeholder="新专项小组名称"
+                    @keyup.enter="createCatalogGroup"
+                  />
+                  <button class="icon-text-button" type="button" :disabled="saving" @click="createCatalogGroup">
+                    <Plus :size="16" />新增
+                  </button>
+                </div>
+                <div class="ministry-catalog-list">
+                  <div v-for="group in groups" :key="group.id" class="ministry-catalog-row">
+                    <span class="ministry-group-symbol">{{ group.name.slice(0, 1) }}</span>
+                    <input v-model="catalogDrafts[group.id]" maxlength="128" :aria-label="`${group.name}名称`" />
+                    <div class="inline-actions">
+                      <button
+                        class="secondary icon-button"
+                        type="button"
+                        title="保存名称"
+                        :disabled="saving || !String(catalogDrafts[group.id] || '').trim()"
+                        @click="updateCatalogGroup(group)"
+                      >
+                        <Save :size="16" />
+                      </button>
+                      <button
+                        class="danger icon-button"
+                        type="button"
+                        title="删除专项小组"
+                        :disabled="saving"
+                        @click="deleteCatalogGroup(group)"
+                      >
+                        <Trash2 :size="16" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="ministry-settings-grid">
                 <label>
                   <span>成员身份默认可见范围</span>

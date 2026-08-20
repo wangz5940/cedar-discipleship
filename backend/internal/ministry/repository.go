@@ -9,6 +9,9 @@ type Repository interface {
 	EnsureCatalog(ctx context.Context, studyGroupID uint64, at time.Time) error
 	ListGroups(ctx context.Context, studyGroupID, userID uint64) ([]GroupSummary, error)
 	Group(ctx context.Context, studyGroupID, groupID, userID uint64) (*GroupSummary, error)
+	CreateGroup(ctx context.Context, studyGroupID uint64, input GroupInput, at time.Time) (uint64, error)
+	UpdateGroup(ctx context.Context, studyGroupID, groupID uint64, input GroupInput, at time.Time) error
+	DeleteGroup(ctx context.Context, studyGroupID, groupID uint64, at time.Time) error
 	Access(ctx context.Context, studyGroupID, groupID, userID uint64) (Access, error)
 	ListMembers(ctx context.Context, studyGroupID, groupID uint64) ([]Member, error)
 
@@ -28,6 +31,7 @@ type Repository interface {
 	CreateShare(ctx context.Context, studyGroupID, groupID, authorID uint64, input ShareInput, status Status, at time.Time) (uint64, error)
 	UpdateShare(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, input ShareInput, status Status, canManage bool, at time.Time) error
 	DecideShare(ctx context.Context, studyGroupID, groupID, shareID, reviewerID uint64, decision Status, at time.Time) error
+	SetSharePinned(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, pinned bool, at time.Time) error
 
 	ListProgress(ctx context.Context, studyGroupID, groupID uint64, limit int) ([]Progress, error)
 	CreateProgress(ctx context.Context, studyGroupID, groupID, authorID uint64, input ProgressInput, at time.Time) (uint64, error)

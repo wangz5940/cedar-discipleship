@@ -102,6 +102,7 @@ type Share struct {
 	Title       string
 	Body        string
 	Status      Status
+	IsPinned    bool
 	ReviewedBy  uint64
 	PublishedAt *time.Time
 	CreatedAt   time.Time

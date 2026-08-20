@@ -16,6 +16,10 @@ type serviceTestRepository struct {
 	decideCalls     int
 	createdShare    Status
 	joinAutoApprove bool
+	createdGroup    GroupInput
+	updatedGroup    GroupInput
+	deletedGroupID  uint64
+	pinnedShare     bool
 }
 
 func (r *serviceTestRepository) EnsureCatalog(context.Context, uint64, time.Time) error {
@@ -100,6 +104,46 @@ func (r *serviceTestRepository) UpdateSettings(
 	GroupSettingsInput,
 	time.Time,
 ) error {
+	return nil
+}
+
+func (r *serviceTestRepository) CreateGroup(
+	_ context.Context,
+	_ uint64,
+	input GroupInput,
+	_ time.Time,
+) (uint64, error) {
+	r.createdGroup = input
+	return 18, nil
+}
+
+func (r *serviceTestRepository) UpdateGroup(
+	_ context.Context,
+	_, _ uint64,
+	input GroupInput,
+	_ time.Time,
+) error {
+	r.updatedGroup = input
+	return nil
+}
+
+func (r *serviceTestRepository) DeleteGroup(
+	_ context.Context,
+	_, groupID uint64,
+	_ time.Time,
+) error {
+	r.deletedGroupID = groupID
+	return nil
+}
+
+func (r *serviceTestRepository) SetSharePinned(
+	_ context.Context,
+	_, _, _ uint64,
+	_ uint64,
+	pinned bool,
+	_ time.Time,
+) error {
+	r.pinnedShare = pinned
 	return nil
 }
 
@@ -313,5 +357,111 @@ func TestServiceUpdateSettingsRestrictsLeaderAssignment(t *testing.T) {
 	)
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("UpdateSettings() error = %v, want %v", err, ErrForbidden)
+	}
+}
+
+func TestServiceManageCatalogRequiresStudyAdmin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		actor   Actor
+		wantErr error
+	}{
+		{name: "member forbidden", actor: Actor{UserID: 7}, wantErr: ErrForbidden},
+		{name: "study admin allowed", actor: Actor{UserID: 7, IsStudyAdmin: true}},
+		{name: "super admin allowed", actor: Actor{UserID: 7, IsSuperAdmin: true}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &serviceTestRepository{}
+			service := NewService(repo)
+			_, err := service.CreateGroup(
+				context.Background(),
+				1,
+				test.actor,
+				GroupInput{Name: " 新专项组 ", Description: " 说明 "},
+				time.Now(),
+			)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("CreateGroup() error = %v, want %v", err, test.wantErr)
+			}
+			err = service.UpdateGroup(
+				context.Background(),
+				1,
+				18,
+				test.actor,
+				GroupInput{Name: " 修改后 ", Description: ""},
+				time.Now(),
+			)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("UpdateGroup() error = %v, want %v", err, test.wantErr)
+			}
+			err = service.DeleteGroup(context.Background(), 1, 18, test.actor, time.Now())
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("DeleteGroup() error = %v, want %v", err, test.wantErr)
+			}
+			if test.wantErr == nil {
+				if repo.createdGroup.Name != "新专项组" {
+					t.Fatalf("created group name = %q, want trimmed name", repo.createdGroup.Name)
+				}
+				if repo.updatedGroup.Name != "修改后" {
+					t.Fatalf("updated group name = %q, want trimmed name", repo.updatedGroup.Name)
+				}
+				if repo.deletedGroupID != 18 {
+					t.Fatalf("deleted group id = %d, want 18", repo.deletedGroupID)
+				}
+			}
+		})
+	}
+}
+
+func TestServiceSetSharePinnedRequiresShareAdmin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		actor   Actor
+		access  Access
+		wantErr error
+	}{
+		{
+			name:    "member forbidden",
+			actor:   Actor{UserID: 7},
+			access:  Access{IsMember: true},
+			wantErr: ErrForbidden,
+		},
+		{
+			name:   "ministry admin allowed",
+			actor:  Actor{UserID: 7},
+			access: Access{IsMember: true, IsAdmin: true},
+		},
+		{
+			name:  "study admin allowed",
+			actor: Actor{UserID: 7, IsStudyAdmin: true},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &serviceTestRepository{access: test.access}
+			service := NewService(repo)
+			err := service.SetSharePinned(
+				context.Background(),
+				1,
+				3,
+				12,
+				test.actor,
+				true,
+				time.Now(),
+			)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("SetSharePinned() error = %v, want %v", err, test.wantErr)
+			}
+			if test.wantErr == nil && !repo.pinnedShare {
+				t.Fatal("SetSharePinned() did not call repository")
+			}
+		})
 	}
 }

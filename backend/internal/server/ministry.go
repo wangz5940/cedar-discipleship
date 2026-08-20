@@ -26,7 +26,11 @@ func (a *app) handleMinistryGroups(w http.ResponseWriter, r *http.Request) {
 		a.writeMinistryError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"groups": groups})
+	actor := ministryActor(user)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"groups":             groups,
+		"can_manage_catalog": actor.IsSuperAdmin || actor.IsStudyAdmin,
+	})
 }
 
 func (a *app) handleMinistryGroup(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +51,78 @@ func (a *app) handleMinistryGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func (a *app) handleMinistryCreateGroup(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	var input ministrydomain.GroupInput
+	if !readJSON(w, r, &input) {
+		return
+	}
+	groupID, err := a.ministry.CreateGroup(
+		r.Context(),
+		studyGroupID,
+		ministryActor(user),
+		input,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(studyGroupID, user.ID, "create_ministry_group", "ministry_groups", groupID, nil, input, r)
+	writeJSON(w, http.StatusCreated, map[string]any{"id": groupID})
+}
+
+func (a *app) handleMinistryUpdateGroup(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	var input ministrydomain.GroupInput
+	if !readJSON(w, r, &input) {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	if err := a.ministry.UpdateGroup(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		ministryActor(user),
+		input,
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(studyGroupID, user.ID, "update_ministry_group", "ministry_groups", groupID, nil, input, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleMinistryDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	if err := a.ministry.DeleteGroup(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		ministryActor(user),
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(studyGroupID, user.ID, "delete_ministry_group", "ministry_groups", groupID, nil, nil, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *app) handleMinistryJoinRequest(w http.ResponseWriter, r *http.Request) {
@@ -406,6 +482,45 @@ func (a *app) handleMinistryShareDecision(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (a *app) handleMinistrySharePin(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	studyGroupID := requireGroupID(w, user)
+	if studyGroupID == 0 {
+		return
+	}
+	var input struct {
+		Pinned bool `json:"pinned"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	groupID := pathUint64(r, "id")
+	shareID := pathUint64(r, "share_id")
+	if err := a.ministry.SetSharePinned(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		shareID,
+		ministryActor(user),
+		input.Pinned,
+		time.Now().UTC(),
+	); err != nil {
+		a.writeMinistryError(w, r, err)
+		return
+	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"pin_ministry_share",
+		"ministry_shares",
+		shareID,
+		nil,
+		map[string]any{"ministry_group_id": groupID, "pinned": input.Pinned},
+		r,
+	)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (a *app) handleMinistryCreateProgress(w http.ResponseWriter, r *http.Request) {
 	user := mustUser(r)
 	studyGroupID := requireGroupID(w, user)
@@ -502,7 +617,8 @@ func (a *app) writeMinistryError(w http.ResponseWriter, r *http.Request, err err
 		errors.Is(err, ministrydomain.ErrInvalidDecision),
 		errors.Is(err, ministrydomain.ErrInvalidVisibility),
 		errors.Is(err, ministrydomain.ErrInvalidRole),
-		errors.Is(err, ministrydomain.ErrInvalidAttachment):
+		errors.Is(err, ministrydomain.ErrInvalidAttachment),
+		errors.Is(err, ministrydomain.ErrInvalidGroupName):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ministrydomain.ErrForbidden),
 		errors.Is(err, ministrydomain.ErrNotMember),

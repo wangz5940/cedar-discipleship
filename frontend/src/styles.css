@@ -6012,6 +6012,25 @@ button.ministry-join-button {
   color: var(--muted);
 }
 
+.ministry-share-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ministry-share-badges .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pinned-pill {
+  border-color: #9db8a5;
+  background: #edf6ef;
+  color: #28573d;
+}
+
 .pending-pill {
   border-color: #e2b46f;
   background: #fff3dc;
@@ -6232,6 +6251,43 @@ button.ministry-join-button {
 
 .ministry-management-section + .ministry-management-section {
   margin-top: 12px;
+}
+
+.ministry-catalog-manager {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ministry-catalog-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.ministry-catalog-create input,
+.ministry-catalog-row input {
+  min-width: 0;
+  border-radius: 7px;
+}
+
+.ministry-catalog-list {
+  display: grid;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.ministry-catalog-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 56px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ministry-catalog-row .inline-actions {
+  flex-wrap: nowrap;
 }
 
 @media (max-width: 920px) {

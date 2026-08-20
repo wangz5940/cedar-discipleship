@@ -58,8 +58,10 @@ type ShareVO struct {
 	Title       string     `json:"title"`
 	Body        string     `json:"body_markdown"`
 	Status      Status     `json:"status"`
+	IsPinned    bool       `json:"is_pinned"`
 	CanEdit     bool       `json:"can_edit"`
 	CanReview   bool       `json:"can_review"`
+	CanPin      bool       `json:"can_pin"`
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
@@ -122,6 +124,11 @@ type GroupSettingsInput struct {
 	MemberVisibility *Visibility `json:"member_visibility,omitempty"`
 	ShareAutoApprove *bool       `json:"share_auto_approve,omitempty"`
 	LeaderUserID     *uint64     `json:"leader_user_id,omitempty"`
+}
+
+type GroupInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 type ShareInput struct {

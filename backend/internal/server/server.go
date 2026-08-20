@@ -219,7 +219,10 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/members/{id}/calendar", a.auth(a.handleMemberCalendar))
 
 	mux.HandleFunc("GET /api/ministry-groups", a.auth(a.handleMinistryGroups))
+	mux.HandleFunc("POST /api/ministry-groups", a.auth(a.handleMinistryCreateGroup))
 	mux.HandleFunc("GET /api/ministry-groups/{id}", a.auth(a.handleMinistryGroup))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}", a.auth(a.handleMinistryUpdateGroup))
+	mux.HandleFunc("DELETE /api/ministry-groups/{id}", a.auth(a.handleMinistryDeleteGroup))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/join-request", a.auth(a.handleMinistryJoinRequest))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/leave", a.auth(a.handleMinistryLeave))
 	mux.HandleFunc("PUT /api/ministry-groups/{id}/identity", a.auth(a.handleMinistryIdentity))
@@ -232,6 +235,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ministry-groups/{id}/shares", a.auth(a.handleMinistryCreateShare))
 	mux.HandleFunc("PUT /api/ministry-groups/{id}/shares/{share_id}", a.auth(a.handleMinistryUpdateShare))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/shares/{share_id}/decision", a.auth(a.handleMinistryShareDecision))
+	mux.HandleFunc("PUT /api/ministry-groups/{id}/shares/{share_id}/pin", a.auth(a.handleMinistrySharePin))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/progress", a.auth(a.handleMinistryCreateProgress))
 	mux.HandleFunc("POST /api/ministry-groups/{id}/attachments", a.auth(a.handleMinistryAttachment))
 	mux.HandleFunc("GET /api/ministry-groups/{id}/attendance", a.auth(a.handleMinistryAttendance))
