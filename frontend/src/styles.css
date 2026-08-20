@@ -6192,7 +6192,16 @@ button.ministry-join-button {
 }
 
 .ministry-compact-actions {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
   margin-top: 8px;
+}
+
+.ministry-compact-actions button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
 .ministry-compact-toggle {
