@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -114,6 +115,41 @@ func TestReadJSONWithLimitRejectsOversizedPayload(t *testing.T) {
 	}
 	if recorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func TestWriteErrorSetsErrorCodeHeader(t *testing.T) {
+	recorder := httptest.NewRecorder()
+
+	writeError(recorder, http.StatusUnauthorized, "unauthorized")
+
+	if got := recorder.Header().Get("X-AGP-Error-Code"); got != "unauthorized" {
+		t.Fatalf("error code header = %q, want unauthorized", got)
+	}
+}
+
+func TestWithRequestLoggingRecordsErrorResponses(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	defer slog.SetDefault(previous)
+
+	handler := withRequestLogging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/assets/16/download", nil))
+
+	line := output.String()
+	for _, want := range []string{
+		"msg=\"http request rejected\"",
+		"method=GET",
+		"path=/api/assets/16/download",
+		"status=401",
+		"error_code=unauthorized",
+	} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("log output %q does not contain %q", line, want)
+		}
 	}
 }
 

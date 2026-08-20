@@ -6016,6 +6016,10 @@ button.ministry-join-button {
   gap: 16px;
 }
 
+.ministry-view-toolbar {
+  min-height: 40px;
+}
+
 .ministry-member-list,
 .ministry-request-list,
 .ministry-feed {
@@ -6065,9 +6069,17 @@ button.ministry-join-button {
   resize: vertical;
 }
 
+.ministry-compact-composer {
+  padding: 12px;
+}
+
 .ministry-feed-item {
   padding: 18px 4px;
   border-bottom: 1px solid var(--line);
+}
+
+.ministry-feed-item.compact {
+  padding: 11px 4px;
 }
 
 .ministry-feed-item > header {
@@ -6113,6 +6125,30 @@ button.ministry-join-button {
 
 .ministry-feed-item footer {
   margin-top: 12px;
+}
+
+.ministry-feed-summary {
+  display: -webkit-box;
+  max-width: 760px;
+  margin: 6px 0 0;
+  overflow: hidden;
+  color: #3e4a3f;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.ministry-compact-actions {
+  margin-top: 8px;
+}
+
+.ministry-compact-toggle {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  font-size: 12px;
 }
 
 .ministry-markdown {
@@ -6212,6 +6248,52 @@ button.ministry-join-button {
 
 .ministry-timeline {
   display: grid;
+}
+
+.ministry-progress-list {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.ministry-progress-item {
+  display: grid;
+  gap: 6px;
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ministry-progress-item header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ministry-progress-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ministry-progress-meta time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ministry-file-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .ministry-timeline-item {

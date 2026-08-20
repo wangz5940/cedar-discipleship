@@ -42,6 +42,9 @@ const detailLoading = ref(false);
 const saving = ref(false);
 const showNotifications = ref(false);
 const showAvailableGroups = ref(false);
+const showShareComposer = ref(false);
+const showProgressComposer = ref(false);
+const expandedFeedItems = ref(new Set());
 
 const shareID = ref(0);
 const shareTitle = ref('');
@@ -96,6 +99,7 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
 async function selectGroup(groupID) {
   selectedGroupID.value = Number(groupID);
   activeView.value = 'members';
+  expandedFeedItems.value = new Set();
   detailLoading.value = true;
   try {
     detail.value = await api(`/ministry-groups/${groupID}`);
@@ -206,13 +210,20 @@ function editShare(share) {
   shareID.value = Number(share.id);
   shareTitle.value = share.title;
   shareBody.value = share.body_markdown;
+  showShareComposer.value = true;
   activeView.value = 'shares';
+}
+
+function startShareDraft() {
+  resetShareForm();
+  showShareComposer.value = true;
 }
 
 function resetShareForm() {
   shareID.value = 0;
   shareTitle.value = '';
   shareBody.value = '';
+  showShareComposer.value = false;
 }
 
 async function saveShare() {
@@ -338,12 +349,22 @@ async function saveProgress() {
         asset_ids: progressAssets.value.map((item) => item.id),
       }),
     });
-    progressBody.value = '';
-    progressAssets.value = [];
-    progressDate.value = localDateTimeValue();
+    resetProgressForm();
     showToast('进展已记录');
     await selectGroup(group.id);
   });
+}
+
+function startProgressDraft() {
+  showProgressComposer.value = true;
+}
+
+function resetProgressForm() {
+  progressBody.value = '';
+  progressAssets.value = [];
+  progressDate.value = localDateTimeValue();
+  showProgressComposer.value = false;
+  if (uploadInput.value) uploadInput.value.value = '';
 }
 
 async function runMutation(action) {
@@ -371,6 +392,53 @@ function toggleAvailableGroups() {
 
 function shareStatusLabel(status) {
   return { pending: '待审批', published: '已发布', rejected: '未通过' }[status] || status;
+}
+
+function feedItemKey(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function feedExpanded(kind, id) {
+  return expandedFeedItems.value.has(feedItemKey(kind, id));
+}
+
+function toggleFeedItem(kind, id) {
+  const key = feedItemKey(kind, id);
+  const next = new Set(expandedFeedItems.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedFeedItems.value = next;
+}
+
+function plainMarkdownText(value) {
+  return String(value || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/^>\s*/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/[*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function feedPreview(value, max = 120) {
+  const text = plainMarkdownText(value);
+  if (!text) return '无正文';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function feedExpandable(value, max = 120) {
+  const raw = String(value || '');
+  return plainMarkdownText(raw).length > max || /\n\s*\n|^#{1,6}\s|^\s*[-*+]\s/m.test(raw);
+}
+
+function feedToggleLabel(kind, id, attachmentCount = 0) {
+  if (feedExpanded(kind, id)) return '收起';
+  if (attachmentCount > 0) return `展开 · 附件 ${attachmentCount}`;
+  return '展开';
 }
 
 function formatDate(value) {
@@ -595,16 +663,31 @@ function localDateTimeValue() {
             </section>
 
             <section v-else-if="activeView === 'shares'" class="ministry-view">
-              <div v-if="canContribute" class="ministry-composer">
+              <div class="ministry-view-head ministry-view-toolbar">
+                <div>
+                  <h3>经验分享</h3>
+                  <p class="muted">{{ detail.shares.length }} 条</p>
+                </div>
+                <button
+                  v-if="canContribute && !showShareComposer"
+                  class="secondary icon-text-button"
+                  type="button"
+                  @click="startShareDraft"
+                >
+                  <Send :size="16" />写分享
+                </button>
+              </div>
+
+              <div v-if="canContribute && showShareComposer" class="ministry-composer ministry-compact-composer">
                 <div class="ministry-view-head">
                   <div>
                     <h3>{{ shareID ? '修改分享' : '记录经验分享' }}</h3>
                     <p class="muted">发布规则：{{ detail.group.share_auto_approve ? '免审批' : '管理员审批' }}</p>
                   </div>
-                  <button v-if="shareID" class="ghost" type="button" @click="resetShareForm">取消修改</button>
+                  <button class="ghost" type="button" @click="resetShareForm">{{ shareID ? '取消修改' : '收起' }}</button>
                 </div>
                 <input v-model="shareTitle" maxlength="255" placeholder="分享标题" />
-                <textarea v-model="shareBody" rows="7" placeholder="使用 Markdown 记录经验、做法和注意事项"></textarea>
+                <textarea v-model="shareBody" rows="4" placeholder="使用 Markdown 记录经验、做法和注意事项"></textarea>
                 <div class="form-actions">
                   <button type="button" class="icon-text-button" :disabled="saving" @click="saveShare">
                     <Send :size="16" />{{ shareID ? '提交修改' : '提交分享' }}
@@ -613,7 +696,7 @@ function localDateTimeValue() {
               </div>
 
               <div class="ministry-feed">
-                <article v-for="share in detail.shares" :key="share.id" class="ministry-feed-item">
+                <article v-for="share in detail.shares" :key="share.id" class="ministry-feed-item compact">
                   <header>
                     <div>
                       <h3>{{ share.title }}</h3>
@@ -624,8 +707,18 @@ function localDateTimeValue() {
                       <span class="pill" :class="{ 'pending-pill': share.status === 'pending' }">{{ shareStatusLabel(share.status) }}</span>
                     </div>
                   </header>
-                  <div class="ministry-markdown" v-html="markdownToSafeHTML(share.body_markdown)"></div>
-                  <footer v-if="share.can_edit || share.can_review || share.can_pin" class="inline-actions">
+                  <p v-if="!feedExpanded('share', share.id)" class="ministry-feed-summary">{{ feedPreview(share.body_markdown, 120) }}</p>
+                  <div v-else class="ministry-markdown" v-html="markdownToSafeHTML(share.body_markdown)"></div>
+                  <footer v-if="feedExpandable(share.body_markdown, 120) || share.can_edit || share.can_review || share.can_pin" class="inline-actions ministry-compact-actions">
+                    <button
+                      v-if="feedExpandable(share.body_markdown, 120)"
+                      class="ghost ministry-compact-toggle"
+                      type="button"
+                      :aria-expanded="feedExpanded('share', share.id)"
+                      @click="toggleFeedItem('share', share.id)"
+                    >
+                      {{ feedToggleLabel('share', share.id) }}
+                    </button>
                     <button
                       v-if="share.can_pin"
                       class="secondary icon-text-button"
@@ -645,15 +738,31 @@ function localDateTimeValue() {
             </section>
 
             <section v-else-if="activeView === 'progress'" class="ministry-view">
-              <div v-if="canContribute" class="ministry-composer">
+              <div class="ministry-view-head ministry-view-toolbar">
+                <div>
+                  <h3>最近进展</h3>
+                  <p class="muted">{{ detail.progress.length }} 条</p>
+                </div>
+                <button
+                  v-if="canContribute && !showProgressComposer"
+                  class="secondary icon-text-button"
+                  type="button"
+                  @click="startProgressDraft"
+                >
+                  <Activity :size="16" />记进展
+                </button>
+              </div>
+
+              <div v-if="canContribute && showProgressComposer" class="ministry-composer ministry-compact-composer">
                 <div class="ministry-view-head">
                   <div>
                     <h3>记录最近进展</h3>
                     <p class="muted">时间 · 内容 · 附件</p>
                   </div>
+                  <button class="ghost" type="button" @click="resetProgressForm">收起</button>
                 </div>
                 <input v-model="progressDate" type="datetime-local" />
-                <textarea v-model="progressBody" rows="6" placeholder="记录时间、完成内容、下一步或需要配搭的事项"></textarea>
+                <textarea v-model="progressBody" rows="4" placeholder="记录时间、完成内容、下一步或需要配搭的事项"></textarea>
                 <div v-if="progressAssets.length" class="ministry-attachment-list">
                   <span v-for="asset in progressAssets" :key="asset.id">
                     <Paperclip :size="14" />{{ asset.original_name }}
@@ -669,28 +778,41 @@ function localDateTimeValue() {
                 </div>
               </div>
 
-              <div class="ministry-timeline">
-                <article v-for="item in detail.progress" :key="item.id" class="ministry-timeline-item">
-                  <div class="ministry-timeline-marker"></div>
-                  <div>
-                    <header>
+              <div class="ministry-progress-list">
+                <article v-for="item in detail.progress" :key="item.id" class="ministry-progress-item">
+                  <header>
+                    <div class="ministry-progress-meta">
                       <b>{{ item.author_name }}</b>
                       <time>{{ formatDate(item.occurred_at) }}</time>
-                    </header>
-                    <div class="ministry-markdown" v-html="markdownToSafeHTML(item.content_markdown)"></div>
-                    <div v-if="item.attachments.length" class="ministry-file-grid">
-                      <button
-                        v-for="asset in item.attachments"
-                        :key="asset.id"
-                        class="ministry-file-button"
-                        type="button"
-                        @click="openAttachment(asset)"
-                      >
-                        <FileText :size="18" />
-                        <span>{{ asset.original_name }}</span>
-                      </button>
                     </div>
+                    <span v-if="item.attachments.length" class="ministry-file-count">
+                      <Paperclip :size="14" />{{ item.attachments.length }}
+                    </span>
+                  </header>
+                  <p v-if="!feedExpanded('progress', item.id)" class="ministry-feed-summary">{{ feedPreview(item.content_markdown, 110) }}</p>
+                  <div v-else class="ministry-markdown" v-html="markdownToSafeHTML(item.content_markdown)"></div>
+                  <div v-if="item.attachments.length && feedExpanded('progress', item.id)" class="ministry-file-grid">
+                    <button
+                      v-for="asset in item.attachments"
+                      :key="asset.id"
+                      class="ministry-file-button"
+                      type="button"
+                      @click="openAttachment(asset)"
+                    >
+                      <FileText :size="18" />
+                      <span>{{ asset.original_name }}</span>
+                    </button>
                   </div>
+                  <footer v-if="feedExpandable(item.content_markdown, 110) || item.attachments.length" class="inline-actions ministry-compact-actions">
+                    <button
+                      class="ghost ministry-compact-toggle"
+                      type="button"
+                      :aria-expanded="feedExpanded('progress', item.id)"
+                      @click="toggleFeedItem('progress', item.id)"
+                    >
+                      {{ feedToggleLabel('progress', item.id, item.attachments.length) }}
+                    </button>
+                  </footer>
                 </article>
                 <div v-if="!detail.progress.length" class="empty">暂无进展记录</div>
               </div>

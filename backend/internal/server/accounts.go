@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"hash"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"strings"
@@ -46,21 +46,19 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func logAuthFailure(r *http.Request, reason string, err error) {
-	errText := ""
-	if err != nil {
-		errText = err.Error()
+	attrs := []any{
+		"method", r.Method,
+		"path", r.URL.Path,
+		"reason", reason,
+		"authorization_header_present", r.Header.Get("Authorization") != "",
+		"referer", r.Referer(),
+		"user_agent", r.UserAgent(),
+		"client_ip", clientIP(r),
 	}
-	log.Printf(
-		"auth failed method=%s path=%s reason=%s authorization_header_present=%t referer=%q user_agent=%q client_ip=%s err=%s",
-		r.Method,
-		r.URL.Path,
-		reason,
-		r.Header.Get("Authorization") != "",
-		r.Referer(),
-		r.UserAgent(),
-		clientIP(r),
-		errText,
-	)
+	if err != nil {
+		attrs = append(attrs, "error", err)
+	}
+	slog.WarnContext(r.Context(), "auth failed", attrs...)
 }
 
 func (a *app) requireSuper(next http.HandlerFunc) http.HandlerFunc {

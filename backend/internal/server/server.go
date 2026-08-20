@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -145,7 +147,7 @@ func Run() error {
 	log.Printf("AGP backend listening on %s", cfg.Addr)
 	server := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           withCommonHeaders(mux),
+		Handler:           withRequestLogging(withCommonHeaders(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
@@ -301,6 +303,99 @@ func withCommonHeaders(next http.Handler) http.Handler {
 	})
 }
 
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (w *statusResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(data)
+	w.bytes += n
+	return n, err
+}
+
+func (w *statusResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (w *statusResponseWriter) statusCode() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
+
+func withRequestLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		recorder := &statusResponseWriter{ResponseWriter: w}
+		var panicValue any
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				panicValue = recovered
+				if recorder.status == 0 {
+					writeError(recorder, http.StatusInternalServerError, "internal_server_error")
+				}
+			}
+			logHTTPRequest(r, recorder, time.Since(start), panicValue)
+		}()
+		next.ServeHTTP(recorder, r)
+	})
+}
+
+func logHTTPRequest(r *http.Request, w *statusResponseWriter, duration time.Duration, panicValue any) {
+	status := w.statusCode()
+	if panicValue != nil {
+		status = http.StatusInternalServerError
+	}
+	attrs := []any{
+		"method", r.Method,
+		"path", r.URL.Path,
+		"route", requestPattern(r),
+		"status", status,
+		"bytes", w.bytes,
+		"duration_ms", duration.Milliseconds(),
+		"client_ip", clientIP(r),
+		"user_agent", r.UserAgent(),
+	}
+	if errorCode := w.Header().Get("X-AGP-Error-Code"); errorCode != "" {
+		attrs = append(attrs, "error_code", errorCode)
+	}
+	if panicValue != nil {
+		attrs = append(attrs, "panic", panicValue, "stack", string(debug.Stack()))
+		slog.ErrorContext(r.Context(), "http request panic", attrs...)
+		return
+	}
+	if status >= http.StatusInternalServerError {
+		slog.ErrorContext(r.Context(), "http request failed", attrs...)
+		return
+	}
+	if status >= http.StatusBadRequest {
+		slog.WarnContext(r.Context(), "http request rejected", attrs...)
+		return
+	}
+	slog.InfoContext(r.Context(), "http request completed", attrs...)
+}
+
+func requestPattern(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+	return r.URL.Path
+}
+
 func (a *app) runMigrations() error {
 	entries, err := os.ReadDir(a.migrationsDir)
 	if err != nil {
@@ -403,6 +498,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, status int, code string) {
+	w.Header().Set("X-AGP-Error-Code", code)
 	writeJSON(w, status, map[string]any{"error": code})
 }
 
