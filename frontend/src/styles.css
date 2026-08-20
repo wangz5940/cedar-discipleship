@@ -6267,9 +6267,11 @@ button.ministry-join-button {
   margin-top: 10px;
 }
 
-.ministry-file-grid a {
+.ministry-file-grid a,
+.ministry-file-grid button {
   display: flex;
   min-width: 0;
+  min-height: 0;
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
@@ -6277,10 +6279,23 @@ button.ministry-join-button {
   border-radius: 6px;
   background: var(--surface-muted);
   color: var(--text);
+  box-shadow: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
   text-decoration: none;
 }
 
-.ministry-file-grid a span {
+.ministry-file-grid a:hover,
+.ministry-file-grid button:hover {
+  transform: none;
+  background: #eef2ed;
+  box-shadow: none;
+}
+
+.ministry-file-grid a span,
+.ministry-file-grid button span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

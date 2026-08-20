@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"hash"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -23,18 +24,43 @@ import (
 func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
+		if token == "" {
+			logAuthFailure(r, "missing_bearer_token", nil)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		claims, err := a.verifyToken(token)
 		if err != nil {
+			logAuthFailure(r, "verify_token", err)
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		u, err := a.loadCurrentUser(r.Context(), claims.UserID, claims.CurrentGroupID)
 		if err != nil {
+			logAuthFailure(r, "load_current_user", err)
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), currentUserKey, u)))
 	}
+}
+
+func logAuthFailure(r *http.Request, reason string, err error) {
+	errText := ""
+	if err != nil {
+		errText = err.Error()
+	}
+	log.Printf(
+		"auth failed method=%s path=%s reason=%s authorization_header_present=%t referer=%q user_agent=%q client_ip=%s err=%s",
+		r.Method,
+		r.URL.Path,
+		reason,
+		r.Header.Get("Authorization") != "",
+		r.Referer(),
+		r.UserAgent(),
+		clientIP(r),
+		errText,
+	)
 }
 
 func (a *app) requireSuper(next http.HandlerFunc) http.HandlerFunc {

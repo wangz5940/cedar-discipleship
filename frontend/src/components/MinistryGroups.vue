@@ -24,7 +24,7 @@ import {
   X,
 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
-import { api, toast as showToast } from '../legacy-app';
+import { api, openContentTarget, toast as showToast } from '../legacy-app';
 import { markdownToSafeHTML } from '../runtime/content';
 import CountingAttendance from './CountingAttendance.vue';
 
@@ -263,6 +263,34 @@ async function setSharePinned(share, pinned) {
     showToast(pinned ? '分享已置顶' : '已取消置顶');
     await selectGroup(group.id);
   });
+}
+
+async function openAttachment(asset) {
+  const url = asset.url || (asset.id ? `/api/assets/${asset.id}/download` : '');
+  if (!url) {
+    showToast('附件地址缺失');
+    return;
+  }
+  try {
+    await openContentTarget({
+      title: asset.title || asset.original_name || '附件',
+      original_name: asset.original_name || '',
+      url,
+      type: attachmentType(asset),
+    });
+  } catch (error) {
+    showToast(`附件打开失败：${error.message}`);
+  }
+}
+
+function attachmentType(asset) {
+  const mime = String(asset.mime_type || '').toLowerCase();
+  const name = String(asset.original_name || asset.title || asset.url || '').toLowerCase();
+  if (mime.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+  if (mime.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/.test(name)) return 'image';
+  if (mime.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/.test(name)) return 'video';
+  if (mime.includes('markdown') || mime.startsWith('text/') || name.endsWith('.md')) return 'markdown';
+  return 'iframe';
 }
 
 async function uploadAttachments() {
@@ -651,10 +679,16 @@ function localDateTimeValue() {
                     </header>
                     <div class="ministry-markdown" v-html="markdownToSafeHTML(item.content_markdown)"></div>
                     <div v-if="item.attachments.length" class="ministry-file-grid">
-                      <a v-for="asset in item.attachments" :key="asset.id" :href="asset.url" target="_blank" rel="noopener">
+                      <button
+                        v-for="asset in item.attachments"
+                        :key="asset.id"
+                        class="ministry-file-button"
+                        type="button"
+                        @click="openAttachment(asset)"
+                      >
                         <FileText :size="18" />
                         <span>{{ asset.original_name }}</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 </article>
