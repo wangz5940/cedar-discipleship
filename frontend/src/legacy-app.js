@@ -19,6 +19,7 @@ import {
   deepMerge,
   enabledFlag,
   extractPdfPageRange,
+  isPlainObject,
   normalizePageField,
   normalizeLegacyStaticAssetURL,
   normalizeSearchText,

@@ -91,7 +91,7 @@ watch(showRecycleBin, (isVisible) => {
   if (!isVisible && activeView.value === 'trash') activeView.value = 'members';
 });
 
-async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
+async function loadWorkspace(preferredGroupID = selectedGroupID.value, options = {}) {
   loading.value = true;
   try {
     const [groupResult, notificationResult, requestResult] = await Promise.all([
@@ -107,7 +107,7 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
     const nextID = selectedStillExists
       ? Number(preferredGroupID)
       : Number(joinedGroups.value[0]?.id || groups.value[0]?.id || 0);
-    if (nextID) await selectGroup(nextID);
+    if (nextID) await selectGroup(nextID, { preserveView: Boolean(options.preserveView) });
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -115,11 +115,13 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value) {
   }
 }
 
-async function selectGroup(groupID) {
+async function selectGroup(groupID, options = {}) {
   selectedGroupID.value = Number(groupID);
-  activeView.value = 'members';
-  expandedFeedItems.value = new Set();
-  selectedAttachmentKeys.value = new Set();
+  if (!options.preserveView) {
+    activeView.value = 'members';
+    expandedFeedItems.value = new Set();
+    selectedAttachmentKeys.value = new Set();
+  }
   detailLoading.value = true;
   try {
     detail.value = await api(`/ministry-groups/${groupID}`);
@@ -129,6 +131,11 @@ async function selectGroup(groupID) {
   } finally {
     detailLoading.value = false;
   }
+}
+
+async function refreshSelectedGroup(groupID = selectedGroupID.value) {
+  if (!groupID) return;
+  await selectGroup(groupID, { preserveView: true });
 }
 
 async function requestJoin(group) {
@@ -163,7 +170,7 @@ async function toggleIdentityPublic() {
       method: 'PUT',
       body: JSON.stringify({ public: !group.identity_public }),
     });
-    await loadWorkspace(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -189,7 +196,7 @@ async function updateSettings(payload) {
       body: JSON.stringify(payload),
     });
     showToast('小组设置已更新');
-    await loadWorkspace(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -201,7 +208,7 @@ async function setMemberRole(member, role) {
       method: 'PUT',
       body: JSON.stringify({ role }),
     });
-    await selectGroup(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -212,7 +219,7 @@ async function decideRequest(request, decision) {
       body: JSON.stringify({ decision }),
     });
     showToast(decision === 'approved' ? '加入申请已通过' : '加入申请已拒绝');
-    await loadWorkspace(request.group_id);
+    await loadWorkspace(request.group_id, { preserveView: true });
   });
 }
 
@@ -266,7 +273,7 @@ async function saveShare() {
     });
     showToast(group.share_auto_approve || group.can_review_shares ? '分享已发布' : '分享已提交审批');
     resetShareForm();
-    await selectGroup(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -279,7 +286,7 @@ async function decideShare(share, decision) {
       body: JSON.stringify({ decision }),
     });
     showToast(decision === 'published' ? '分享已发布' : '分享已拒绝');
-    await selectGroup(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -292,7 +299,7 @@ async function setSharePinned(share, pinned) {
       body: JSON.stringify({ pinned }),
     });
     showToast(pinned ? '分享已置顶' : '已取消置顶');
-    await selectGroup(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -303,8 +310,8 @@ async function deleteShare(share) {
     await api(`/ministry-groups/${group.id}/shares/${share.id}`, { method: 'DELETE' });
     if (Number(shareID.value) === Number(share.id)) resetShareForm();
     showToast('分享已删除');
-    await selectGroup(group.id);
     activeView.value = 'shares';
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -314,8 +321,8 @@ async function deleteProgress(item) {
   await runMutation(async () => {
     await api(`/ministry-groups/${group.id}/progress/${item.id}`, { method: 'DELETE' });
     showToast('进展已删除');
-    await selectGroup(group.id);
     activeView.value = 'progress';
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -330,8 +337,8 @@ async function restoreContent(kind, item) {
       : `/ministry-groups/${group.id}/progress/${item.id}/restore`;
     await api(path, { method: 'POST' });
     showToast(`${label}已恢复`);
-    await selectGroup(group.id);
     activeView.value = kind === 'share' ? 'shares' : 'progress';
+    await refreshSelectedGroup(group.id);
   });
 }
 
@@ -463,7 +470,7 @@ async function saveProgress() {
     });
     resetProgressForm();
     showToast('进展已记录');
-    await selectGroup(group.id);
+    await refreshSelectedGroup(group.id);
   });
 }
 
