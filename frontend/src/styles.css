@@ -57,12 +57,20 @@
 * { box-sizing: border-box; }
 
 html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: var(--canvas);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   letter-spacing: -0.01em;
@@ -71,6 +79,12 @@ body {
     radial-gradient(circle at 92% 8%, rgba(124, 58, 237, 0.09), transparent 24%),
     radial-gradient(circle at 78% 88%, rgba(34, 197, 94, 0.08), transparent 22%),
     linear-gradient(180deg, #fbfaf7 0%, #f6f3ee 52%, #f3f5f8 100%);
+}
+
+#app {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 body::before {
@@ -6576,5 +6590,62 @@ button.ministry-join-button {
 
   .ministry-composer {
     padding: 11px;
+  }
+}
+
+@media (max-width: 980px) {
+  html,
+  body,
+  #app,
+  .vue-app-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .app-shell,
+  .main-panel,
+  .content-shell,
+  .page-chrome,
+  .topbar,
+  .page-title-card,
+  .toolbar-card,
+  .card,
+  .today-hero,
+  .dashboard-strip,
+  .stats-center-head,
+  .bar-chart-card,
+  .task-section-table,
+  .period-matrix-table-card,
+  .ministry-page,
+  .ministry-layout,
+  .ministry-workspace {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .table-scroll,
+  .bar-chart-card,
+  .attendance-table-scroll,
+  .admin-tabs,
+  .ministry-directory,
+  .ministry-tabs,
+  .task-link-list {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 430px) {
+  .date-controls input,
+  input[type="date"],
+  input[type="datetime-local"] {
+    font-size: 16px;
   }
 }
