@@ -10,6 +10,7 @@ import {
   normalizeSearchText,
   parsePdfPageRangeParts,
   shouldRenderWeeklyTask,
+  shouldUseNativePDFViewer,
   weeklyTitleFromContent,
 } from './content';
 
@@ -29,6 +30,13 @@ describe('content runtime helpers', () => {
     expect(parsePdfPageRangeParts('第 9 页')).toEqual({ pageStart: '9', pageEnd: '9' });
     expect(applyPdfPageRangeToTitle('读物 3-4页', '8', '6')).toBe('读物 8-8页');
     expect(applyPdfPageRangeToTitle('读物 3-4页', '', '')).toBe('读物');
+  });
+
+  it('uses native PDF viewing only on Apple mobile devices', () => {
+    expect(shouldUseNativePDFViewer('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36')).toBe(false);
+    expect(shouldUseNativePDFViewer('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')).toBe(true);
+    expect(shouldUseNativePDFViewer('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', 5)).toBe(true);
+    expect(shouldUseNativePDFViewer('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false);
   });
 
   it('classifies attachments into previewable and download-only types', () => {

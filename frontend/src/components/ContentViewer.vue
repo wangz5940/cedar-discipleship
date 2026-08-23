@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { Download } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
@@ -14,6 +14,7 @@ import {
   toast,
 } from '../legacy-app';
 
+const PdfViewer = defineAsyncComponent(() => import('./PdfViewer.vue'));
 const viewerStore = useContentViewerStore();
 const downloadManager = useDownloadManagerStore();
 const { viewer } = storeToRefs(viewerStore);
@@ -274,6 +275,11 @@ function downloadCurrent() {
           <div v-else-if="viewer.type === 'audio'" class="viewer-audio-shell">
             <audio class="viewer-audio" :src="viewer.url" controls></audio>
           </div>
+          <PdfViewer
+            v-else-if="viewer.type === 'pdf'"
+            :src="viewer.url"
+            :title="viewer.title"
+          />
           <iframe
             v-else
             class="viewer-frame"

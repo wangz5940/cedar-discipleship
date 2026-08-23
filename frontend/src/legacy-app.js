@@ -25,6 +25,7 @@ import {
   normalizeSearchText,
   parsePdfPageRangeParts,
   shouldRenderWeeklyTask,
+  shouldUseNativePDFViewer,
   weeklyTitleFromContent,
 } from './runtime/content';
 
@@ -844,15 +845,7 @@ function buildViewerURL(url, type, pageRange = '', sourceURL = '') {
 
 function preferStandalonePDFViewer(type) {
   if (type !== 'pdf' || typeof window === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua);
-  const isNarrowViewport = window.matchMedia
-    ? window.matchMedia('(max-width: 900px)').matches
-    : window.innerWidth <= 900;
-  const hasCoarsePointer = window.matchMedia
-    ? window.matchMedia('(pointer: coarse)').matches
-    : false;
-  return isMobileUA || (isNarrowViewport && hasCoarsePointer);
+  return shouldUseNativePDFViewer(navigator.userAgent, navigator.maxTouchPoints);
 }
 
 function openPendingViewerWindow(title) {

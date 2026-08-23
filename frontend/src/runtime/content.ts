@@ -15,6 +15,12 @@ export function shouldRenderWeeklyTask(enabled: unknown, tasks: unknown): boolea
   return enabledFlag(enabled) && Array.isArray(tasks) && tasks.length > 0;
 }
 
+export function shouldUseNativePDFViewer(userAgent: unknown, maxTouchPoints = 0): boolean {
+  const normalizedUserAgent = String(userAgent || '');
+  return /iPhone|iPad|iPod/i.test(normalizedUserAgent)
+    || (/Macintosh/i.test(normalizedUserAgent) && maxTouchPoints > 1);
+}
+
 export function normalizeLegacyStaticAssetURL(value: unknown): string {
   const source = String(value || '').trim();
   const match = source.match(/^\/api\/assets\/(?:book:|passage:|handout:|video:|markdown:)\/(.+)\/download$/);
