@@ -1,3 +1,13 @@
+COMPOSE_FILE ?= deploy/docker-compose.separated.yml
+ENV_FILE ?= .env
+COMPOSE = docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
+
+.PHONY: restart down
+
 restart:
-	docker compose -f deploy/docker-compose.separated.yml down
-	GOPROXY=https://goproxy.cn,direct docker compose -f deploy/docker-compose.separated.yml up -d --build
+	./scripts/init-deploy-env.sh >/dev/null
+	$(COMPOSE) down
+	GOPROXY=https://goproxy.cn,direct $(COMPOSE) up -d --build
+
+down:
+	$(COMPOSE) down

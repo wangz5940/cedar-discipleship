@@ -73,7 +73,8 @@
 在项目根目录执行：
 
 ```bash
-docker compose -f deploy/docker-compose.separated.yml up -d --build
+./scripts/init-deploy-env.sh
+docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build
 ```
 
 默认访问地址：
@@ -95,11 +96,7 @@ http://127.0.0.1:5114
 ```bash
 ./scripts/init-deploy-env.sh
 
-set -a
-. ./.env
-set +a
-
-docker compose -f deploy/docker-compose.separated.yml up -d --build
+docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build
 ```
 
 脚本会补齐 `.env` 中缺失的部署变量和随机密钥，不覆盖已存在的值，并创建 `AGP_DATA_DIR` 下的 `mysql`、`assets`、`backups/mysql` 目录。默认会写入 `COMPOSE_PROJECT_NAME=cedar`、`AGP_CONTAINER_PREFIX=cedar`、`AGP_WEB_PORT=5114`、`AGP_MYSQL_PORT=3307`、`AGP_DATA_DIR=/volume2/docker/cedar-discipleship-data`、`GOPROXY=https://goproxy.cn,direct`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`。其中 `AGP_WEB_PORT` 需避开已有的 `5112`，`AGP_MYSQL_PORT` 需避开已有的 `3377`。`AGP_CONTAINER_PREFIX` 会生成 `cedar-mysql`、`cedar-backend`、`cedar-frontend`，避免与已有容器名冲突。
@@ -238,16 +235,16 @@ MYSQL_ROOT_PASSWORD=实际root密码 ./scripts/init-ministry-groups.sh
 
 ```bash
 # 启动
-docker compose -f deploy/docker-compose.separated.yml up -d --build
+docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build
 
 # 查看状态
-docker compose -f deploy/docker-compose.separated.yml ps
+docker compose --env-file .env -f deploy/docker-compose.separated.yml ps
 
 # 查看日志
-docker compose -f deploy/docker-compose.separated.yml logs -f
+docker compose --env-file .env -f deploy/docker-compose.separated.yml logs -f
 
 # 停止
-docker compose -f deploy/docker-compose.separated.yml down
+docker compose --env-file .env -f deploy/docker-compose.separated.yml down
 ```
 
 MySQL 进入方式：
