@@ -119,6 +119,11 @@ function rankingItemTotal(item) {
   return Number(item.counts?.[activeLegend.value.key] || 0);
 }
 
+function chartMemberLabel(item) {
+  const name = String(item.member_name || item.display_name || item.username || '?');
+  return Array.from(name).slice(-2).join('');
+}
+
 function segmentCount(item, key) {
   return Number(item.counts?.[key] || 0);
 }
@@ -217,7 +222,7 @@ async function exportRankingChart() {
         <rect x="${x}" y="${top + chartHeight - offset}" width="${barWidth}" height="${segmentHeightPx}" rx="8" fill="${colors[part.key]}" />
       `;
     }).join('');
-    const label = String(item.member_name || item.display_name || '?').slice(0, 4);
+    const label = chartMemberLabel(item);
     return `
       <g>
         <rect x="${x}" y="${top}" width="${barWidth}" height="${chartHeight}" rx="12" fill="rgba(15,23,42,0.05)" />
@@ -518,7 +523,7 @@ async function exportRankingChart() {
                 </div>
                 <span v-else class="bar-empty"></span>
               </div>
-              <span class="bar-label">{{ (member.member_name || member.display_name || '?').slice(0, 4) }}</span>
+              <span class="bar-label">{{ chartMemberLabel(member) }}</span>
               <small>{{ rankingItemTotal(member) }} 次</small>
             </div>
           </div>

@@ -74,6 +74,7 @@ append_env AGP_DATA_DIR /volume2/docker/cedar-discipleship-data
 
 append_env MYSQL_DATABASE agp
 append_env MYSQL_USER agp
+append_env MYSQL_LOWER_CASE_TABLE_NAMES 0
 append_env MYSQL_PASSWORD "$(rand_password 24)"
 append_env MYSQL_ROOT_PASSWORD "$(rand_password 32)"
 

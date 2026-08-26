@@ -6,7 +6,7 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-      - --lower-case-table-names=1
+      - --lower-case-table-names=${MYSQL_LOWER_CASE_TABLE_NAMES:-0}
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-agp}
       MYSQL_USER: ${MYSQL_USER:-agp}
