@@ -23,17 +23,7 @@ function taskLocked(task) {
 }
 
 function taskStatusLabel(task) {
-  return task.ownRecord ? '已打卡' : '未打卡';
-}
-
-function actionText(task) {
-  if (task.ownRecord) return '取消完成';
-  if (taskLocked(task)) return '未打卡';
-  return isToday.value ? '完成学习' : '补学完成';
-}
-
-function taskSubtitle(task) {
-  return task.ownRecord ? (task.detail || task.title) : (task.summary || '打开内容学习后可记录完成');
+  return task.ownRecord ? '已打卡' : '未完成';
 }
 </script>
 
@@ -75,9 +65,6 @@ function taskSubtitle(task) {
         >
           <div class="task-head">
             <span class="task-icon">{{ task.ownRecord ? '✓' : task.icon }}</span>
-            <span class="task-state-badge" :class="{ done: task.ownRecord, pending: !task.ownRecord }">
-              {{ taskStatusLabel(task) }}
-            </span>
           </div>
 
           <button
@@ -89,7 +76,6 @@ function taskSubtitle(task) {
             @click="openTaskContent(task)"
           >
             <span class="task-title">{{ task.title }}</span>
-            <span class="task-subtitle">{{ taskSubtitle(task) }}</span>
           </button>
 
           <div v-if="task.type === 'daily_devotion' && task.contentLinks?.length > 1" class="task-link-list">
@@ -107,12 +93,14 @@ function taskSubtitle(task) {
 
           <div class="task-actions">
             <button
-              :class="task.ownRecord ? 'ghost' : 'ok'"
+              class="task-state-badge task-status-action"
+              :class="{ done: task.ownRecord, pending: !task.ownRecord }"
               type="button"
               :disabled="taskLocked(task)"
+              :aria-pressed="task.ownRecord"
               @click="toggleCheckin(task)"
             >
-              {{ actionText(task) }}
+              {{ taskStatusLabel(task) }}
             </button>
           </div>
         </article>

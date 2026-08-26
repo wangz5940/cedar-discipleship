@@ -465,7 +465,7 @@ async function selectCalendarDate(day) {
           <span class="avatar mini">{{ (user?.display_name || '?').slice(0, 1) }}</span>
           <span v-if="!sidebarCollapsed">{{ user?.username || '' }}</span>
         </div>
-        <button class="ghost" type="button" @click="logout">退出</button>
+        <button v-if="tab === 'home'" class="ghost" type="button" @click="logout">退出</button>
       </div>
     </aside>
 
@@ -479,7 +479,7 @@ async function selectCalendarDate(day) {
               {{ activeGroup?.name || '当前工作区' }} · {{ user?.display_name || user?.username || '当前用户' }}
             </p>
           </div>
-          <button class="ghost icon-text-button mobile-title-logout" type="button" @click="logout">
+          <button v-if="tab === 'home'" class="ghost icon-text-button mobile-title-logout" type="button" @click="logout">
             <LogOut :size="16" />退出
           </button>
         </section>

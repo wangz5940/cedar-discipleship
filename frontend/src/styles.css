@@ -5766,6 +5766,40 @@ textarea::placeholder {
   color: #28573d;
 }
 
+.task-actions .task-status-action,
+.task-option.done .task-actions .task-status-action {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 136px;
+  min-height: 38px;
+  padding: 9px 15px;
+  border-width: 1px;
+  border-radius: var(--radius-sm);
+  font-size: inherit;
+  font-weight: 650;
+  line-height: normal;
+  letter-spacing: 0;
+  box-shadow: none;
+}
+
+.task-actions .task-status-action.pending:hover {
+  border-color: #cf9847;
+  background: #ffe9bf;
+  color: #70400f;
+}
+
+.task-actions .task-status-action.done:hover {
+  border-color: #719d7e;
+  background: #cfe6d5;
+  color: #1f472f;
+}
+
+.task-actions .task-status-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .task-option.done .task-icon {
   width: 40px;
   min-width: 40px;
@@ -7131,20 +7165,21 @@ button.ministry-join-button {
   font-size: 12px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 980px) {
   .download-center {
     right: 14px;
-    bottom: calc(14px + env(safe-area-inset-bottom));
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
   }
+}
 
+@media (max-width: 640px) {
   .download-center-panel {
     position: fixed;
     right: 8px;
-    bottom: 8px;
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
     left: 8px;
     width: auto;
-    max-height: calc(100dvh - 16px);
-    padding-bottom: env(safe-area-inset-bottom);
+    max-height: calc(100dvh - 86px - env(safe-area-inset-bottom, 0px));
   }
 
   .download-center-list {
