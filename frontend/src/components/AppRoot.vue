@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { ChevronDown, ChevronRight, Download } from '@lucide/vue';
+import { ChevronDown, ChevronRight, Download, LogOut } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
@@ -472,13 +472,16 @@ async function selectCalendarDate(day) {
     <main class="main-panel">
       <div class="page-chrome">
         <section class="page-title-card">
-          <div>
+          <div class="page-title-copy">
             <div class="eyebrow">学习工作台</div>
             <h1>{{ pageTitle }}</h1>
             <p class="page-title-subtitle">
               {{ activeGroup?.name || '当前工作区' }} · {{ user?.display_name || user?.username || '当前用户' }}
             </p>
           </div>
+          <button class="ghost icon-text-button mobile-title-logout" type="button" @click="logout">
+            <LogOut :size="16" />退出
+          </button>
         </section>
         <div v-if="groups.length > 1" class="toolbar-card toolbar-card-group">
           <div class="toolbar-card-label">
@@ -901,7 +904,6 @@ async function selectCalendarDate(day) {
 
       <div class="mobile-tabs">
         <button v-for="item in navItems" :key="item[0]" :class="{ active: tab === item[0] }" type="button" @click="setTab(item[0])">{{ item[1] }}</button>
-        <button class="mobile-logout" type="button" @click="logout">退出</button>
       </div>
     </main>
   </div>

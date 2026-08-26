@@ -2069,6 +2069,14 @@ textarea:focus {
   font-family: var(--font-sans);
 }
 
+.page-title-copy {
+  min-width: 0;
+}
+
+.mobile-title-logout {
+  display: none;
+}
+
 .toolbar-card {
   padding: 16px 24px;
   border-radius: var(--radius-md);
@@ -2991,10 +2999,6 @@ textarea:focus {
   right: 0;
   bottom: 0;
   padding: 8px 16px;
-}
-
-.mobile-tabs .mobile-logout {
-  color: #8b5326;
 }
 
 @media (max-width: 980px) {
@@ -5394,7 +5398,20 @@ textarea::placeholder {
   }
 
   .page-title-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
     padding: 0 2px 6px;
+  }
+
+  .mobile-title-logout {
+    display: inline-flex;
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    color: #8b5326;
   }
 
   .page-title-card h1 {

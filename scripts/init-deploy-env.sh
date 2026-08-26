@@ -99,12 +99,8 @@ cat <<EOF
 部署数据目录已创建: $AGP_DATA_DIR_VALUE
 
 启动命令:
-  set -a
-  . "$ENV_FILE"
-  set +a
-  docker compose -f deploy/docker-compose.separated.yml up -d --build
+  docker compose --env-file "$ENV_FILE" -f deploy/docker-compose.separated.yml up -d --build
 
 查看当前配置:
-  set -a; . "$ENV_FILE"; set +a
-  docker compose -f deploy/docker-compose.separated.yml config
+  docker compose --env-file "$ENV_FILE" -f deploy/docker-compose.separated.yml config
 EOF
