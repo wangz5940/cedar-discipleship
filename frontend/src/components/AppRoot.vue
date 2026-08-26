@@ -245,6 +245,18 @@ function optionText(item) {
   return item.title || item.original_name || '未命名资源';
 }
 
+function singleLineText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function weekOptionText(week) {
+  const start = singleLineText(week?.start);
+  const end = singleLineText(week?.end);
+  const range = start && end ? `${start} - ${end}` : start || end || '未设置时间';
+  const title = singleLineText(week?.title) || '未命名周任务';
+  return `${range}｜${title}`;
+}
+
 function fileOptionText(item) {
   return item.title || item.original_name || item.url || '未命名文件';
 }
@@ -410,7 +422,9 @@ async function selectCalendarDate(day) {
 <template>
   <div v-if="!authenticated" class="login-shell">
     <div class="login-card">
-      <div class="brand-mark">知</div>
+      <div class="brand-mark">
+        <img src="/site-avatar.png" alt="" />
+      </div>
       <div class="eyebrow">Cedar Discipleship</div>
       <h1>继续今天的学习</h1>
       <div class="form-stack">
@@ -441,7 +455,9 @@ async function selectCalendarDate(day) {
         </button>
       </div>
       <div class="sidebar-logo">
-        <div class="brand-mark">知</div>
+        <div class="brand-mark">
+          <img src="/site-avatar.png" alt="" />
+        </div>
         <div>
           <b>知行</b>
           <div class="muted">{{ user?.display_name || '' }}</div>
@@ -751,58 +767,83 @@ async function selectCalendarDate(day) {
                 </div>
                 <div v-if="weekDraft" class="card week-planner-card">
                   <div class="section-title">
-                    <h2>周任务安排</h2>
+                    <h2>周任务</h2>
                     <div class="inline-actions">
-                      <select :value="weekDraft.id || 0" @change="selectWeekDraft(Number($event.target.value || 0))">
-                        <option v-for="week in weeks" :key="week.id" :value="week.id">{{ week.start }} - {{ week.end }}｜{{ week.title || '未命名周任务' }}</option>
+                      <select
+                        class="week-picker"
+                        :title="weekDraft.id ? weekOptionText(weekDraft) : '新增一周'"
+                        :value="weekDraft.id || 0"
+                        @change="selectWeekDraft(Number($event.target.value || 0))"
+                      >
+                        <option v-for="week in weeks" :key="week.id" :value="week.id">{{ weekOptionText(week) }}</option>
                         <option value="0">新增一周</option>
                       </select>
                     </div>
                   </div>
                   <div class="form-stack admin-form-grid">
-                    <label class="admin-field"><span class="admin-field-label">开始日期</span><input type="date" :value="weekDraft.start || ''" @change="updateWeekDraftField('start', $event.target.value)" /></label>
-                    <label class="admin-field"><span class="admin-field-label">结束日期</span><input type="date" :value="weekDraft.end || ''" @change="updateWeekDraftField('end', $event.target.value)" /></label>
-                    <label class="admin-field"><span class="admin-field-label">默写经文</span><input :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref', $event.target.value)" /></label>
-                    <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text', $event.target.value)"></textarea></label>
-                    <div class="admin-binding-list">
-                      <div class="admin-field-label">读物挂载文件与页码</div>
-                      <div v-for="(item, index) in weekDraft.readings || []" :key="`reading-${index}`" class="admin-binding-row reading-binding-row">
-                        <select :value="weekBindingSelectionValue(item, readingOptions)" @change="applyBindingSelection('readings', index, $event.target.value)">
-                          <option value="">不挂载文件</option>
-                          <option v-for="option in readingOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
-                        </select>
-                        <input type="number" min="1" inputmode="numeric" :value="item.page_start || ''" placeholder="起始页" @change="updateWeekBinding('readings', index, 'page_start', $event.target.value)" />
-                        <input type="number" min="1" inputmode="numeric" :value="item.page_end || ''" placeholder="结束页" @change="updateWeekBinding('readings', index, 'page_end', $event.target.value)" />
-                        <button class="ghost" type="button" @click="removeWeekBinding('readings', index)">删除</button>
-                      </div>
-                      <button class="secondary" type="button" @click="addWeekBinding('readings')">新增读物</button>
-                    </div>
-                    <div class="admin-binding-list">
-                      <div class="admin-field-label">视频文件</div>
-                      <div v-for="(item, index) in weekDraft.videos || []" :key="`video-${index}`" class="admin-binding-row video-binding-row">
-                        <select :value="weekBindingSelectionValue(item, videoOptions)" @change="applyBindingSelection('videos', index, $event.target.value)">
-                          <option value="">不挂载文件</option>
-                          <option v-for="option in videoOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
-                        </select>
-                        <button class="ghost" type="button" @click="removeWeekBinding('videos', index)">删除</button>
-                      </div>
-                    </div>
-                    <div class="admin-binding-list">
-                      <div class="admin-field-label">提纲背诵图片</div>
-                      <div class="admin-binding-row">
-                        <input :value="weekDraft.outline?.title || ''" placeholder="提纲图片标题" @change="updateWeekDraftField('outline', { ...(weekDraft.outline || {}), title: $event.target.value })" />
-                        <select :value="librarySelectionValue(weekDraft.outline)" @change="applyOutlineSelection($event.target.value)">
-                          <option value="">无提纲图片</option>
-                          <option v-for="item in outlineOptions" :key="librarySelectionValue(item)" :value="librarySelectionValue(item)">{{ optionText(item) }}</option>
-                        </select>
-                      </div>
+                    <div class="admin-paired-fields">
+                      <label class="admin-field"><span class="admin-field-label">开始时间</span><input type="date" :value="weekDraft.start || ''" @change="updateWeekDraftField('start', $event.target.value)" /></label>
+                      <label class="admin-field"><span class="admin-field-label">结束时间</span><input type="date" :value="weekDraft.end || ''" @change="updateWeekDraftField('end', $event.target.value)" /></label>
                     </div>
                     <div class="admin-checkbox-row">
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>显示周读物</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.video_enabled)" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>显示视频</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.verse_enabled)" @change="updateWeekDraftField('verse_enabled', $event.target.checked)" /><span>显示背经</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.outline_enabled)" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>显示提纲背诵</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>书籍</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.video_enabled)" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>视频</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.verse_enabled)" @change="updateWeekDraftField('verse_enabled', $event.target.checked)" /><span>背经</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.outline_enabled)" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>提纲</span></label>
                     </div>
+                    <Transition name="admin-task-section">
+                      <div v-if="enabledFlag(weekDraft.book_enabled)" class="admin-binding-list">
+                        <div class="admin-field-label">读物挂载文件与页码</div>
+                        <div v-for="(item, index) in weekDraft.readings || []" :key="`reading-${index}`" class="admin-binding-row reading-binding-row">
+                          <select :value="weekBindingSelectionValue(item, readingOptions)" @change="applyBindingSelection('readings', index, $event.target.value)">
+                            <option value="">不挂载文件</option>
+                            <option v-for="option in readingOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
+                          </select>
+                          <div class="admin-page-range">
+                            <label class="admin-compact-field">
+                              <span>开始页</span>
+                              <input type="number" min="1" inputmode="numeric" :value="item.page_start || ''" @change="updateWeekBinding('readings', index, 'page_start', $event.target.value)" />
+                            </label>
+                            <label class="admin-compact-field">
+                              <span>结束页</span>
+                              <input type="number" min="1" inputmode="numeric" :value="item.page_end || ''" @change="updateWeekBinding('readings', index, 'page_end', $event.target.value)" />
+                            </label>
+                          </div>
+                          <button class="ghost" type="button" @click="removeWeekBinding('readings', index)">删除</button>
+                        </div>
+                        <button class="secondary" type="button" @click="addWeekBinding('readings')">新增读物</button>
+                      </div>
+                    </Transition>
+                    <Transition name="admin-task-section">
+                      <div v-if="enabledFlag(weekDraft.video_enabled)" class="admin-binding-list">
+                        <div class="admin-field-label">视频文件</div>
+                        <div v-for="(item, index) in weekDraft.videos || []" :key="`video-${index}`" class="admin-binding-row video-binding-row">
+                          <select :value="weekBindingSelectionValue(item, videoOptions)" @change="applyBindingSelection('videos', index, $event.target.value)">
+                            <option value="">不挂载文件</option>
+                            <option v-for="option in videoOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
+                          </select>
+                          <button class="ghost" type="button" @click="removeWeekBinding('videos', index)">删除</button>
+                        </div>
+                      </div>
+                    </Transition>
+                    <Transition name="admin-task-section">
+                      <div v-if="enabledFlag(weekDraft.verse_enabled)" class="admin-task-section-fields">
+                        <label class="admin-field"><span class="admin-field-label">默写经文</span><input :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref', $event.target.value)" /></label>
+                        <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text', $event.target.value)"></textarea></label>
+                      </div>
+                    </Transition>
+                    <Transition name="admin-task-section">
+                      <div v-if="enabledFlag(weekDraft.outline_enabled)" class="admin-binding-list">
+                        <div class="admin-field-label">提纲背诵图片</div>
+                        <div class="admin-binding-row">
+                          <input :value="weekDraft.outline?.title || ''" placeholder="提纲图片标题" @change="updateWeekDraftField('outline', { ...(weekDraft.outline || {}), title: $event.target.value })" />
+                          <select :value="librarySelectionValue(weekDraft.outline)" @change="applyOutlineSelection($event.target.value)">
+                            <option value="">无提纲图片</option>
+                            <option v-for="item in outlineOptions" :key="librarySelectionValue(item)" :value="librarySelectionValue(item)">{{ optionText(item) }}</option>
+                          </select>
+                        </div>
+                      </div>
+                    </Transition>
                     <div class="form-actions">
                       <button :disabled="!canEditStudyWeeks" type="button" @click="saveWeekDraft">保存当前周</button>
                       <button class="secondary" :disabled="!canEditStudyWeeks" type="button" @click="restoreWeekDraftDefaults">恢复默认周任务</button>
@@ -818,7 +859,7 @@ async function selectCalendarDate(day) {
               <div class="grid">
                 <div class="card">
                   <h2>资源库</h2>
-                  <p class="muted">上传后会自动刷新列表，随后即可在“周任务安排”里选择挂载。</p>
+                  <p class="muted">上传后会自动刷新列表，随后即可在“周任务”里选择挂载。</p>
                   <div class="form-stack admin-form-grid">
                     <label class="admin-field"><span class="admin-field-label">上传到</span><select v-model="uploadCategory"><option value="markdown">Markdown 读物</option><option value="book">PDF 读物</option><option value="video">视频文件</option><option value="handout">讲义 PDF</option><option value="outline">提纲图片</option></select></label>
                     <label class="admin-field"><span class="admin-field-label">选择文件</span><input ref="uploadInput" type="file" /></label>

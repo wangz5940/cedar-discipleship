@@ -1739,13 +1739,45 @@ function normalizeReadingDraftItem(item = {}) {
   };
 }
 
+function shiftLocalDate(value, days) {
+  const date = parseLocalDate(value);
+  if (formatLocalDate(date) !== value) return '';
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
+}
+
+function lastExistingWeek() {
+  return [...(state.weeks || [])]
+    .filter((week) => week?.start && week?.end)
+    .sort((left, right) => String(left.end).localeCompare(String(right.end))
+      || String(left.start).localeCompare(String(right.start))
+      || Number(left.id || 0) - Number(right.id || 0))
+    .at(-1)
+    || null;
+}
+
+function nextWeekReadings(previousWeek) {
+  const readings = (previousWeek?.readings || []).filter(draftBindingHasContent);
+  if (!readings.length) return [emptyWeekBinding('readings')];
+  return readings.map((item) => {
+    const normalized = normalizeReadingDraftItem(item);
+    const previousEnd = Number(normalized.page_end || 0);
+    return {
+      ...normalized,
+      page_start: previousEnd > 0 ? String(previousEnd + 1) : '',
+      page_end: '',
+    };
+  });
+}
+
 function weekDraftFromWeek(week = null) {
   if (!week) {
+    const previousWeek = lastExistingWeek();
     const currentWeek = currentCalendarWeekRange();
     return {
       id: 0,
-      start: currentWeek.start,
-      end: currentWeek.end,
+      start: previousWeek ? shiftLocalDate(previousWeek.start, 7) : currentWeek.start,
+      end: previousWeek ? shiftLocalDate(previousWeek.end, 7) : currentWeek.end,
       title: '',
       verse_ref: '',
       recite_text: '',
@@ -1753,7 +1785,7 @@ function weekDraftFromWeek(week = null) {
       video_enabled: true,
       verse_enabled: false,
       outline_enabled: false,
-      readings: [emptyWeekBinding('readings')],
+      readings: nextWeekReadings(previousWeek),
       videos: [emptyWeekBinding('videos')],
       outline: { title: '', url: '', type: 'image', asset_id: 0 },
     };

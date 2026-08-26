@@ -770,6 +770,27 @@ input:focus, select:focus, textarea:focus {
   display: grid;
   gap: 8px;
 }
+.admin-paired-fields,
+.admin-page-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-compact-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+.admin-compact-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.admin-paired-fields input,
+.admin-page-range input {
+  width: 100%;
+  min-width: 0;
+}
 .admin-field-label {
   font-size: 13px;
   font-weight: 780;
@@ -794,7 +815,8 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
 }
 .reading-binding-row {
-  grid-template-columns: minmax(0, 1fr) 96px 96px auto;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr) auto;
+  align-items: end;
 }
 .video-binding-row {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -803,6 +825,51 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 18px;
+}
+.week-planner-card .admin-checkbox-row {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+.week-planner-card .admin-toggle {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 6px;
+  white-space: nowrap;
+}
+.week-planner-card .inline-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(560px, 100%);
+}
+.week-planner-card .section-title > h2 {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.week-picker {
+  width: min(520px, 62vw);
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.admin-task-section-fields {
+  display: grid;
+  gap: 13px;
+}
+.admin-task-section-enter-active,
+.admin-task-section-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.admin-task-section-enter-from,
+.admin-task-section-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 .form-actions,
 .inline-actions {
@@ -1745,6 +1812,7 @@ input:focus, select:focus, textarea:focus {
   .form-actions,
   .inline-actions,
   .admin-checkbox-row { flex-direction: column; align-items: stretch; }
+  .week-picker { width: 100%; }
   .resource-item { align-items: flex-start; flex-direction: column; }
   .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
   .table thead { display: none; }
@@ -3653,6 +3721,8 @@ textarea::placeholder {
 .brand-mark {
   display: grid;
   place-items: center;
+  overflow: hidden;
+  padding: 0;
   border: 0;
   border-radius: 13px;
   background: var(--primary);
@@ -3662,6 +3732,13 @@ textarea::placeholder {
   font-style: normal;
   font-weight: 700;
   box-shadow: none;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .app-shell {
