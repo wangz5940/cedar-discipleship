@@ -169,11 +169,11 @@ docker compose -f deploy/docker-compose.separated.yml config
 
 ```bash
 export PRIMARY_GROUP_CODE='agape-a'
-export PRIMARY_GROUP_NAME='AGAPE A'
+export PRIMARY_GROUP_NAME='AGAPE A组'
 export PRIMARY_GROUP_DEFAULT_PASSWORD='Abc12345'
 export PRIMARY_CONFIG_PATH='/absolute/path/to/config.json'
 export PRIMARY_RECORDS_PATH='/absolute/path/to/records.json'
-export RESOURCE_MIGRATION_GROUP_NAME='AGAPE A'
+export RESOURCE_MIGRATION_GROUP_NAME='AGAPE A组'
 export RESOURCE_LEGACY_ROOT='/absolute/path/to/old-resource-root'
 
 ./scripts/deploy-oneclick.sh

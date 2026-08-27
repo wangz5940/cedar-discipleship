@@ -73,11 +73,11 @@ export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
 export AGP_TOKEN_TTL=''
 
 export PRIMARY_GROUP_CODE='agape-a'
-export PRIMARY_GROUP_NAME='AGAPE A'
+export PRIMARY_GROUP_NAME='AGAPE A组'
 export PRIMARY_GROUP_DEFAULT_PASSWORD='Abc12345'
 export PRIMARY_CONFIG_PATH='/absolute/path/to/config.json'
 export PRIMARY_RECORDS_PATH='/absolute/path/to/records.json'
-export RESOURCE_MIGRATION_GROUP_NAME='AGAPE A'
+export RESOURCE_MIGRATION_GROUP_NAME='AGAPE A组'
 export RESOURCE_LEGACY_ROOT='/absolute/path/to/old-resource-root'
 
 ./scripts/deploy-oneclick.sh
@@ -129,11 +129,11 @@ GOSUMDB=sum.golang.org
 
 ```bash
 PRIMARY_GROUP_CODE=agape-a
-PRIMARY_GROUP_NAME='AGAPE A'
+PRIMARY_GROUP_NAME='AGAPE A组'
 PRIMARY_GROUP_DEFAULT_PASSWORD='Abc12345'
 PRIMARY_CONFIG_PATH=/absolute/path/to/config.json
 PRIMARY_RECORDS_PATH=/absolute/path/to/records.json
-RESOURCE_MIGRATION_GROUP_NAME='AGAPE A'
+RESOURCE_MIGRATION_GROUP_NAME='AGAPE A组'
 RESOURCE_LEGACY_ROOT=/absolute/path/to/old-resource-root
 PRIMARY_ALLOW_DUPLICATE_AS_DELETED=false
 PRIMARY_FAIL_ON_GENERATED_USERNAMES=false
