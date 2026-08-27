@@ -24,7 +24,10 @@ var (
 	ErrInvalidBatchInput  = errors.New("invalid_batch_input")
 )
 
-var groupCodePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+var (
+	groupCodePattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	taskScopedTitleRegexp = regexp.MustCompile(`[0-9]{1,4}[[:space:]]*(?:[-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页`)
+)
 
 const maxBatchAssetIDs = 200
 
@@ -42,6 +45,7 @@ func (s *Service) List(ctx context.Context, groupID uint64, limit int) ([]AssetV
 	if err != nil {
 		return nil, err
 	}
+	items = dedupeVisibleAssets(items)
 	vos := make([]AssetVO, 0, len(items))
 	for _, item := range items {
 		vos = append(vos, toAssetVO(item))
@@ -256,6 +260,7 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 	if err != nil {
 		return nil, err
 	}
+	items = dedupeVisibleAssets(items)
 	grouped := map[string][]LibraryItem{}
 	for _, item := range items {
 		key := firstNonEmpty(item.Category, "uploaded")
@@ -277,7 +282,13 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 	for key := range grouped {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	sort.SliceStable(keys, func(i, j int) bool {
+		leftRank, rightRank := resourceCategoryRank(keys[i]), resourceCategoryRank(keys[j])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		return keys[i] < keys[j]
+	})
 	sections := make([]LibrarySection, 0, len(keys))
 	for _, key := range keys {
 		label := "上传资源"
@@ -299,6 +310,95 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 		sections = append(sections, LibrarySection{Key: "uploaded_" + key, Label: label, Items: items, Count: len(items)})
 	}
 	return sections, nil
+}
+
+func resourceCategoryRank(category string) int {
+	switch category {
+	case "mentor":
+		return 0
+	case "book", "passage", "markdown":
+		return 1
+	case "handout":
+		return 2
+	case "outline":
+		return 3
+	case "video":
+		return 4
+	default:
+		return 100
+	}
+}
+
+func dedupeVisibleAssets(items []Asset) []Asset {
+	if len(items) < 2 {
+		return items
+	}
+	out := make([]Asset, 0, len(items))
+	indexes := map[string]int{}
+	for _, item := range items {
+		key := visibleAssetDedupeKey(item)
+		if key == "" {
+			out = append(out, item)
+			continue
+		}
+		index, exists := indexes[key]
+		if !exists {
+			indexes[key] = len(out)
+			out = append(out, item)
+			continue
+		}
+		if preferVisibleAsset(item, out[index]) {
+			out[index] = item
+		}
+	}
+	return out
+}
+
+func visibleAssetDedupeKey(item Asset) string {
+	category := strings.TrimSpace(strings.ToLower(item.Category))
+	originalName := strings.TrimSpace(strings.ToLower(item.OriginalName))
+	checksum := strings.TrimSpace(strings.ToLower(item.ChecksumSHA256))
+	if category == "" || originalName == "" || checksum == "" || item.FileSize == 0 {
+		return ""
+	}
+	return category + "\x00" + originalName + "\x00" + checksum
+}
+
+func preferVisibleAsset(candidate, current Asset) bool {
+	candidateScore := visibleAssetScore(candidate)
+	currentScore := visibleAssetScore(current)
+	if candidateScore != currentScore {
+		return candidateScore > currentScore
+	}
+	return candidate.ID < current.ID
+}
+
+func visibleAssetScore(item Asset) int {
+	score := 0
+	baseTitle := strings.TrimSuffix(filepath.Base(item.OriginalName), filepath.Ext(item.OriginalName))
+	if normalizeAssetDisplayTitle(item.Title) == normalizeAssetDisplayTitle(baseTitle) {
+		score += 100
+	}
+	if !taskScopedTitleRegexp.MatchString(item.Title) {
+		score += 20
+	}
+	if item.AssetKind == AssetKindOwned {
+		score += 10
+	}
+	if item.SourceAssetID == 0 {
+		score += 5
+	}
+	if item.FileSize > 0 {
+		score += 2
+	}
+	if strings.TrimSpace(item.ChecksumSHA256) != "" {
+		score += 2
+	}
+	return score
+}
+
+func normalizeAssetDisplayTitle(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func normalizeBatchAssetIDs(values []uint64) ([]uint64, error) {

@@ -124,7 +124,7 @@ const markdownFileOptions = computed(() => {
   });
 });
 const readingOptions = computed(() => libraryItems.value.filter((item) => (
-  ['book', 'passage'].includes(item.category) || ['pdf', 'reading'].includes(item.type)
+  ['book', 'passage', 'markdown'].includes(String(item.category || '').toLowerCase())
 )));
 const videoOptions = computed(() => libraryItems.value.filter((item) => item.type === 'video'));
 const outlineOptions = computed(() => libraryItems.value.filter((item) => (

@@ -80,6 +80,38 @@ func TestBuildTodayTasksIncludesEnabledOutline(t *testing.T) {
 	}
 }
 
+func TestBuildTodayTasksUsesAssetURLBeforeTaskContent(t *testing.T) {
+	t.Parallel()
+
+	tasks := buildTodayTasks(
+		"2026-08-27",
+		map[string]any{
+			"id":            uint64(7),
+			"video_enabled": true,
+		},
+		[]map[string]any{{
+			"id":        uint64(31),
+			"task_type": "weekly_video",
+			"title":     "本周视频",
+			"content":   "/Newtestament/video.mp4",
+			"enabled":   true,
+			"assets": []map[string]any{{
+				"id":            uint64(145),
+				"original_name": "video.mp4",
+			}},
+		}},
+		map[string]any{},
+		nil,
+	)
+	if len(tasks) != 2 {
+		t.Fatalf("buildTodayTasks returned %d tasks, want devotion and video", len(tasks))
+	}
+	video := tasks[1]
+	if video.Content != "/api/assets/145/download" {
+		t.Fatalf("video content = %q, want asset download URL", video.Content)
+	}
+}
+
 func TestMatchingTodayRecordWeeklyOutlineMatchesSameTaskAcrossDates(t *testing.T) {
 	t.Parallel()
 
@@ -159,5 +191,26 @@ func TestWeekTitleIgnoresStaleManualTitle(t *testing.T) {
 	})
 	if title != "读物标题" {
 		t.Fatalf("WeekTitle() = %q, want content title", title)
+	}
+}
+
+func TestSplitWeekTaskBindingsUsesAssetURLBeforeTaskContent(t *testing.T) {
+	t.Parallel()
+
+	_, videos, _ := SplitWeekTaskBindings([]map[string]any{{
+		"id":        uint64(31),
+		"task_type": "weekly_video",
+		"title":     "本周视频",
+		"content":   "/Newtestament/video.mp4",
+		"assets": []map[string]any{{
+			"id":            uint64(145),
+			"original_name": "video.mp4",
+		}},
+	}})
+	if len(videos) != 1 {
+		t.Fatalf("videos length = %d, want 1", len(videos))
+	}
+	if videos[0].URL != "/api/assets/145/download" {
+		t.Fatalf("video URL = %q, want asset download URL", videos[0].URL)
 	}
 }

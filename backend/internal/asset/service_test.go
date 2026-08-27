@@ -233,6 +233,105 @@ func TestResourceLibraryLabelsMentorResources(t *testing.T) {
 	}
 }
 
+func TestResourceLibraryDeduplicatesSameFileAndPrefersCanonicalTitle(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(&fakeRepository{list: []Asset{
+		{
+			ID:             7,
+			Category:       "book",
+			Title:          "《基督是一切》36-40页",
+			OriginalName:   "基督是一切-江守道.pdf",
+			StoragePath:    "team-demo-resources/objects/00000000000000000000000000000007/基督是一切-江守道.pdf",
+			MimeType:       "application/pdf",
+			FileSize:       1024,
+			ChecksumSHA256: "0ede4c556a220000000000000000000000000000000000000000000000000000",
+			AssetKind:      AssetKindOwned,
+		},
+		{
+			ID:             21,
+			Category:       "book",
+			Title:          "基督是一切-江守道",
+			OriginalName:   "基督是一切-江守道.pdf",
+			StoragePath:    "team-demo-resources/objects/00000000000000000000000000000021/基督是一切-江守道.pdf",
+			MimeType:       "application/pdf",
+			FileSize:       1024,
+			ChecksumSHA256: "0ede4c556a220000000000000000000000000000000000000000000000000000",
+			AssetKind:      AssetKindOwned,
+		},
+	}}, &fakeStorage{}, "")
+	sections, err := service.ResourceLibrary(context.Background(), 6)
+	if err != nil {
+		t.Fatalf("ResourceLibrary() error = %v", err)
+	}
+	if len(sections) != 1 || len(sections[0].Items) != 1 {
+		t.Fatalf("sections = %+v, want one deduplicated item", sections)
+	}
+	item := sections[0].Items[0]
+	if item.ID != 21 || item.Title != "基督是一切-江守道" {
+		t.Fatalf("deduplicated item = %+v, want canonical asset 21", item)
+	}
+}
+
+func TestServiceListDeduplicatesSameFile(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(&fakeRepository{list: []Asset{
+		{
+			ID:             4,
+			Category:       "video",
+			Title:          "新约圣经-08-220714-马可福音(下)",
+			OriginalName:   "[B311]新约圣经-08-220714-马可福音(下).mp4",
+			StoragePath:    "team-demo-resources/objects/00000000000000000000000000000004/[B311]新约圣经-08-220714-马可福音(下).mp4",
+			MimeType:       "video/mp4",
+			FileSize:       2048,
+			ChecksumSHA256: "231b5f2a534f0000000000000000000000000000000000000000000000000000",
+			AssetKind:      AssetKindOwned,
+		},
+		{
+			ID:             40,
+			Category:       "video",
+			Title:          "[B311]新约圣经-08-220714-马可福音(下)",
+			OriginalName:   "[B311]新约圣经-08-220714-马可福音(下).mp4",
+			StoragePath:    "team-demo-resources/objects/00000000000000000000000000000040/[B311]新约圣经-08-220714-马可福音(下).mp4",
+			MimeType:       "video/mp4",
+			FileSize:       2048,
+			ChecksumSHA256: "231b5f2a534f0000000000000000000000000000000000000000000000000000",
+			AssetKind:      AssetKindOwned,
+		},
+	}}, &fakeStorage{}, "")
+	items, err := service.List(context.Background(), 6, 0)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(items) != 1 || items[0].ID != 40 {
+		t.Fatalf("List() = %+v, want canonical video asset 40 only", items)
+	}
+}
+
+func TestResourceLibraryOrdersMentorBeforeOtherCategories(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(&fakeRepository{list: []Asset{
+		{ID: 4, Category: "video", Title: "视频", OriginalName: "video.mp4", StoragePath: "team-demo-resources/objects/4/video.mp4"},
+		{ID: 2, Category: "book", Title: "读物", OriginalName: "book.pdf", StoragePath: "team-demo-resources/objects/2/book.pdf"},
+		{ID: 1, Category: "mentor", Title: "导读", OriginalName: "mentor.pdf", StoragePath: "team-demo-resources/objects/1/mentor.pdf"},
+		{ID: 3, Category: "handout", Title: "讲义", OriginalName: "handout.pdf", StoragePath: "team-demo-resources/objects/3/handout.pdf"},
+	}}, &fakeStorage{}, "")
+	sections, err := service.ResourceLibrary(context.Background(), 6)
+	if err != nil {
+		t.Fatalf("ResourceLibrary() error = %v", err)
+	}
+	got := []string{}
+	for _, section := range sections {
+		got = append(got, section.Key)
+	}
+	want := []string{"uploaded_mentor", "uploaded_book", "uploaded_handout", "uploaded_video"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("section keys = %v, want %v", got, want)
+	}
+}
+
 type fakeRepository struct {
 	createErr error
 	created   Asset

@@ -16,12 +16,16 @@ WORKDIR /src
 COPY backend/go.mod backend/go.sum* ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/agp-server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/agp-server ./cmd/server \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/migrate-json ./cmd/migrate-json \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/migrate-resource-files ./cmd/migrate-resource-files
 
 FROM debian:bookworm-slim
 
 WORKDIR /app
 COPY --from=builder /out/agp-server /app/agp-server
+COPY --from=builder /out/migrate-json /app/migrate-json
+COPY --from=builder /out/migrate-resource-files /app/migrate-resource-files
 COPY backend/migrations /app/migrations
 
 ENV AGP_ADDR=:8080

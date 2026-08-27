@@ -361,7 +361,7 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 				WeekID:   weekID,
 				Part:     todayTaskPart(taskType, title),
 				Detail:   title,
-				Content:  asString(raw["content"]),
+				Content:  taskContentURL(raw),
 				Required: true,
 				Status:   "pending",
 				Assets:   todayTaskAssets(raw["assets"]),
@@ -546,8 +546,10 @@ func taskBindingFromMap(task map[string]any) TaskBinding {
 		Type:   InferTaskBindingType(asString(task["task_type"]), asString(task["content"]), ""),
 	}
 	if asset := firstTaskAsset(task["assets"]); asset != nil {
-		if id, ok := asset["id"].(uint64); ok {
-			binding.AssetID = id
+		assetID := mapUint64(asset, "id")
+		if assetID > 0 {
+			binding.AssetID = assetID
+			binding.URL = assetDownloadURL(assetID)
 		}
 		if binding.Title == "" {
 			binding.Title = firstNonEmpty(asString(asset["title"]), asString(asset["original_name"]))
@@ -555,6 +557,22 @@ func taskBindingFromMap(task map[string]any) TaskBinding {
 		binding.Type = InferTaskBindingType(asString(task["task_type"]), binding.URL, firstNonEmpty(asString(asset["original_name"]), asString(asset["title"])))
 	}
 	return binding
+}
+
+func taskContentURL(task map[string]any) string {
+	if asset := firstTaskAsset(task["assets"]); asset != nil {
+		if assetID := mapUint64(asset, "id"); assetID > 0 {
+			return assetDownloadURL(assetID)
+		}
+	}
+	return asString(task["content"])
+}
+
+func assetDownloadURL(assetID uint64) string {
+	if assetID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("/api/assets/%d/download", assetID)
 }
 
 func firstTaskAsset(raw any) map[string]any {

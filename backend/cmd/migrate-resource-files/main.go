@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ const (
 	shareScopeAllGroups = "all_groups"
 	assetKindOwned      = "owned"
 )
+
+var taskScopedTitleRegexp = regexp.MustCompile(`[0-9]{1,4}[[:space:]]*(?:[-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页`)
 
 type options struct {
 	dsn          string
@@ -125,13 +128,21 @@ func run(opt options) error {
 			skipped++
 		}
 	}
+	repairedLinks, err := repairTaskAssetLinks(ctx, db, group.ID, opt.dryRun)
+	if err != nil {
+		return err
+	}
+	dedupedResources, err := cleanupDuplicateResourceBindings(ctx, db, group.ID, opt.dryRun)
+	if err != nil {
+		return err
+	}
 
 	mode := "apply"
 	if opt.dryRun {
 		mode = "dry-run"
 	}
-	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d migrated=%d missing=%d skipped=%d\n",
-		mode, group.ID, group.Code, group.Name, len(assets), migrated, missing, skipped)
+	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d migrated=%d missing=%d skipped=%d repaired_task_links=%d deduped_resources=%d\n",
+		mode, group.ID, group.Code, group.Name, len(assets), migrated, missing, skipped, repairedLinks, dedupedResources)
 	return nil
 }
 
@@ -251,7 +262,7 @@ func migrateAsset(ctx context.Context, db *sql.DB, opt options, group studyGroup
 	if stored.MimeType == "" {
 		stored.MimeType = firstNonEmpty(asset.MimeType, mime.TypeByExtension(filepath.Ext(fileName)))
 	}
-	if err := updateAsset(ctx, db, group, asset, resourceKey, category, fileName, stored); err != nil {
+	if err := updateAsset(ctx, db, group, asset, resourceKey, category, fileName, stored, relativeSource); err != nil {
 		return "", err
 	}
 	fmt.Printf("migrated asset_id=%d group=%q source=%s target=%s\n", asset.ID, group.Name, relativeSource, storagePath)
@@ -383,7 +394,7 @@ func fileChecksum(path string) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func updateAsset(ctx context.Context, db *sql.DB, group studyGroup, asset legacyAsset, resourceKey, category, fileName string, stored storedObject) error {
+func updateAsset(ctx context.Context, db *sql.DB, group studyGroup, asset legacyAsset, resourceKey, category, fileName string, stored storedObject, relativeSource string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -412,7 +423,365 @@ func updateAsset(ctx context.Context, db *sql.DB, group studyGroup, asset legacy
 		asset.ID, group.ID, firstNonZero(asset.CreatedBy, 1), now); err != nil {
 		return err
 	}
+	if err := linkTasksForAsset(ctx, tx, group.ID, asset.ID, asset.StoragePath, relativeSource, category, now); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func linkTasksForAsset(ctx context.Context, tx *sql.Tx, groupID, assetID uint64, oldStoragePath, relativeSource, category string, now time.Time) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id,content FROM study_tasks WHERE group_id=? AND COALESCE(content,'')<>''`, groupID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	assetKey := normalizedLegacyKey(oldStoragePath)
+	relativeKey := normalizedLegacyKey(relativeSource)
+	var taskIDs []uint64
+	for rows.Next() {
+		var taskID uint64
+		var content string
+		if err := rows.Scan(&taskID, &content); err != nil {
+			return err
+		}
+		contentKey := normalizedLegacyKey(content)
+		if contentKey == "" || (contentKey != assetKey && contentKey != relativeKey) {
+			continue
+		}
+		taskIDs = append(taskIDs, taskID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, taskID := range taskIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO task_assets
+			(group_id,task_id,asset_id,usage_type,sort_order,created_at)
+			VALUES (?,?,?,?,0,?)`, groupID, taskID, assetID, usageTypeForCategory(category), now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func repairTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id,task_type,content FROM study_tasks
+		WHERE group_id=? AND COALESCE(content,'')<>''`, groupID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type taskContent struct {
+		ID       uint64
+		TaskType string
+		Content  string
+	}
+	var tasks []taskContent
+	for rows.Next() {
+		var task taskContent
+		if err := rows.Scan(&task.ID, &task.TaskType, &task.Content); err != nil {
+			return 0, err
+		}
+		if normalizedLegacyKey(task.Content) != "" {
+			tasks = append(tasks, task)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(tasks) == 0 {
+		return 0, nil
+	}
+
+	repaired := 0
+	for _, task := range tasks {
+		assetID, category, err := findAssetForTaskContent(ctx, db, groupID, task.Content)
+		if err != nil {
+			return 0, err
+		}
+		if assetID == 0 {
+			continue
+		}
+		usageType := usageTypeForTask(task.TaskType, category)
+		if dryRun {
+			exists, err := taskAssetLinkExists(ctx, db, groupID, task.ID, assetID, usageType)
+			if err != nil {
+				return 0, err
+			}
+			if !exists {
+				repaired++
+			}
+			continue
+		}
+		res, err := db.ExecContext(ctx, `INSERT IGNORE INTO task_assets
+			(group_id,task_id,asset_id,usage_type,sort_order,created_at)
+			VALUES (?,?,?,?,0,?)`, groupID, task.ID, assetID, usageType, time.Now().UTC())
+		if err != nil {
+			return 0, err
+		}
+		if affected, _ := res.RowsAffected(); affected > 0 {
+			repaired++
+		}
+	}
+	return repaired, nil
+}
+
+func taskAssetLinkExists(ctx context.Context, db *sql.DB, groupID, taskID, assetID uint64, usageType string) (bool, error) {
+	var exists int
+	err := db.QueryRowContext(ctx, `SELECT 1 FROM task_assets
+		WHERE group_id=? AND task_id=? AND asset_id=? AND usage_type=?
+		LIMIT 1`, groupID, taskID, assetID, usageType).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func findAssetForTaskContent(ctx context.Context, db *sql.DB, groupID uint64, content string) (uint64, string, error) {
+	relative, ok, err := legacyRelativePath(content)
+	if err != nil || !ok {
+		return 0, "", err
+	}
+	fileName := filepath.Base(relative)
+	category := legacyCategoryFromPath(relative)
+	rows, err := db.QueryContext(ctx, `SELECT a.id,a.category FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.group_id=? AND a.original_name=? AND a.storage_path LIKE 'team-%-resources/objects/%'
+		ORDER BY CASE WHEN category=? THEN 0 ELSE 1 END,
+		         CASE WHEN LOWER(TRIM(title))=LOWER(TRIM(REGEXP_REPLACE(original_name,'\\.[^.]+$',''))) THEN 0 ELSE 1 END,
+		         CASE WHEN title REGEXP '[0-9]{1,4}[[:space:]]*([-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页' THEN 1 ELSE 0 END,
+		         id LIMIT 1`, groupID, fileName, category)
+	if err != nil {
+		return 0, "", err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return 0, "", rows.Err()
+	}
+	var assetID uint64
+	var assetCategory string
+	if err := rows.Scan(&assetID, &assetCategory); err != nil {
+		return 0, "", err
+	}
+	return assetID, assetCategory, rows.Err()
+}
+
+type cleanupAssetCandidate struct {
+	ID             uint64
+	Category       string
+	Title          string
+	OriginalName   string
+	FileSize       uint64
+	ChecksumSHA256 string
+	AssetKind      string
+	SourceAssetID  uint64
+}
+
+type duplicateAssetBinding struct {
+	AssetID          uint64
+	CanonicalAssetID uint64
+	Category         string
+}
+
+func cleanupDuplicateResourceBindings(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
+	rows, err := db.QueryContext(ctx, `SELECT a.id,a.category,a.title,a.original_name,a.file_size,a.checksum_sha256,b.asset_kind,COALESCE(b.source_asset_id,0)
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.group_id=? AND a.storage_path LIKE 'team-%-resources/objects/%'
+		  AND a.original_name<>'' AND a.checksum_sha256<>'' AND a.file_size>0
+		ORDER BY a.category,a.original_name,a.checksum_sha256,a.id`, groupID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	groups := map[string][]cleanupAssetCandidate{}
+	for rows.Next() {
+		var item cleanupAssetCandidate
+		if err := rows.Scan(
+			&item.ID,
+			&item.Category,
+			&item.Title,
+			&item.OriginalName,
+			&item.FileSize,
+			&item.ChecksumSHA256,
+			&item.AssetKind,
+			&item.SourceAssetID,
+		); err != nil {
+			return 0, err
+		}
+		key := cleanupAssetDedupeKey(item)
+		if key == "" {
+			continue
+		}
+		groups[key] = append(groups[key], item)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	var duplicates []duplicateAssetBinding
+	for _, items := range groups {
+		if len(items) < 2 {
+			continue
+		}
+		canonical := items[0]
+		for _, item := range items[1:] {
+			if preferCleanupAsset(item, canonical) {
+				canonical = item
+			}
+		}
+		for _, item := range items {
+			if item.ID == canonical.ID {
+				continue
+			}
+			duplicates = append(duplicates, duplicateAssetBinding{
+				AssetID:          item.ID,
+				CanonicalAssetID: canonical.ID,
+				Category:         canonical.Category,
+			})
+		}
+	}
+	if len(duplicates) == 0 || dryRun {
+		return len(duplicates), nil
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	for _, duplicate := range duplicates {
+		if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO task_assets
+			(group_id,task_id,asset_id,usage_type,sort_order,created_at)
+			SELECT group_id,task_id,?,usage_type,sort_order,created_at
+			FROM task_assets
+			WHERE group_id=? AND asset_id=?`, duplicate.CanonicalAssetID, groupID, duplicate.AssetID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM task_assets WHERE group_id=? AND asset_id=?`, groupID, duplicate.AssetID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE asset_dependencies
+			SET status='removed',updated_at=?
+			WHERE status='active' AND (consumer_asset_id=? OR provider_asset_id=?)`,
+			now, duplicate.AssetID, duplicate.AssetID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE asset_share_grants
+			SET status='revoked',revoked_at=COALESCE(revoked_at,?)
+			WHERE asset_id=? AND status='active'`, now, duplicate.AssetID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE asset_bindings
+			SET deleted_at=COALESCE(deleted_at,?),updated_at=?
+			WHERE group_id=? AND asset_id=? AND deleted_at IS NULL`,
+			now, now, groupID, duplicate.AssetID); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(duplicates), nil
+}
+
+func cleanupAssetDedupeKey(item cleanupAssetCandidate) string {
+	category := strings.TrimSpace(strings.ToLower(item.Category))
+	originalName := strings.TrimSpace(strings.ToLower(item.OriginalName))
+	checksum := strings.TrimSpace(strings.ToLower(item.ChecksumSHA256))
+	if category == "" || originalName == "" || checksum == "" || item.FileSize == 0 {
+		return ""
+	}
+	return category + "\x00" + originalName + "\x00" + checksum
+}
+
+func preferCleanupAsset(candidate, current cleanupAssetCandidate) bool {
+	candidateScore := cleanupAssetScore(candidate)
+	currentScore := cleanupAssetScore(current)
+	if candidateScore != currentScore {
+		return candidateScore > currentScore
+	}
+	return candidate.ID < current.ID
+}
+
+func cleanupAssetScore(item cleanupAssetCandidate) int {
+	score := 0
+	baseTitle := strings.TrimSuffix(filepath.Base(item.OriginalName), filepath.Ext(item.OriginalName))
+	if normalizeCleanupAssetTitle(item.Title) == normalizeCleanupAssetTitle(baseTitle) {
+		score += 100
+	}
+	if !taskScopedTitleRegexp.MatchString(item.Title) {
+		score += 20
+	}
+	if item.AssetKind == assetKindOwned {
+		score += 10
+	}
+	if item.SourceAssetID == 0 {
+		score += 5
+	}
+	return score
+}
+
+func normalizeCleanupAssetTitle(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func legacyCategoryFromPath(relativePath string) string {
+	first, _, _ := strings.Cut(filepath.ToSlash(relativePath), "/")
+	switch strings.ToLower(first) {
+	case "newtestament":
+		return "video"
+	case "ppt":
+		return "handout"
+	case "mentor":
+		return "mentor"
+	case "book":
+		return "book"
+	case "passage":
+		return "passage"
+	default:
+		return ""
+	}
+}
+
+func normalizedLegacyKey(value string) string {
+	relative, ok, err := legacyRelativePath(value)
+	if err != nil || !ok {
+		return ""
+	}
+	return filepath.ToSlash(relative)
+}
+
+func usageTypeForTask(taskType, category string) string {
+	switch taskType {
+	case "weekly_video":
+		return "video"
+	case "weekly_outline":
+		return "outline"
+	}
+	return usageTypeForCategory(category)
+}
+
+func usageTypeForCategory(category string) string {
+	switch category {
+	case "video":
+		return "video"
+	case "outline":
+		return "outline"
+	case "mentor", "handout", "share":
+		return "share"
+	default:
+		return "reading"
+	}
 }
 
 func migratedCategory(asset legacyAsset) string {

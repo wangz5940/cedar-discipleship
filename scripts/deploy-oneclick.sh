@@ -156,11 +156,8 @@ cleanup() {
 run_migrate_json() {
   local dry_run="$1"
   local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
-  local network_name="${COMPOSE_PROJECT_NAME}_default"
-  local docker_run_args=(--rm --network "$network_name")
-  local docker_env_args=()
   local args=(
-    "go" "run" "./cmd/migrate-json"
+    "/app/migrate-json"
     "--dsn" "$dsn"
     "--group-code" "$PRIMARY_GROUP_CODE"
     "--group-name" "$PRIMARY_GROUP_NAME"
@@ -172,34 +169,22 @@ run_migrate_json() {
     "--allow-duplicate-as-deleted=${PRIMARY_ALLOW_DUPLICATE_AS_DELETED}"
     "--fail-on-generated-usernames=${PRIMARY_FAIL_ON_GENERATED_USERNAMES}"
   )
-  for env_name in GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY; do
-    if [ -n "${!env_name:-}" ]; then
-      docker_env_args+=(-e "${env_name}=${!env_name}")
-    fi
-  done
-  if [ -f "$ENV_FILE" ]; then
-    docker_run_args+=(--env-file "$ENV_FILE")
-  fi
-  docker run "${docker_run_args[@]}" \
-    "${docker_env_args[@]}" \
+  compose run --rm -T --no-deps \
     -v "$ROOT_DIR:/workspace" \
-    -w /workspace/backend \
-    golang:1.25-bookworm \
+    -w /workspace \
+    backend \
     "${args[@]}"
 }
 
 run_migrate_resource_files() {
   local dry_run="$1"
   local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
-  local network_name="${COMPOSE_PROJECT_NAME}_default"
   local legacy_root_abs
   legacy_root_abs="$(abs_path "$RESOURCE_LEGACY_ROOT")"
   local resource_root_abs
   resource_root_abs="$(abs_path "$AGP_RESOURCE_ROOT")"
-  local docker_run_args=(--rm --network "$network_name")
-  local docker_env_args=()
   local args=(
-    "go" "run" "./cmd/migrate-resource-files"
+    "/app/migrate-resource-files"
     "--dsn" "$dsn"
     "--legacy-root" "/legacy-root"
     "--resource-root" "/resource-root"
@@ -211,21 +196,10 @@ run_migrate_resource_files() {
   if [ -n "$RESOURCE_MIGRATION_GROUP_CODE" ]; then
     args+=("--group-code" "$RESOURCE_MIGRATION_GROUP_CODE")
   fi
-  for env_name in GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY; do
-    if [ -n "${!env_name:-}" ]; then
-      docker_env_args+=(-e "${env_name}=${!env_name}")
-    fi
-  done
-  if [ -f "$ENV_FILE" ]; then
-    docker_run_args+=(--env-file "$ENV_FILE")
-  fi
-  docker run "${docker_run_args[@]}" \
-    "${docker_env_args[@]}" \
-    -v "$ROOT_DIR:/workspace" \
+  compose run --rm -T --no-deps \
     -v "$legacy_root_abs:/legacy-root:ro" \
     -v "$resource_root_abs:/resource-root" \
-    -w /workspace/backend \
-    golang:1.25-bookworm \
+    backend \
     "${args[@]}"
 }
 

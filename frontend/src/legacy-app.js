@@ -1316,16 +1316,19 @@ function bookTaskForReading(bookTasks, reading, index) {
 
 function currentWeeklyVideoLinks(videoTasks, configPlan = null) {
   const taskList = Array.isArray(videoTasks) ? videoTasks.filter(Boolean) : (videoTasks ? [videoTasks] : []);
+  const assetLinks = taskList
+    .map((task) => firstTaskAssetLink(task, task?.title || '本周视频'))
+    .filter(Boolean);
   const configVideos = normalizeWeekVideos(configPlan).map((item) => ({
     label: item.title || '视频内容',
     title: item.title || '本周视频',
     url: item.url,
     type: 'video',
-  })).filter((item) => item.url);
+  })).filter((item) => isPlayableContentURL(item.url));
   const directTaskLinks = taskList
     .map((task) => {
       const url = String(task?.url || task?.content || '').trim();
-      if (!url) return null;
+      if (!isPlayableContentURL(url)) return null;
       return {
         label: task.title || '视频内容',
         title: task.title || '本周视频',
@@ -1334,12 +1337,17 @@ function currentWeeklyVideoLinks(videoTasks, configPlan = null) {
       };
     })
     .filter(Boolean);
-  const assetLinks = taskList
-    .map((task) => firstTaskAssetLink(task, task?.title || '本周视频'))
-    .filter(Boolean);
-  const taskLinks = [...directTaskLinks, ...assetLinks];
+  const taskLinks = [...assetLinks, ...directTaskLinks];
   const links = taskLinks.length ? taskLinks : configVideos;
   return links.filter((item, index, arr) => item.url && arr.findIndex((other) => other.url === item.url) === index);
+}
+
+function isPlayableContentURL(url) {
+  const value = String(url || '').trim();
+  if (!value) return false;
+  if (/^\/api\/assets\/\d+\/download$/i.test(value)) return true;
+  if (/^https?:\/\//i.test(value)) return true;
+  return false;
 }
 
 function shortTaskIcon(title) {
