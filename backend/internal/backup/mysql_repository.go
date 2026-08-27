@@ -3,7 +3,12 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/url"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -14,6 +19,8 @@ import (
 const (
 	roleGroupAdmin  = "group_admin"
 	roleGroupLeader = "group_leader"
+
+	resourceStoragePattern = "team-%-resources/objects/%"
 )
 
 type MySQLRepository struct {
@@ -238,9 +245,6 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 		return err
 	}
 	defer tx.Rollback()
-	if err := learning.UpsertLearningConfigTx(ctx, tx, groupID, payload.Settings); err != nil {
-		return err
-	}
 	roleAssignments, err := r.importBackupMembersTx(ctx, tx, groupID, actorID, payload.Members)
 	if err != nil {
 		return err
@@ -250,6 +254,13 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 	}
 	assetIDs, err := r.importBackupAssetsTx(ctx, tx, groupID, actorID, payload.Assets, now)
 	if err != nil {
+		return err
+	}
+	settings, err := normalizeBackupSettings(payload.Settings, backupAssetResolver(ctx, tx, groupID, assetIDs))
+	if err != nil {
+		return err
+	}
+	if err := learning.UpsertLearningConfigTx(ctx, tx, groupID, settings); err != nil {
 		return err
 	}
 	if err := learning.DeleteAllWeeksTx(ctx, tx, groupID); err != nil {
@@ -287,6 +298,221 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 		return err
 	}
 	return tx.Commit()
+}
+
+type backupAssetResolveFunc func(value, preferredCategory string) (uint64, error)
+
+func normalizeBackupSettings(settings map[string]any, resolve backupAssetResolveFunc) (map[string]any, error) {
+	normalized, err := cloneBackupSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+	daily, ok := nestedBackupSettingsMap(normalized, "task_sections", "daily")
+	if !ok {
+		return normalized, nil
+	}
+
+	dailyPath, hasDailyPath, err := normalizeBackupSettingAssetPath(daily["path"], "markdown", resolve)
+	if err != nil {
+		return nil, err
+	}
+	if hasDailyPath {
+		daily["path"] = dailyPath
+	} else if shouldDropBackupSettingPath(daily["path"]) {
+		delete(daily, "path")
+	}
+
+	devotion, ok := nestedBackupSettingsMap(daily, "devotion")
+	if !ok {
+		return normalized, nil
+	}
+	devotionPath, hasDevotionPath, err := normalizeBackupSettingAssetPath(devotion["path"], "markdown", resolve)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case hasDevotionPath:
+		devotion["path"] = devotionPath
+	case hasDailyPath:
+		devotion["path"] = dailyPath
+	case shouldDropBackupSettingPath(devotion["path"]):
+		delete(devotion, "path")
+	}
+	return normalized, nil
+}
+
+func cloneBackupSettings(settings map[string]any) (map[string]any, error) {
+	if settings == nil {
+		return map[string]any{}, nil
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return nil, fmt.Errorf("marshal backup settings: %w", err)
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(payload, &cloned); err != nil {
+		return nil, fmt.Errorf("unmarshal backup settings: %w", err)
+	}
+	if cloned == nil {
+		return map[string]any{}, nil
+	}
+	return cloned, nil
+}
+
+func nestedBackupSettingsMap(root map[string]any, path ...string) (map[string]any, bool) {
+	current := root
+	for _, key := range path {
+		next, ok := current[key].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+func normalizeBackupSettingAssetPath(value any, preferredCategory string, resolve backupAssetResolveFunc) (string, bool, error) {
+	text, ok := value.(string)
+	if !ok || strings.TrimSpace(text) == "" {
+		return "", false, nil
+	}
+	assetID, err := resolve(text, preferredCategory)
+	if err != nil {
+		return "", false, err
+	}
+	if assetID == 0 {
+		return "", false, nil
+	}
+	return backupAssetDownloadURL(assetID), true, nil
+}
+
+func backupAssetResolver(ctx context.Context, tx *sql.Tx, groupID uint64, assetIDs map[uint64]uint64) backupAssetResolveFunc {
+	return func(value, preferredCategory string) (uint64, error) {
+		if oldID := backupAssetIDFromDownloadURL(value); oldID > 0 {
+			if newID := assetIDs[oldID]; newID > 0 {
+				return newID, nil
+			}
+			exists, err := activeBackupAssetExistsTx(ctx, tx, groupID, oldID)
+			if err != nil {
+				return 0, fmt.Errorf("check backup asset %d: %w", oldID, err)
+			}
+			if exists {
+				return oldID, nil
+			}
+			return 0, nil
+		}
+
+		fileName := backupResourceFileName(value)
+		if fileName == "" {
+			return 0, nil
+		}
+		assetID, err := findBackupAssetByFileNameTx(ctx, tx, groupID, fileName, preferredCategory)
+		if err != nil {
+			return 0, fmt.Errorf("find backup asset %q: %w", fileName, err)
+		}
+		return assetID, nil
+	}
+}
+
+func activeBackupAssetExistsTx(ctx context.Context, tx *sql.Tx, groupID, assetID uint64) (bool, error) {
+	var exists int
+	err := tx.QueryRowContext(ctx, `SELECT 1
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.id=? AND a.group_id=? AND a.storage_path LIKE ?
+		LIMIT 1`, assetID, groupID, resourceStoragePattern).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func findBackupAssetByFileNameTx(ctx context.Context, tx *sql.Tx, groupID uint64, fileName, preferredCategory string) (uint64, error) {
+	var assetID uint64
+	err := tx.QueryRowContext(ctx, `SELECT a.id
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.group_id=? AND a.storage_path LIKE ?
+		  AND (a.original_name=? OR SUBSTRING_INDEX(a.storage_path,'/',-1)=?)
+		ORDER BY CASE WHEN a.category=? THEN 0 ELSE 1 END,a.id
+		LIMIT 1`, groupID, resourceStoragePattern, fileName, fileName, preferredCategory).Scan(&assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return assetID, err
+}
+
+func backupAssetIDFromDownloadURL(value string) uint64 {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return 0
+	}
+	pathValue := text
+	if parsed, err := url.Parse(text); err == nil && parsed.Path != "" {
+		pathValue = parsed.Path
+	}
+	rest, ok := strings.CutPrefix(pathValue, "/api/assets/")
+	if !ok {
+		return 0
+	}
+	idText, ok := strings.CutSuffix(rest, "/download")
+	if !ok || idText == "" {
+		return 0
+	}
+	id, err := strconv.ParseUint(idText, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
+func backupAssetDownloadURL(assetID uint64) string {
+	if assetID == 0 {
+		return ""
+	}
+	return "/api/assets/" + strconv.FormatUint(assetID, 10) + "/download"
+}
+
+func backupResourceFileName(value string) string {
+	text := strings.TrimSpace(value)
+	if text == "" || backupAssetIDFromDownloadURL(text) > 0 {
+		return ""
+	}
+	if parsed, err := url.Parse(text); err == nil && parsed.Scheme != "" {
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return ""
+		}
+		text = parsed.Path
+	}
+	if decoded, err := url.PathUnescape(text); err == nil {
+		text = decoded
+	}
+	name := path.Base(strings.ReplaceAll(text, "\\", "/"))
+	if name == "." || name == "/" || name == "" {
+		return ""
+	}
+	return name
+}
+
+func shouldDropBackupSettingPath(value any) bool {
+	text, ok := value.(string)
+	if !ok {
+		return false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if backupAssetIDFromDownloadURL(text) > 0 {
+		return true
+	}
+	if parsed, err := url.Parse(text); err == nil && parsed.Scheme != "" {
+		return false
+	}
+	return true
 }
 
 func mapBackupTaskIDs(

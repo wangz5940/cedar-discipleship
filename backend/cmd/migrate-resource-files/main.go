@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,8 +28,9 @@ import (
 )
 
 const (
-	shareScopeAllGroups = "all_groups"
-	assetKindOwned      = "owned"
+	shareScopeAllGroups          = "all_groups"
+	assetKindOwned               = "owned"
+	newResourceStorageSQLPattern = "team-%-resources/objects/%"
 )
 
 var taskScopedTitleRegexp = regexp.MustCompile(`[0-9]{1,4}[[:space:]]*(?:[-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页`)
@@ -41,6 +44,15 @@ var legacyResourceDirs = []struct {
 	{Name: "Passage", Category: "passage"},
 	{Name: "PPT", Category: "handout"},
 	{Name: "Newtestament", Category: "video"},
+}
+
+var legacyRootResourceFiles = []struct {
+	Name     string
+	Category string
+}{
+	{Name: "newtestament.md", Category: "markdown"},
+	{Name: "weekly_task.md", Category: "markdown"},
+	{Name: "Kuangye.md", Category: "markdown"},
 }
 
 type options struct {
@@ -167,13 +179,17 @@ func run(opt options) error {
 	if err != nil {
 		return err
 	}
+	repairedConfigPaths, err := repairLearningConfigPaths(ctx, db, group.ID, opt.dryRun)
+	if err != nil {
+		return err
+	}
 
 	mode := "apply"
 	if opt.dryRun {
 		mode = "dry-run"
 	}
-	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d repaired_task_links=%d deduped_resources=%d\n",
-		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, repairedLinks, dedupedResources)
+	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d repaired_task_links=%d repaired_config_paths=%d deduped_resources=%d\n",
+		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, repairedLinks, repairedConfigPaths, dedupedResources)
 	return nil
 }
 
@@ -299,6 +315,26 @@ func discoverLegacyResourceFiles(legacyRoot string) ([]legacyResourceFile, error
 		return nil, err
 	}
 	var files []legacyResourceFile
+	for _, legacyFile := range legacyRootResourceFiles {
+		filePath, err := safeJoin(root, legacyFile.Name)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(filePath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		if info.IsDir() {
+			continue
+		}
+		files = append(files, legacyResourceFile{
+			RelativePath: filepath.Clean(legacyFile.Name),
+			Category:     legacyFile.Category,
+		})
+	}
 	for _, legacyDir := range legacyResourceDirs {
 		dirPath, err := safeJoin(root, legacyDir.Name)
 		if err != nil {
@@ -797,6 +833,235 @@ func repairTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRu
 		}
 	}
 	return repaired, nil
+}
+
+func repairLearningConfigPaths(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
+	var raw sql.NullString
+	err := db.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=?`, groupID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) || !raw.Valid || strings.TrimSpace(raw.String) == "" {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(raw.String), &settings); err != nil {
+		return 0, fmt.Errorf("parse learning settings: %w", err)
+	}
+	if settings == nil {
+		return 0, nil
+	}
+	repaired, err := repairSettingsDailyPaths(ctx, db, groupID, settings)
+	if err != nil || repaired == 0 || dryRun {
+		return repaired, err
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return 0, fmt.Errorf("marshal learning settings: %w", err)
+	}
+	_, err = db.ExecContext(ctx, `UPDATE group_settings SET settings=?,updated_at=? WHERE group_id=?`, string(payload), time.Now().UTC(), groupID)
+	return repaired, err
+}
+
+func repairSettingsDailyPaths(ctx context.Context, db *sql.DB, groupID uint64, settings map[string]any) (int, error) {
+	daily, ok := nestedSettingsMap(settings, "task_sections", "daily")
+	if !ok {
+		return 0, nil
+	}
+	repaired := 0
+	dailyPath, dailyOK, changed, err := repairSettingPathValue(ctx, db, groupID, daily["path"])
+	if err != nil {
+		return 0, err
+	}
+	if dailyOK {
+		daily["path"] = dailyPath
+		if changed {
+			repaired++
+		}
+	} else if shouldDropConfigSettingPath(daily["path"]) {
+		delete(daily, "path")
+		repaired++
+	}
+
+	devotion, ok := nestedSettingsMap(daily, "devotion")
+	if !ok {
+		return repaired, nil
+	}
+	devotionPath, devotionOK, changed, err := repairSettingPathValue(ctx, db, groupID, devotion["path"])
+	if err != nil {
+		return 0, err
+	}
+	switch {
+	case devotionOK:
+		devotion["path"] = devotionPath
+		if changed {
+			repaired++
+		}
+	case dailyOK && shouldDropConfigSettingPath(devotion["path"]):
+		devotion["path"] = dailyPath
+		repaired++
+	case shouldDropConfigSettingPath(devotion["path"]):
+		delete(devotion, "path")
+		repaired++
+	}
+	return repaired, nil
+}
+
+func repairSettingPathValue(ctx context.Context, db *sql.DB, groupID uint64, value any) (string, bool, bool, error) {
+	text, ok := value.(string)
+	if !ok || strings.TrimSpace(text) == "" {
+		return "", false, false, nil
+	}
+	assetID, err := findAssetForConfigPath(ctx, db, groupID, text)
+	if err != nil {
+		return "", false, false, err
+	}
+	if assetID == 0 {
+		if shouldDropConfigSettingPath(text) {
+			return "", false, true, nil
+		}
+		return "", false, false, nil
+	}
+	downloadURL := assetDownloadURL(assetID)
+	return downloadURL, true, strings.TrimSpace(text) != downloadURL, nil
+}
+
+func nestedSettingsMap(root map[string]any, path ...string) (map[string]any, bool) {
+	current := root
+	for _, key := range path {
+		next, ok := current[key].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+func findAssetForConfigPath(ctx context.Context, db *sql.DB, groupID uint64, value string) (uint64, error) {
+	if assetID := assetIDFromDownloadURL(value); assetID > 0 {
+		exists, err := activeAssetExists(ctx, db, groupID, assetID)
+		if err != nil || !exists {
+			return 0, err
+		}
+		return assetID, nil
+	}
+	fileName := configResourceFileName(value)
+	if fileName == "" {
+		return 0, nil
+	}
+	preferredCategory := configResourceCategory(value, fileName)
+	var assetID uint64
+	err := db.QueryRowContext(ctx, `SELECT a.id
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.group_id=? AND a.storage_path LIKE ?
+		  AND (a.original_name=? OR SUBSTRING_INDEX(a.storage_path,'/',-1)=?)
+		ORDER BY CASE WHEN a.category=? THEN 0 ELSE 1 END,a.id
+		LIMIT 1`, groupID, newResourceStorageSQLPattern, fileName, fileName, preferredCategory).Scan(&assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return assetID, err
+}
+
+func activeAssetExists(ctx context.Context, db *sql.DB, groupID, assetID uint64) (bool, error) {
+	var exists int
+	err := db.QueryRowContext(ctx, `SELECT 1
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.id=? AND a.group_id=? AND a.storage_path LIKE ?
+		LIMIT 1`, assetID, groupID, newResourceStorageSQLPattern).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func assetDownloadURL(assetID uint64) string {
+	if assetID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("/api/assets/%d/download", assetID)
+}
+
+func assetIDFromDownloadURL(value string) uint64 {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return 0
+	}
+	pathValue := text
+	if parsed, err := url.Parse(text); err == nil && parsed.Path != "" {
+		pathValue = parsed.Path
+	}
+	rest, ok := strings.CutPrefix(pathValue, "/api/assets/")
+	if !ok {
+		return 0
+	}
+	idText, ok := strings.CutSuffix(rest, "/download")
+	if !ok || idText == "" {
+		return 0
+	}
+	assetID, err := strconv.ParseUint(idText, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return assetID
+}
+
+func configResourceFileName(value string) string {
+	text := strings.TrimSpace(value)
+	if text == "" || assetIDFromDownloadURL(text) > 0 {
+		return ""
+	}
+	if parsed, err := url.Parse(text); err == nil && parsed.Scheme != "" {
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return ""
+		}
+		text = parsed.Path
+	}
+	if decoded, err := url.PathUnescape(text); err == nil {
+		text = decoded
+	}
+	name := path.Base(strings.ReplaceAll(text, "\\", "/"))
+	if name == "." || name == "/" || name == "" {
+		return ""
+	}
+	return name
+}
+
+func configResourceCategory(value, fileName string) string {
+	switch strings.ToLower(path.Ext(fileName)) {
+	case ".md", ".markdown":
+		return "markdown"
+	case ".mp4", ".m4v", ".mov", ".webm":
+		return "video"
+	}
+	if relative, ok, err := legacyRelativePath(value); err == nil && ok {
+		return legacyCategoryFromPath(relative)
+	}
+	return ""
+}
+
+func shouldDropConfigSettingPath(value any) bool {
+	text, ok := value.(string)
+	if !ok {
+		return false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if assetIDFromDownloadURL(text) > 0 {
+		return true
+	}
+	if parsed, err := url.Parse(text); err == nil && parsed.Scheme != "" {
+		return false
+	}
+	return true
 }
 
 func taskAssetLinkExists(ctx context.Context, db *sql.DB, groupID, taskID, assetID uint64, usageType string) (bool, error) {

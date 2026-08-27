@@ -85,6 +85,9 @@ func TestDiscoverLegacyResourceFilesScansKnownDirectories(t *testing.T) {
 
 	root := t.TempDir()
 	files := []string{
+		"Kuangye.md",
+		"newtestament.md",
+		"weekly_task.md",
 		filepath.Join("Book", "基督是一切-江守道.pdf"),
 		filepath.Join("Mentor", "马太福音（上）导读.pdf"),
 		filepath.Join("Newtestament", "[B311]新约圣经-08.mp4"),
@@ -114,13 +117,25 @@ func TestDiscoverLegacyResourceFilesScansKnownDirectories(t *testing.T) {
 	}
 	want := []string{
 		"Book/基督是一切-江守道.pdf:book",
+		"Kuangye.md:markdown",
 		"Mentor/马太福音（上）导读.pdf:mentor",
 		"Newtestament/[B311]新约圣经-08.mp4:video",
 		"PPT/马可福音讲义.pptx:handout",
 		"Passage/经文.pdf:passage",
+		"newtestament.md:markdown",
+		"weekly_task.md:markdown",
 	}
 	if strings.Join(values, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("legacy files = %v, want %v", values, want)
+	}
+}
+
+func TestConfigResourceFileNameExtractsURLPath(t *testing.T) {
+	t.Parallel()
+
+	got := configResourceFileName("https://mouss.synology.me:7399/newtestament.md")
+	if got != "newtestament.md" {
+		t.Fatalf("configResourceFileName() = %q, want newtestament.md", got)
 	}
 }
 
