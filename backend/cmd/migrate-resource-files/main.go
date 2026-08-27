@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"mime"
 	"net/url"
@@ -16,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,13 +32,25 @@ const (
 
 var taskScopedTitleRegexp = regexp.MustCompile(`[0-9]{1,4}[[:space:]]*(?:[-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页`)
 
+var legacyResourceDirs = []struct {
+	Name     string
+	Category string
+}{
+	{Name: "Mentor", Category: "mentor"},
+	{Name: "Book", Category: "book"},
+	{Name: "Passage", Category: "passage"},
+	{Name: "PPT", Category: "handout"},
+	{Name: "Newtestament", Category: "video"},
+}
+
 type options struct {
-	dsn          string
-	groupName    string
-	groupCode    string
-	legacyRoot   string
-	resourceRoot string
-	dryRun       bool
+	dsn              string
+	groupName        string
+	groupCode        string
+	legacyRoot       string
+	legacyAssetsRoot string
+	resourceRoot     string
+	dryRun           bool
 }
 
 type studyGroup struct {
@@ -64,12 +79,18 @@ type storedObject struct {
 	MimeType       string
 }
 
+type legacyResourceFile struct {
+	RelativePath string
+	Category     string
+}
+
 func main() {
 	var opt options
 	flag.StringVar(&opt.dsn, "dsn", "", "MySQL DSN")
 	flag.StringVar(&opt.groupName, "group-name", "", "study group name from database")
 	flag.StringVar(&opt.groupCode, "group-code", "", "study group code from database")
 	flag.StringVar(&opt.legacyRoot, "legacy-root", ".", "root containing existing resource files")
+	flag.StringVar(&opt.legacyAssetsRoot, "legacy-assets-root", "", "root containing legacy uploaded assets")
 	flag.StringVar(&opt.resourceRoot, "resource-root", "../data/resources", "new resource root")
 	flag.BoolVar(&opt.dryRun, "dry-run", true, "report without copying files or updating database")
 	flag.Parse()
@@ -128,6 +149,16 @@ func run(opt options) error {
 			skipped++
 		}
 	}
+	discoveredFiles, err := discoverLegacyResourceFiles(opt.legacyRoot)
+	if err != nil {
+		return err
+	}
+	registeredFiles, existingFiles, discoveredMissing, discoveredSkipped, err := registerDiscoveredLegacyFiles(ctx, db, opt, group, discoveredFiles)
+	if err != nil {
+		return err
+	}
+	missing += discoveredMissing
+	skipped += discoveredSkipped
 	repairedLinks, err := repairTaskAssetLinks(ctx, db, group.ID, opt.dryRun)
 	if err != nil {
 		return err
@@ -141,8 +172,8 @@ func run(opt options) error {
 	if opt.dryRun {
 		mode = "dry-run"
 	}
-	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d migrated=%d missing=%d skipped=%d repaired_task_links=%d deduped_resources=%d\n",
-		mode, group.ID, group.Code, group.Name, len(assets), migrated, missing, skipped, repairedLinks, dedupedResources)
+	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d repaired_task_links=%d deduped_resources=%d\n",
+		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, repairedLinks, dedupedResources)
 	return nil
 }
 
@@ -227,20 +258,13 @@ func migrateAsset(ctx context.Context, db *sql.DB, opt options, group studyGroup
 	if !ok {
 		return "skipped", nil
 	}
-	sourcePath, err := safeJoin(opt.legacyRoot, relativeSource)
+	sourcePath, found, err := resolveLegacySourcePath(opt.legacyRoot, opt.legacyAssetsRoot, relativeSource)
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Stat(sourcePath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("missing asset_id=%d source=%s\n", asset.ID, relativeSource)
-			return "missing", nil
-		}
-		return "", err
-	}
-	if info.IsDir() {
-		return "", errors.New("source path is a directory")
+	if !found {
+		fmt.Printf("missing asset_id=%d source=%s\n", asset.ID, relativeSource)
+		return "missing", nil
 	}
 
 	fileName := safeFileName(firstNonEmpty(asset.OriginalName, filepath.Base(relativeSource), fmt.Sprintf("asset-%d", asset.ID)))
@@ -267,6 +291,251 @@ func migrateAsset(ctx context.Context, db *sql.DB, opt options, group studyGroup
 	}
 	fmt.Printf("migrated asset_id=%d group=%q source=%s target=%s\n", asset.ID, group.Name, relativeSource, storagePath)
 	return "migrated", nil
+}
+
+func discoverLegacyResourceFiles(legacyRoot string) ([]legacyResourceFile, error) {
+	root, err := filepath.Abs(legacyRoot)
+	if err != nil {
+		return nil, err
+	}
+	var files []legacyResourceFile
+	for _, legacyDir := range legacyResourceDirs {
+		dirPath, err := safeJoin(root, legacyDir.Name)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(dirPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		if !info.IsDir() {
+			continue
+		}
+		if err := filepath.WalkDir(dirPath, func(filePath string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if filePath != dirPath && strings.HasPrefix(entry.Name(), ".") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(entry.Name(), ".") || !isSupportedLegacyResourceFile(entry.Name()) {
+				return nil
+			}
+			relativePath, err := filepath.Rel(root, filePath)
+			if err != nil {
+				return err
+			}
+			files = append(files, legacyResourceFile{
+				RelativePath: filepath.Clean(relativePath),
+				Category:     legacyDir.Category,
+			})
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	sortLegacyResourceFiles(files)
+	return files, nil
+}
+
+func sortLegacyResourceFiles(files []legacyResourceFile) {
+	sort.Slice(files, func(i, j int) bool {
+		left := filepath.ToSlash(files[i].RelativePath)
+		right := filepath.ToSlash(files[j].RelativePath)
+		return left < right
+	})
+}
+
+func isSupportedLegacyResourceFile(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".pdf", ".md", ".markdown", ".mp4", ".m4v", ".mov", ".webm", ".png", ".jpg", ".jpeg", ".webp", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx":
+		return true
+	default:
+		return false
+	}
+}
+
+func registerDiscoveredLegacyFiles(ctx context.Context, db *sql.DB, opt options, group studyGroup, files []legacyResourceFile) (int, int, int, int, error) {
+	var registered, existing, missing, skipped int
+	for _, file := range files {
+		result, err := registerDiscoveredLegacyFile(ctx, db, opt, group, file)
+		if err != nil {
+			return 0, 0, 0, 0, fmt.Errorf("legacy file %q: %w", file.RelativePath, err)
+		}
+		switch result {
+		case "registered":
+			registered++
+		case "existing":
+			existing++
+		case "missing":
+			missing++
+		default:
+			skipped++
+		}
+	}
+	return registered, existing, missing, skipped, nil
+}
+
+func registerDiscoveredLegacyFile(ctx context.Context, db *sql.DB, opt options, group studyGroup, file legacyResourceFile) (string, error) {
+	sourcePath, found, err := resolveLegacySourcePath(opt.legacyRoot, opt.legacyAssetsRoot, file.RelativePath)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		fmt.Printf("missing legacy_file source=%s\n", filepath.ToSlash(file.RelativePath))
+		return "missing", nil
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "skipped", nil
+	}
+	fileName := safeFileName(filepath.Base(file.RelativePath))
+	checksum, err := fileChecksum(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	category := firstNonEmpty(file.Category, legacyCategoryFromPath(file.RelativePath), "share")
+	exists, err := discoveredAssetExists(ctx, db, group.ID, category, fileName, uint64(info.Size()), checksum)
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		return "existing", nil
+	}
+
+	resourceKey, err := randomHexKey()
+	if err != nil {
+		return "", err
+	}
+	storagePath := path.Join("team-"+group.Code+"-resources", "objects", resourceKey, fileName)
+	if opt.dryRun {
+		fmt.Printf("would register legacy_file group=%q source=%s target=%s category=%s\n",
+			group.Name, filepath.ToSlash(file.RelativePath), storagePath, category)
+		return "registered", nil
+	}
+
+	stored, err := copyResourceFile(opt.resourceRoot, storagePath, sourcePath)
+	if err != nil {
+		return "", err
+	}
+	assetID, err := createDiscoveredAsset(ctx, db, group, resourceKey, category, strings.TrimSuffix(fileName, filepath.Ext(fileName)), fileName, stored, file.RelativePath)
+	if err != nil {
+		if targetPath, pathErr := safeJoin(opt.resourceRoot, filepath.FromSlash(storagePath)); pathErr == nil {
+			_ = os.Remove(targetPath)
+		}
+		return "", err
+	}
+	fmt.Printf("registered legacy_file asset_id=%d group=%q source=%s target=%s\n",
+		assetID, group.Name, filepath.ToSlash(file.RelativePath), storagePath)
+	return "registered", nil
+}
+
+func resolveLegacySourcePath(legacyRoot, legacyAssetsRoot, relativePath string) (string, bool, error) {
+	type candidate struct {
+		root     string
+		relative string
+	}
+	candidates := []candidate{{root: legacyRoot, relative: relativePath}}
+	normalized := filepath.ToSlash(relativePath)
+	if strings.TrimSpace(legacyAssetsRoot) != "" {
+		if strings.HasPrefix(normalized, "data/assets/") {
+			candidates = append(candidates, candidate{root: legacyAssetsRoot, relative: strings.TrimPrefix(normalized, "data/assets/")})
+		} else {
+			candidates = append(candidates, candidate{root: legacyAssetsRoot, relative: relativePath})
+		}
+	} else if !strings.HasPrefix(normalized, "data/assets/") {
+		candidates = append(candidates, candidate{root: legacyRoot, relative: filepath.Join("data", "assets", relativePath)})
+	}
+	for _, candidate := range candidates {
+		sourcePath, err := safeJoin(candidate.root, candidate.relative)
+		if err != nil {
+			return "", false, err
+		}
+		info, err := os.Stat(sourcePath)
+		if err == nil {
+			if info.IsDir() {
+				return "", false, errors.New("source path is a directory")
+			}
+			return sourcePath, true, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", false, err
+		}
+	}
+	return "", false, nil
+}
+
+func discoveredAssetExists(ctx context.Context, db *sql.DB, groupID uint64, category, originalName string, fileSize uint64, checksum string) (bool, error) {
+	var id uint64
+	err := db.QueryRowContext(ctx, `SELECT id FROM assets
+		WHERE group_id=? AND category=? AND original_name=? AND file_size=? AND checksum_sha256=?
+		  AND storage_path LIKE 'team-%-resources/objects/%'
+		ORDER BY id LIMIT 1`, groupID, category, originalName, fileSize, checksum).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return id > 0, nil
+}
+
+func createDiscoveredAsset(ctx context.Context, db *sql.DB, group studyGroup, resourceKey, category, title, fileName string, stored storedObject, relativeSource string) (uint64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	res, err := tx.ExecContext(ctx, `INSERT INTO assets
+		(group_id,category,title,original_name,storage_path,mime_type,file_size,checksum_sha256,visibility,created_by,created_at,updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		group.ID, category, title, fileName, stored.StoragePath, stored.MimeType, stored.FileSize, stored.ChecksumSHA256, shareScopeAllGroups, 1, now, now)
+	if err != nil {
+		return 0, err
+	}
+	assetID, err := res.LastInsertId()
+	if err != nil || assetID <= 0 {
+		return 0, errors.New("invalid_insert_id")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_bindings
+		(asset_id,group_id,resource_key,asset_kind,source_asset_id,imported_at,deleted_at,created_at,updated_at)
+		VALUES (?,?,?,?,NULL,NULL,NULL,?,?)`,
+		uint64(assetID), group.ID, resourceKey, assetKindOwned, now, now); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_share_grants
+		(asset_id,owner_group_id,consumer_group_id,permission,status,created_by,created_at,revoked_by,revoked_at)
+		VALUES (?,?,NULL,'import','active',1,?,NULL,NULL)
+		ON DUPLICATE KEY UPDATE status='active',revoked_by=NULL,revoked_at=NULL`,
+		uint64(assetID), group.ID, now); err != nil {
+		return 0, err
+	}
+	if err := linkTasksForAsset(ctx, tx, group.ID, uint64(assetID), relativeSource, relativeSource, category, now); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return uint64(assetID), nil
+}
+
+func randomHexKey() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generate resource key: %w", err)
+	}
+	return hex.EncodeToString(value[:]), nil
 }
 
 func legacyRelativePath(storagePath string) (string, bool, error) {

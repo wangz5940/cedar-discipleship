@@ -26,7 +26,7 @@ for env_name in \
   MIGRATION_REPORT_DIR RUN_PRIMARY_MIGRATION PRIMARY_ALLOW_DUPLICATE_AS_DELETED \
   PRIMARY_FAIL_ON_GENERATED_USERNAMES PRIMARY_DRY_RUN_ONLY \
   RUN_RESOURCE_FILE_MIGRATION RESOURCE_MIGRATION_GROUP_CODE RESOURCE_MIGRATION_GROUP_NAME \
-  RESOURCE_LEGACY_ROOT RESOURCE_MIGRATION_DRY_RUN_ONLY \
+  RESOURCE_LEGACY_ROOT RESOURCE_LEGACY_ASSETS_ROOT RESOURCE_MIGRATION_DRY_RUN_ONLY \
   GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY NPM_CONFIG_REGISTRY; do
   if [ -z "${!env_name:-}" ]; then
     printf -v "$env_name" '%s' "$(env_file_value "$env_name")"
@@ -70,6 +70,7 @@ RUN_RESOURCE_FILE_MIGRATION="${RUN_RESOURCE_FILE_MIGRATION:-auto}"
 RESOURCE_MIGRATION_GROUP_CODE="${RESOURCE_MIGRATION_GROUP_CODE:-${PRIMARY_GROUP_CODE:-}}"
 RESOURCE_MIGRATION_GROUP_NAME="${RESOURCE_MIGRATION_GROUP_NAME:-${PRIMARY_GROUP_NAME:-}}"
 RESOURCE_LEGACY_ROOT="${RESOURCE_LEGACY_ROOT:-$ROOT_DIR}"
+RESOURCE_LEGACY_ASSETS_ROOT="${RESOURCE_LEGACY_ASSETS_ROOT:-$AGP_DATA_DIR/assets}"
 RESOURCE_MIGRATION_DRY_RUN_ONLY="${RESOURCE_MIGRATION_DRY_RUN_ONLY:-false}"
 TMP_INPUT_DIR=""
 MIGRATION_CONFIG_IN_CONTAINER=""
@@ -181,6 +182,10 @@ run_migrate_resource_files() {
   local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
   local legacy_root_abs
   legacy_root_abs="$(abs_path "$RESOURCE_LEGACY_ROOT")"
+  local legacy_assets_root_abs=""
+  if [ -d "$RESOURCE_LEGACY_ASSETS_ROOT" ]; then
+    legacy_assets_root_abs="$(abs_path "$RESOURCE_LEGACY_ASSETS_ROOT")"
+  fi
   local resource_root_abs
   resource_root_abs="$(abs_path "$AGP_RESOURCE_ROOT")"
   local args=(
@@ -190,6 +195,14 @@ run_migrate_resource_files() {
     "--resource-root" "/resource-root"
     "--dry-run=${dry_run}"
   )
+  local mount_args=(
+    -v "$legacy_root_abs:/legacy-root:ro"
+    -v "$resource_root_abs:/resource-root"
+  )
+  if [ -n "$legacy_assets_root_abs" ]; then
+    args+=("--legacy-assets-root" "/legacy-assets-root")
+    mount_args+=(-v "$legacy_assets_root_abs:/legacy-assets-root:ro")
+  fi
   if [ -n "$RESOURCE_MIGRATION_GROUP_NAME" ]; then
     args+=("--group-name" "$RESOURCE_MIGRATION_GROUP_NAME")
   fi
@@ -197,8 +210,7 @@ run_migrate_resource_files() {
     args+=("--group-code" "$RESOURCE_MIGRATION_GROUP_CODE")
   fi
   compose run --rm -T --no-deps \
-    -v "$legacy_root_abs:/legacy-root:ro" \
-    -v "$resource_root_abs:/resource-root" \
+    "${mount_args[@]}" \
     backend \
     "${args[@]}"
 }
