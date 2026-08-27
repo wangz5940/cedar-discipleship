@@ -40,15 +40,18 @@ compose() {
 }
 
 query="
-SELECT DISTINCT a.id,a.storage_path
-FROM task_assets ta
-JOIN study_tasks t ON t.id=ta.task_id AND t.group_id=ta.group_id
-JOIN assets a ON a.id=ta.asset_id
-JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=ta.group_id AND b.deleted_at IS NULL
-WHERE ta.usage_type='video'
-  AND t.task_type='weekly_video'
+SELECT MIN(a.id) AS asset_id,a.storage_path
+FROM assets a
+JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+WHERE (
+    a.category='video'
+    OR a.mime_type LIKE 'video/%'
+    OR RIGHT(LOWER(a.original_name),4) IN ('.mp4','.m4v','.mov')
+    OR RIGHT(LOWER(a.original_name),5)='.webm'
+  )
   AND a.storage_path LIKE 'team-%-resources/objects/%'
-ORDER BY a.id"
+GROUP BY a.storage_path
+ORDER BY asset_id"
 
 list_file="$(mktemp "${TMPDIR:-/tmp}/agp-video-playback.XXXXXX")"
 trap 'rm -f "$list_file"' EXIT
