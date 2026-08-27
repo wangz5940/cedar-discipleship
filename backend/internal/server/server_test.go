@@ -2,18 +2,16 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	assetdomain "agp/backend/internal/asset"
 	statisticsdomain "agp/backend/internal/statistics"
 )
 
@@ -125,6 +123,73 @@ func TestWriteErrorSetsErrorCodeHeader(t *testing.T) {
 
 	if got := recorder.Header().Get("X-AGP-Error-Code"); got != "unauthorized" {
 		t.Fatalf("error code header = %q, want unauthorized", got)
+	}
+}
+
+func TestResourceSharingAdminRoutesRequireGroupAdmin(t *testing.T) {
+	t.Parallel()
+
+	a := &app{}
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		handler http.HandlerFunc
+	}{
+		{
+			name:    "shared resources",
+			method:  http.MethodGet,
+			path:    "/api/admin/shared-resources",
+			handler: a.handleSharedResources,
+		},
+		{
+			name:    "update sharing",
+			method:  http.MethodPut,
+			path:    "/api/admin/assets/1/sharing",
+			handler: a.handleUpdateAssetSharing,
+		},
+		{
+			name:    "import resource",
+			method:  http.MethodPost,
+			path:    "/api/admin/resource-imports",
+			handler: a.handleResourceImport,
+		},
+		{
+			name:    "batch sharing",
+			method:  http.MethodPut,
+			path:    "/api/admin/resource-batch/sharing",
+			handler: a.handleBatchAssetSharing,
+		},
+		{
+			name:    "batch delete",
+			method:  http.MethodDelete,
+			path:    "/api/admin/resource-batch/assets",
+			handler: a.handleBatchDeleteAssets,
+		},
+		{
+			name:    "batch import",
+			method:  http.MethodPost,
+			path:    "/api/admin/resource-batch/imports",
+			handler: a.handleBatchResourceImport,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(`{}`))
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+				ID:             1,
+				CurrentGroupID: 1,
+			}))
+			recorder := httptest.NewRecorder()
+
+			a.requireRole(roleGroupAdmin, tt.handler).ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+			}
+		})
 	}
 }
 
@@ -310,82 +375,5 @@ func TestWeeklyVerseTaskTitle(t *testing.T) {
 				t.Fatalf("weeklyVerseTaskTitle() = %q, want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestResolveExistingFileInRootsFallsBackToContentRoot(t *testing.T) {
-	tempDir := t.TempDir()
-	assetsRoot := filepath.Join(tempDir, "assets")
-	contentRoot := filepath.Join(tempDir, "content")
-	if err := os.MkdirAll(filepath.Join(contentRoot, "Book"), 0o755); err != nil {
-		t.Fatalf("mkdir content root: %v", err)
-	}
-	want := filepath.Join(contentRoot, "Book", "sample.pdf")
-	if err := os.WriteFile(want, []byte("pdf"), 0o644); err != nil {
-		t.Fatalf("write content file: %v", err)
-	}
-
-	got, original, err := assetdomain.ResolveExistingFileInRoots("/Book/sample.pdf", assetsRoot, contentRoot)
-	if err != nil {
-		t.Fatalf("resolveExistingFileInRoots returned error: %v", err)
-	}
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
-	if original != "sample.pdf" {
-		t.Fatalf("expected original sample.pdf, got %q", original)
-	}
-}
-
-func TestResolveExistingFileInRootsPrefersAssetsRoot(t *testing.T) {
-	tempDir := t.TempDir()
-	assetsRoot := filepath.Join(tempDir, "assets")
-	contentRoot := filepath.Join(tempDir, "content")
-	if err := os.MkdirAll(filepath.Join(assetsRoot, "shared"), 0o755); err != nil {
-		t.Fatalf("mkdir assets root: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(contentRoot, "shared"), 0o755); err != nil {
-		t.Fatalf("mkdir content root: %v", err)
-	}
-	want := filepath.Join(assetsRoot, "shared", "sample.pdf")
-	if err := os.WriteFile(want, []byte("asset"), 0o644); err != nil {
-		t.Fatalf("write assets file: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(contentRoot, "shared", "sample.pdf"), []byte("content"), 0o644); err != nil {
-		t.Fatalf("write content file: %v", err)
-	}
-
-	got, _, err := assetdomain.ResolveExistingFileInRoots("shared/sample.pdf", assetsRoot, contentRoot)
-	if err != nil {
-		t.Fatalf("resolveExistingFileInRoots returned error: %v", err)
-	}
-	if got != want {
-		t.Fatalf("expected assets root path %q, got %q", want, got)
-	}
-}
-
-func TestResolveExistingFileInRootsReturnsErrorWhenMissing(t *testing.T) {
-	tempDir := t.TempDir()
-	assetsRoot := filepath.Join(tempDir, "assets")
-	contentRoot := filepath.Join(tempDir, "content")
-
-	if _, _, err := assetdomain.ResolveExistingFileInRoots("/Book/missing.pdf", assetsRoot, contentRoot); err == nil {
-		t.Fatal("expected missing file error")
-	}
-}
-
-func TestStaticAssetDownloadPath(t *testing.T) {
-	path, ok := staticAssetDownloadPath("book:", "Book/%E5%9F%BA%E7%9D%A3.pdf/download")
-	if !ok {
-		t.Fatal("staticAssetDownloadPath rejected a valid static asset link")
-	}
-	if path != "/Book/%E5%9F%BA%E7%9D%A3.pdf" {
-		t.Fatalf("path = %q", path)
-	}
-	if _, ok := staticAssetDownloadPath("unknown:", "Book/a.pdf/download"); ok {
-		t.Fatal("staticAssetDownloadPath accepted an unknown prefix")
-	}
-	if _, ok := staticAssetDownloadPath("book:", "Book/a.pdf"); ok {
-		t.Fatal("staticAssetDownloadPath accepted a path without /download")
 	}
 }

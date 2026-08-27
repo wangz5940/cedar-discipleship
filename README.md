@@ -20,7 +20,7 @@
 - 打卡工作台：首页展示当天学习任务、日期切换、回到今天与个人打卡记录
 - 统计中心：小组完成率、成员矩阵、本月累计排行，并支持导出柱状图 PNG
 - 学习内容管理：按组配置每日内容、周任务、视频、读物、背经、提纲图
-- 资源库：按读物 / 讲义 / 视频分组展示资料，并支持 Markdown/PDF/视频/讲义上传
+- 资源库：资源按学习小组独立存储，支持跨组授权、逻辑导入、依赖图谱和导入历史
 - 内容查看器：统一预览 Markdown / PDF / 视频 / 图片，并支持同主题资料“上一篇 / 下一篇”连续浏览
 - 历史迁移：支持把旧 `config.json` 和 `records.json` 导入 MySQL 平台
 
@@ -60,9 +60,10 @@
 │   ├── deploy-new-environment.md
 │   ├── migrate-other-groups.md
 │   └── implementation-notes.md
-├── Book/
-├── Newtestament/
-├── PPT/
+├── data/
+│   ├── mysql/
+│   ├── resources/
+│   └── backups/mysql/
 └── config.json                  # 旧数据迁移输入之一
 ```
 
@@ -99,7 +100,7 @@ http://127.0.0.1:5114
 docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build
 ```
 
-脚本会补齐 `.env` 中缺失的部署变量和随机密钥，不覆盖已存在的值，并创建 `AGP_DATA_DIR` 下的 `mysql`、`assets`、`backups/mysql` 目录。默认会写入 `COMPOSE_PROJECT_NAME=cedar`、`AGP_CONTAINER_PREFIX=cedar`、`AGP_WEB_PORT=5114`、`AGP_MYSQL_PORT=3307`、`AGP_DATA_DIR=/volume2/docker/cedar-discipleship-data`、`GOPROXY=https://goproxy.cn,direct`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`。其中 `AGP_WEB_PORT` 需避开已有的 `5112`，`AGP_MYSQL_PORT` 需避开已有的 `3377`。`AGP_CONTAINER_PREFIX` 会生成 `cedar-mysql`、`cedar-backend`、`cedar-frontend`，避免与已有容器名冲突。
+脚本会补齐 `.env` 中缺失的部署变量和随机密钥，不覆盖已存在的值，并创建 `AGP_DATA_DIR` 下的 `mysql`、`resources`、`backups/mysql` 目录。`AGP_RESOURCE_ROOT` 保存按组隔离的不可变资源，目录格式为 `team-{group_code}-resources/objects/{resource_key}/{filename}`；资源上传后默认对所有学习小组开放导入。
 
 首次超级管理员由环境变量创建。已运行 `./scripts/init-deploy-env.sh` 时，所需变量会写入 `.env`；未运行该脚本而直接使用 Docker Compose 启动时，必须手动提供：
 
@@ -156,7 +157,7 @@ docker compose -f deploy/docker-compose.separated.yml config
 
 这个脚本会：
 
-1. 初始化 `data/mysql`、`data/assets`、`data/backups/mysql`
+1. 初始化 `data/mysql`、`data/resources`、`data/backups/mysql`
 2. 启动 `mysql / backend / frontend`
 3. 等待 MySQL 就绪
 4. 可选执行首个小组迁移
@@ -188,6 +189,12 @@ EXECUTE_IMPORT=true \
 ```
 
 默认建议先只做 dry-run，检查迁移报告里的 `generated_usernames`、`warnings` 和 `failures` 后再导入。
+
+## 跨组资源治理
+
+资源上传后不可修改；内容变化时上传为新的独立资源。新资源默认对所有学习小组共享；跨组导入只建立数据库逻辑引用，不复制文件。资料库只展示当前学习小组已上传或已导入的数据库资源。资源治理页支持事务性的批量权限设置、批量删除和批量导入，并记录聚合审计日志。
+
+详细权限、目录和访问规范见 [资源治理规范](docs/resource-governance.md)。
 
 ## 专项小组初始化
 
@@ -273,14 +280,11 @@ mkdir -p "${AGP_DATA_DIR:-data}/backups/mysql"
 docker exec ${AGP_CONTAINER_PREFIX:-agp}-mysql mysqldump -uagp -pagp agp > "${AGP_DATA_DIR:-data}/backups/mysql/agp-$(date +%F).sql"
 ```
 
-## 静态资料与上传目录
+## 资源目录
 
-- `Book/`：静态 PDF 读物目录，用于资源库和部分周计划资料匹配
-- `Newtestament/`：静态视频目录
-- `PPT/`：静态讲义目录
-- `data/assets/`：后台上传到资源库的文件目录
+- `data/resources/`：按学习小组隔离的资源目录，是资源文件唯一存储根。
 
-如果你把仓库部署到新的机器上，需要保留这些目录，或同步调整 [`deploy/docker-compose.separated.yml`](file:///Users/bytedance/program/agp/deploy/docker-compose.separated.yml) 里的挂载路径。
+部署到新机器时，必须保留 `data/resources/` 并纳入备份。
 
 ## 当前实现规则
 

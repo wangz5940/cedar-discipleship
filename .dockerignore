@@ -2,13 +2,7 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 data/
-Book/
-!Book/
-!Book/*.pdf
-Newtestament/
-Passage/
-PPT/
-Mentor/
+test/
 .npm-cache/
 backup-before-zk-sync-*/
 .git/

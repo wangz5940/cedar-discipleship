@@ -11,6 +11,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  data: {
+    type: Object,
+    default: null,
+  },
   title: {
     type: String,
     default: 'PDF 资料',
@@ -39,6 +43,16 @@ function initialPageNumber() {
   const fragment = props.src.split('#')[1] || '';
   const page = Number(new URLSearchParams(fragment).get('page'));
   return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function documentSource() {
+  if (props.data instanceof Uint8Array) {
+    return { data: props.data.slice() };
+  }
+  if (props.data instanceof ArrayBuffer) {
+    return { data: props.data.slice(0) };
+  }
+  return sourceWithoutFragment();
 }
 
 async function renderPage() {
@@ -88,7 +102,7 @@ async function loadPDF() {
   pdfDocument = null;
 
   try {
-    loadingTask = getDocument(sourceWithoutFragment());
+    loadingTask = getDocument(documentSource());
     pdfDocument = await loadingTask.promise;
     pageCount.value = pdfDocument.numPages;
     pageNumber.value = Math.min(pageNumber.value, pageCount.value);
@@ -118,7 +132,7 @@ onMounted(() => {
   loadPDF();
 });
 
-watch(() => props.src, loadPDF);
+watch(() => [props.src, props.data], loadPDF);
 
 onBeforeUnmount(async () => {
   renderSequence++;
@@ -192,7 +206,12 @@ onBeforeUnmount(async () => {
     </div>
     <div class="pdf-viewer-stage" :aria-busy="loading">
       <p v-if="loading" class="muted pdf-viewer-status">正在加载 PDF...</p>
-      <p v-else-if="error" class="pdf-viewer-error">{{ error }}</p>
+      <iframe
+        v-else-if="error"
+        class="pdf-viewer-native-frame"
+        :src="sourceWithoutFragment()"
+        :title="title"
+      ></iframe>
       <canvas v-show="!loading && !error" ref="canvas" :aria-label="`${title}第 ${pageNumber} 页`"></canvas>
     </div>
   </div>

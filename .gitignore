@@ -5,15 +5,8 @@ backend/server
 
 # Runtime data and sensitive content
 data/
-Book/
-PPT/
-Passage/
-Newtestament/
-Mentor/
+test/
 config.json
-weekly_task.md
-newtestament.md
-Kuangye.md
 .ssh/
 docs/
 

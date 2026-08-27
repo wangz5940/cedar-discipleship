@@ -100,7 +100,7 @@ export BOOTSTRAP_SUPERADMIN_PASSWORD='你的强密码'
 - `backend/cmd/migrate-json/main.go`：旧 `config.json` / `records.json` 导入 MySQL 的 CLI。
 - `scripts/deploy-oneclick.sh`：新环境一键部署，并可串联首组迁移。
 - `scripts/migrate-group.sh`：已上线环境补迁其他组数据。
-- `/api/library` 和资源库后台会同时扫描静态目录 `Book/`、`Newtestament/`、`PPT/` 与数据库上传文件。
+- `/api/library` 和资源库后台只读取 MySQL 中当前学习小组的资源绑定；文件统一保存在 `data/resources`。
 
 ## 本地检查
 
@@ -122,4 +122,4 @@ docker compose -f deploy/docker-compose.separated.yml config
 - 继续把 `src/legacy-app.js` 中的业务计算和 API 动作迁入更清晰的 Pinia actions / composables。
 - 下一阶段可新增独立的 `progress` 表，将页码、视频播放百分比、背经尝试等过程进度从最终完成记录中拆出来。
 - 补充围绕日期切换、资源连续阅读和统计页布局的自动化测试。
-- 根据部署环境梳理 `Book/`、`Newtestament/`、`PPT/` 的挂载约定，并把 `/data/agp/assets` 纳入备份。
+- 将 MySQL 与 `data/resources` 纳入同一备份策略。

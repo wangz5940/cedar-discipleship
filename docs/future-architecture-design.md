@@ -55,11 +55,10 @@ agp/
 Nginx / Caddy
   |-- /                 -> 前端静态文件
   |-- /api              -> Go API
-  |-- /assets/private   -> Go 鉴权后读取 NAS 文件
   v
 Go Backend
-  |-- MySQL            -> 用户、组、任务、打卡、审计、文件元数据
-  |-- NAS 文件目录      -> PDF、视频、图片、Markdown
+  |-- MySQL            -> 用户、组、任务、打卡、审计、资源元数据和绑定关系
+  |-- data/resources   -> 按学习小组隔离的不可变资源文件
 ```
 
 部署在 NAS 上时，可以使用一个 `docker-compose.yml` 启动：
@@ -387,14 +386,9 @@ NAS 文件目录建议：
 
 ```text
 /volume1/agp-data/
-  assets/
-    group-a/
-      book/
-      ppt/
-      video/
-      mentor/
-      outline/
-      markdown/
+  resources/
+    team-{group_code}-resources/
+      objects/{resource_key}/{safe_filename}
   backups/
   mysql/
 ```
@@ -647,7 +641,7 @@ CREATE TABLE audit_logs (
    - `verse = done` 转为 `task_type = weekly_verse`
    - `kind = reflection` 转为 `task_type = reflection`
    - `kind = recite_exam` 同时写入 `checkin_records`（`task_type = recite_exam`）和 `recite_attempts`
-6. 扫描 `Book/`、`PPT/`、`Newtestament/`、`Mentor/` 等目录，写入 `assets`，再根据周计划绑定 `task_assets`。
+6. 资源通过管理端上传或共享导入写入 `assets` 与 `asset_bindings`，文件保存到 `data/resources/team-{group_code}-resources/objects/{resource_key}/{safe_filename}`，再根据周计划绑定 `task_assets`。
 7. 对每个小组核对成员数、周计划数、记录数和最近 30 天统计。
 
 迁移程序建议写成 Go CLI：
@@ -658,7 +652,6 @@ backend/cmd/migrate-json
   --group-name AGAPE
   --config ./config.json
   --records ./data/records.json
-  --assets-root /volume1/agp-data/assets/agape
 ```
 
 ## 11. 实施阶段
@@ -682,6 +675,6 @@ backend/cmd/migrate-json
 - 超级管理员引导：首个超级管理员由环境变量/CLI 种子创建，首次登录强制改密，引导变量随后移除。
 - 分区失效：`pmax` 兜底分区需配套定时任务提前建分区并归档老分区，否则查询退化为全表扫描。
 - 大文件访问：文件下载走后端鉴权，视频可以支持 HTTP Range。
-- 资料路径变化：迁移时保留旧 URL 到新 asset 的映射，前端不直接依赖物理路径。
+- 资料路径变化：前端只保存数据库资源 ID，后端统一解析 `data/resources` 中的对象路径。
 - 统计变慢：首期 SQL 聚合，后续增加日维度汇总表或 Redis 缓存。
-- NAS 备份：MySQL 数据卷和 `/volume1/agp-data/assets` 需要纳入 NAS 备份策略。
+- NAS 备份：MySQL 数据卷和 `/volume1/agp-data/resources` 需要纳入 NAS 备份策略。

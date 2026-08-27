@@ -39,7 +39,6 @@ type options struct {
 	configPath               string
 	recordsPath              string
 	defaultPassword          string
-	assetsRoot               string
 	reportDir                string
 	dryRun                   bool
 	allowDuplicateAsDeleted  bool
@@ -266,6 +265,8 @@ var bibleBooks = []scriptureBook{
 	{Book: "启示录", BookID: "66", Chapters: 22},
 }
 
+var assetDownloadURLPattern = regexp.MustCompile(`^/api/assets/[1-9][0-9]*/download$`)
+
 func main() {
 	var opt options
 	flag.StringVar(&opt.dsn, "dsn", env("AGP_DSN", ""), "MySQL DSN")
@@ -274,7 +275,6 @@ func main() {
 	flag.StringVar(&opt.configPath, "config", "../config.json", "old config.json path")
 	flag.StringVar(&opt.recordsPath, "records", "../data/records.json", "old records.json path")
 	flag.StringVar(&opt.defaultPassword, "default-password", "", "default password for imported members")
-	flag.StringVar(&opt.assetsRoot, "assets-root", "", "logical assets root note")
 	flag.StringVar(&opt.reportDir, "report-dir", "../data/migration-reports", "migration report directory")
 	flag.BoolVar(&opt.dryRun, "dry-run", true, "parse and report without writing database")
 	flag.BoolVar(&opt.allowDuplicateAsDeleted, "allow-duplicate-as-deleted", false, "import duplicate checkins as soft-deleted rows with non-zero active_key")
@@ -314,9 +314,8 @@ func run(opt options) error {
 		GeneratedAt: time.Now().Format(time.RFC3339),
 		DryRun:      opt.dryRun,
 		Inputs: map[string]string{
-			"config":      opt.configPath,
-			"records":     opt.recordsPath,
-			"assets_root": opt.assetsRoot,
+			"config":  opt.configPath,
+			"records": opt.recordsPath,
 		},
 		Group: groupReport{Code: opt.groupCode, Name: opt.groupName, WouldSave: opt.dryRun},
 		Details: map[string]any{
@@ -1156,15 +1155,26 @@ func normalizeTaskSections(raw json.RawMessage) (json.RawMessage, error) {
 		daily = map[string]any{}
 		sections["daily"] = daily
 	}
-	dailyPath := stringValue(daily["path"])
+	dailyPath := databaseAssetDownloadURL(daily["path"])
+	if dailyPath != "" {
+		daily["path"] = dailyPath
+	} else {
+		delete(daily, "path")
+	}
 
 	devotion := mapValue(daily, "devotion")
 	if devotion == nil {
 		devotion = map[string]any{}
 		daily["devotion"] = devotion
 	}
-	if _, ok := devotion["path"]; !ok && dailyPath != "" {
+	devotionPath := databaseAssetDownloadURL(devotion["path"])
+	switch {
+	case devotionPath != "":
+		devotion["path"] = devotionPath
+	case dailyPath != "":
 		devotion["path"] = dailyPath
+	default:
+		delete(devotion, "path")
 	}
 	if _, ok := devotion["numbered_start_date"]; !ok {
 		if startDate := stringValue(devotion["start_date"]); startDate != "" {
@@ -1261,6 +1271,14 @@ func stringValue(value any) string {
 		return ""
 	}
 	return strings.TrimSpace(text)
+}
+
+func databaseAssetDownloadURL(value any) string {
+	text := stringValue(value)
+	if !assetDownloadURLPattern.MatchString(text) {
+		return ""
+	}
+	return text
 }
 
 func numberValue(value any) int {

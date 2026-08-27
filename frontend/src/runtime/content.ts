@@ -21,11 +21,17 @@ export function shouldUseNativePDFViewer(userAgent: unknown, maxTouchPoints = 0)
     || (/Macintosh/i.test(normalizedUserAgent) && maxTouchPoints > 1);
 }
 
-export function normalizeLegacyStaticAssetURL(value: unknown): string {
+export function sameOriginAPIPath(value: unknown, origin = ''): string {
   const source = String(value || '').trim();
-  const match = source.match(/^\/api\/assets\/(?:book:|passage:|handout:|video:|markdown:)\/(.+)\/download$/);
-  if (!match) return source;
-  return `/${match[1].replace(/^\/+/, '')}`;
+  if (source.startsWith('/api/')) return source;
+  if (!origin) return '';
+  try {
+    const parsed = new URL(source, origin);
+    if (parsed.origin !== origin || !parsed.pathname.startsWith('/api/')) return '';
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return '';
+  }
 }
 
 export type AttachmentPresentation = {
@@ -204,8 +210,8 @@ function inlineMarkdown(value: string): string {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
-      const decoded = normalizeLegacyStaticAssetURL(href.replaceAll('&amp;', '&').trim());
-      if (!/^(https?:\/\/|\/api\/assets\/\d+\/download$|\/(?:Book|Passage|PPT|Newtestament)\/)/i.test(decoded)) {
+      const decoded = href.replaceAll('&amp;', '&').trim();
+      if (!/^(https?:\/\/|\/api\/assets\/\d+\/download$)/i.test(decoded)) {
         return label;
       }
       return `<a href="${escapeAttribute(decoded)}" target="_blank" rel="noopener noreferrer">${label}</a>`;

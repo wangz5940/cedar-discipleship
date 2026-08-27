@@ -6,6 +6,7 @@ import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
 import MinistryCatalogAdmin from './MinistryCatalogAdmin.vue';
+import ResourceGovernance from './ResourceGovernance.vue';
 import {
   addWeekBinding,
   api,
@@ -132,7 +133,9 @@ const outlineOptions = computed(() => libraryItems.value.filter((item) => (
 const resourceCategoryCount = computed(() => new Set(resources.value.map((item) => item.category).filter(Boolean)).size);
 const resourcePrimaryCategory = computed(() => {
   const first = resources.value.find((item) => item.category);
+  if (isMentorResource(first)) return '导读';
   const labels = {
+    mentor: '导读',
     book: '读物',
     markdown: '文字',
     pdf: 'PDF',
@@ -144,6 +147,7 @@ const resourcePrimaryCategory = computed(() => {
 });
 const groupedResources = computed(() => {
   const buckets = [
+    { key: 'mentor', label: '导读', description: 'Mentor 导读材料', items: [] },
     { key: 'reading', label: '读物', description: '读物 PDF 与文字材料', items: [] },
     { key: 'handout', label: '讲义', description: '配套讲义与提纲材料', items: [] },
     { key: 'video', label: '视频', description: '视频与播放材料', items: [] },
@@ -152,7 +156,9 @@ const groupedResources = computed(() => {
   const map = Object.fromEntries(buckets.map((bucket) => [bucket.key, bucket]));
 
   for (const asset of resources.value) {
-    if (['book', 'passage', 'markdown', 'pdf'].includes(asset.category)) {
+    if (isMentorResource(asset)) {
+      map.mentor.items.push(asset);
+    } else if (['book', 'passage', 'markdown', 'pdf'].includes(asset.category)) {
       map.reading.items.push(asset);
     } else if (['handout', 'outline'].includes(asset.category)) {
       map.handout.items.push(asset);
@@ -372,12 +378,21 @@ function downloadSelectedResources() {
 }
 
 function resourceTypeLabel(asset) {
+  if (isMentorResource(asset)) return '导读资料';
   if (asset.type === 'video' || asset.category === 'video') return '视频资料';
   if (asset.category === 'book' || asset.category === 'passage') return '读物 PDF';
   if (asset.category === 'handout') return '讲义 PDF';
   if (asset.type === 'markdown' || asset.category === 'markdown') return '文字材料';
   if (asset.type === 'image' || asset.category === 'outline') return '提纲图片';
   return '归档资料';
+}
+
+function isMentorResource(asset) {
+  const text = `${asset?.category || ''} ${asset?.title || ''} ${asset?.original_name || ''}`.toLowerCase();
+  return text.includes('mentor') ||
+    text.includes('导读') ||
+    text.includes('内容概要') ||
+    text.includes('圣经纵览的目的与价值');
 }
 
 function roleLabel(member) {
@@ -619,12 +634,12 @@ async function selectCalendarDate(day) {
                       <input type="checkbox" :checked="resourceSelected(asset)" @change="toggleResourceSelection(asset)" />
                       <span class="pill">{{ resourceTypeLabel(asset) }}</span>
                     </label>
-                    <span class="resource-browser-index">{{ asset.source === 'static' ? '内置' : `#${asset.id}` }}</span>
+                    <span class="resource-browser-index">#{{ asset.id }}</span>
                   </div>
                   <h3>{{ asset.title }}</h3>
                   <p class="muted">{{ asset.original_name }}</p>
                   <div class="resource-browser-footnotes">
-                    <span>来源：{{ asset.source === 'static' ? '内置资料' : '资源库归档' }}</span>
+                    <span>来源：资源库归档</span>
                   </div>
                   <div class="resource-browser-actions">
                     <button class="secondary" type="button" @click="openAsset(asset)">打开</button>
@@ -740,7 +755,7 @@ async function selectCalendarDate(day) {
                       <label class="admin-field">
                         <span class="admin-field-label">灵修文件</span>
                         <select :value="devotion.path || ''" @change="updateLearning(['task_sections','daily','devotion','path'], $event.target.value)">
-                          <option value="">使用默认文件（/newtestament.md）</option>
+                          <option value="">未绑定资源</option>
                           <option v-for="option in markdownOptionsWithCurrent(devotion.path || daily.path)" :key="option.url" :value="option.url">{{ fileOptionText(option) }}</option>
                         </select>
                       </label>
@@ -855,13 +870,12 @@ async function selectCalendarDate(day) {
             </section>
 
             <section v-else-if="adminSection === 'library'">
-              <div class="section-title"><h2>资源库管理</h2></div>
               <div class="grid">
                 <div class="card">
-                  <h2>资源库</h2>
+                  <h2>上传本组资源</h2>
                   <p class="muted">上传后会自动刷新列表，随后即可在“周任务”里选择挂载。</p>
                   <div class="form-stack admin-form-grid">
-                    <label class="admin-field"><span class="admin-field-label">上传到</span><select v-model="uploadCategory"><option value="markdown">Markdown 读物</option><option value="book">PDF 读物</option><option value="video">视频文件</option><option value="handout">讲义 PDF</option><option value="outline">提纲图片</option></select></label>
+                    <label class="admin-field"><span class="admin-field-label">上传到</span><select v-model="uploadCategory"><option value="mentor">Mentor 导读</option><option value="markdown">Markdown 读物</option><option value="book">PDF 读物</option><option value="video">视频文件</option><option value="handout">讲义 PDF</option><option value="outline">提纲图片</option></select></label>
                     <label class="admin-field"><span class="admin-field-label">选择文件</span><input ref="uploadInput" type="file" /></label>
                     <div class="form-actions">
                       <button :disabled="!canEditLearning" type="button" @click="uploadSelectedFile">上传到资源库</button>
@@ -869,37 +883,7 @@ async function selectCalendarDate(day) {
                     </div>
                   </div>
                 </div>
-                <div
-                  v-for="section in resourceLibrary"
-                  :key="section.key || section.label"
-                  class="card resource-section"
-                  :class="{ 'is-collapsed': resourceSectionCollapsed(section, true) }"
-                >
-                  <div class="section-title resource-admin-section-head">
-                    <h2>{{ section.label }} · {{ section.count || 0 }}</h2>
-                    <button
-                      class="ghost resource-collapse-button"
-                      type="button"
-                      :title="resourceSectionCollapsed(section, true) ? '展开分类' : '收起分类'"
-                      :aria-label="resourceSectionCollapsed(section, true) ? `展开${section.label}` : `收起${section.label}`"
-                      :aria-expanded="!resourceSectionCollapsed(section, true)"
-                      @click="toggleResourceSection(section, true)"
-                    >
-                      <ChevronRight v-if="resourceSectionCollapsed(section, true)" :size="18" />
-                      <ChevronDown v-else :size="18" />
-                    </button>
-                  </div>
-                  <div v-if="section.items?.length && !resourceSectionCollapsed(section, true)" class="resource-list">
-                    <div v-for="item in section.items" :key="item.id || item.url || item.title" class="resource-item">
-                      <div>
-                        <b>{{ item.title || item.original_name || '未命名资源' }}</b>
-                        <div class="muted">{{ item.source === 'uploaded' ? '上传资源' : (item.original_name || '') }}</div>
-                      </div>
-                      <button class="secondary" type="button" @click="previewLibraryItem(item)">查看</button>
-                    </div>
-                  </div>
-                  <div v-else-if="!resourceSectionCollapsed(section, true)" class="empty">当前分类暂无文件。</div>
-                </div>
+                <ResourceGovernance />
               </div>
             </section>
 

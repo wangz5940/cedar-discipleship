@@ -5,29 +5,36 @@ import (
 	"errors"
 	"fmt"
 	"mime"
-	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
-	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
 var (
-	ErrInvalidFilename  = errors.New("invalid_filename")
-	ErrStorageDirectory = errors.New("asset_dir_failed")
-	ErrStorageWrite     = errors.New("asset_write_failed")
+	ErrInvalidFilename    = errors.New("invalid_filename")
+	ErrStorageDirectory   = errors.New("asset_dir_failed")
+	ErrStorageWrite       = errors.New("asset_write_failed")
+	ErrSharingUnsupported = errors.New("asset_sharing_unsupported")
+	ErrInvalidShareScope  = errors.New("invalid_share_scope")
+	ErrInvalidGroupCode   = errors.New("invalid_group_code")
+	ErrInvalidBatchInput  = errors.New("invalid_batch_input")
 )
 
+var groupCodePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+const maxBatchAssetIDs = 200
+
 type Service struct {
-	repo        Repository
-	storage     Storage
-	contentRoot string
+	repo    Repository
+	storage Storage
 }
 
-func NewService(repo Repository, storage Storage, contentRoot string) *Service {
-	return &Service{repo: repo, storage: storage, contentRoot: contentRoot}
+func NewService(repo Repository, storage Storage, _ string) *Service {
+	return &Service{repo: repo, storage: storage}
 }
 
 func (s *Service) List(ctx context.Context, groupID uint64, limit int) ([]AssetVO, error) {
@@ -43,7 +50,7 @@ func (s *Service) List(ctx context.Context, groupID uint64, limit int) ([]AssetV
 }
 
 func (s *Service) DownloadFile(ctx context.Context, groupID, id uint64) (*DownloadFile, error) {
-	item, err := s.repo.FindByID(ctx, groupID, id)
+	item, err := s.downloadTarget(ctx, groupID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +76,24 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 		return nil, ErrInvalidFilename
 	}
 	category := firstNonEmpty(req.Category, "uploaded")
-	relativeDir := filepath.Join(strconv.FormatUint(req.GroupID, 10), category)
+	repo, ok := s.repo.(interface {
+		GroupCode(context.Context, uint64) (string, error)
+	})
+	if !ok {
+		return nil, ErrSharingUnsupported
+	}
+	groupCode, err := repo.GroupCode(ctx, req.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if !groupCodePattern.MatchString(groupCode) {
+		return nil, ErrInvalidGroupCode
+	}
+	resourceKey, err := randomResourceKey()
+	if err != nil {
+		return nil, err
+	}
+	relativeDir := resourceObjectDir(groupCode, resourceKey)
 	stored, err := s.storage.Save(ctx, relativeDir, safeName, req.Reader)
 	if err != nil {
 		return nil, err
@@ -79,6 +103,8 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 	mt := mime.TypeByExtension(strings.ToLower(filepath.Ext(original)))
 	item := &Asset{
 		GroupID:        req.GroupID,
+		ResourceKey:    resourceKey,
+		AssetKind:      AssetKindOwned,
 		Category:       category,
 		Title:          title,
 		OriginalName:   original,
@@ -86,7 +112,7 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 		MimeType:       mt,
 		FileSize:       stored.FileSize,
 		ChecksumSHA256: stored.ChecksumSHA256,
-		Visibility:     "group",
+		Visibility:     string(ShareScopeAllGroups),
 	}
 	id, err := s.repo.Create(ctx, item, req.ActorID)
 	if err != nil {
@@ -101,68 +127,128 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 	return &vo, nil
 }
 
-func (s *Service) ResourceLibrary(ctx context.Context, groupID uint64) ([]LibrarySection, error) {
-	sections := []LibrarySection{
-		s.scanStaticLibrarySection("markdown", "Markdown 读物", "", "/", []string{".md"}),
-		s.scanStaticLibrarySection("book", "PDF 读物", "Book", "/Book", []string{".pdf"}),
-		s.scanStaticLibrarySection("passage", "读经 PDF", "Passage", "/Passage", []string{".pdf"}),
-		s.scanStaticLibrarySection("video", "视频文件", "Newtestament", "/Newtestament", []string{".mp4", ".webm", ".mov", ".m4v"}),
-		s.scanStaticLibrarySection("handout", "讲义 PDF", "PPT", "/PPT", []string{".pdf"}),
-	}
-	uploaded, err := s.uploadedLibrarySections(ctx, groupID)
+func (s *Service) ShareSettings(ctx context.Context, groupID, assetID uint64) (*SharingSettings, error) {
+	repo, err := s.sharingRepo()
 	if err != nil {
 		return nil, err
 	}
-	sections = append(sections, uploaded...)
-	return sections, nil
+	return repo.ShareSettings(ctx, groupID, assetID)
 }
 
-func (s *Service) scanStaticLibrarySection(key, label, subdir, publicPrefix string, extensions []string) LibrarySection {
-	root := s.contentRoot
-	if subdir != "" {
-		root = filepath.Join(root, subdir)
-	}
-	entries, err := os.ReadDir(root)
+func (s *Service) SaveShareSettings(ctx context.Context, groupID, assetID, actorID uint64, input ShareInput) error {
+	repo, err := s.sharingRepo()
 	if err != nil {
-		return LibrarySection{Key: key, Label: label, Items: []LibraryItem{}, Count: 0}
+		return err
 	}
-	allowed := map[string]bool{}
-	for _, ext := range extensions {
-		allowed[strings.ToLower(ext)] = true
+	normalized, err := normalizeShareInput(input)
+	if err != nil {
+		return err
 	}
-	items := make([]LibraryItem, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		ext := strings.ToLower(filepath.Ext(name))
-		if len(allowed) > 0 && !allowed[ext] {
-			continue
-		}
-		title := strings.TrimPrefix(strings.TrimSuffix(name, ext), "[B311]")
-		urlPath := publicPrefix
-		if !strings.HasPrefix(urlPath, "/") {
-			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
-		}
-		if urlPath == "/" {
-			urlPath = "/" + encodeURLPath(name)
-		} else {
-			urlPath = strings.TrimRight(urlPath, "/") + "/" + encodeURLPath(name)
-		}
-		items = append(items, LibraryItem{
-			Title:        title,
-			OriginalName: name,
-			URL:          urlPath,
-			Category:     key,
-			Source:       "static",
-			Type:         inferTaskBindingType("", "", name),
-		})
+	return repo.SaveShareSettings(ctx, groupID, assetID, actorID, normalized, time.Now().UTC())
+}
+
+func (s *Service) SharedResources(ctx context.Context, targetGroupID uint64, filter SharedFilter) ([]SharedResource, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].Title < items[j].Title
+	return repo.SharedResources(ctx, targetGroupID, filter)
+}
+
+func (s *Service) ImportPreview(ctx context.Context, targetGroupID uint64, input ImportInput) (*ImportPreview, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	return repo.ImportPreview(ctx, targetGroupID, input.SourceAssetID)
+}
+
+func (s *Service) Import(ctx context.Context, targetGroupID, actorID uint64, input ImportInput) (*AssetVO, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	item, err := repo.Import(ctx, targetGroupID, actorID, input, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	vo := toAssetVO(*item)
+	return &vo, nil
+}
+
+func (s *Service) ImportHistory(ctx context.Context, groupID uint64, limit int) ([]ImportEvent, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	return repo.ImportHistory(ctx, groupID, limit)
+}
+
+func (s *Service) RemoveImport(ctx context.Context, groupID, importedAssetID, actorID uint64) error {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return err
+	}
+	return repo.RemoveImport(ctx, groupID, importedAssetID, actorID, time.Now().UTC())
+}
+
+func (s *Service) DependencyGraph(ctx context.Context, groupID uint64, isSuperAdmin bool, filter DependencyFilter) (*DependencyGraph, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	return repo.DependencyGraph(ctx, groupID, isSuperAdmin, filter)
+}
+
+func (s *Service) BatchSaveShareSettings(ctx context.Context, groupID, actorID uint64, input BatchShareInput) (*BatchShareResult, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	shareInput, err := normalizeShareInput(ShareInput{
+		Scope:            input.Scope,
+		ConsumerGroupIDs: input.ConsumerGroupIDs,
 	})
-	return LibrarySection{Key: key, Label: label, Items: items, Count: len(items)}
+	if err != nil {
+		return nil, err
+	}
+	assetIDs, err := normalizeBatchAssetIDs(input.AssetIDs)
+	if err != nil {
+		return nil, err
+	}
+	return repo.BatchSaveShareSettings(ctx, groupID, actorID, BatchShareInput{
+		AssetIDs:         assetIDs,
+		Scope:            shareInput.Scope,
+		ConsumerGroupIDs: shareInput.ConsumerGroupIDs,
+	}, time.Now().UTC())
+}
+
+func (s *Service) BatchDelete(ctx context.Context, groupID, actorID uint64, input BatchDeleteInput) (*BatchDeleteResult, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	assetIDs, err := normalizeBatchAssetIDs(input.AssetIDs)
+	if err != nil {
+		return nil, err
+	}
+	return repo.BatchDelete(ctx, groupID, actorID, BatchDeleteInput{AssetIDs: assetIDs}, time.Now().UTC())
+}
+
+func (s *Service) BatchImport(ctx context.Context, targetGroupID, actorID uint64, input BatchImportInput) (*BatchImportResult, error) {
+	repo, err := s.sharingRepo()
+	if err != nil {
+		return nil, err
+	}
+	sourceAssetIDs, err := normalizeBatchAssetIDs(input.SourceAssetIDs)
+	if err != nil {
+		return nil, err
+	}
+	return repo.BatchImport(ctx, targetGroupID, actorID, BatchImportInput{SourceAssetIDs: sourceAssetIDs}, time.Now().UTC())
+}
+
+func (s *Service) ResourceLibrary(ctx context.Context, groupID uint64) ([]LibrarySection, error) {
+	return s.uploadedLibrarySections(ctx, groupID)
 }
 
 func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) ([]LibrarySection, error) {
@@ -198,6 +284,8 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 		switch key {
 		case "markdown":
 			label = "上传 Markdown"
+		case "mentor":
+			label = "上传 Mentor 导读"
 		case "book":
 			label = "上传 PDF 读物"
 		case "video":
@@ -213,16 +301,83 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 	return sections, nil
 }
 
+func normalizeBatchAssetIDs(values []uint64) ([]uint64, error) {
+	seen := map[uint64]bool{}
+	out := make([]uint64, 0, len(values))
+	for _, value := range values {
+		if value == 0 || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	if len(out) == 0 || len(out) > maxBatchAssetIDs {
+		return nil, ErrInvalidBatchInput
+	}
+	return out, nil
+}
+
 func toAssetVO(item Asset) AssetVO {
 	return AssetVO{
-		ID:           item.ID,
-		Category:     item.Category,
-		Title:        item.Title,
-		OriginalName: item.OriginalName,
-		MimeType:     item.MimeType,
-		FileSize:     item.FileSize,
-		URL:          fmt.Sprintf("/api/assets/%d/download", item.ID),
+		ID:            item.ID,
+		Category:      item.Category,
+		Title:         item.Title,
+		OriginalName:  item.OriginalName,
+		MimeType:      item.MimeType,
+		FileSize:      item.FileSize,
+		URL:           fmt.Sprintf("/api/assets/%d/download", item.ID),
+		AssetKind:     item.AssetKind,
+		SourceAssetID: item.SourceAssetID,
+		ImportedAt:    item.ImportedAt,
+		UpdatedAt:     item.UpdatedAt,
 	}
+}
+
+func resourceObjectDir(groupCode, resourceKey string) string {
+	return filepath.Join(
+		"team-"+groupCode+"-resources",
+		"objects",
+		resourceKey,
+	)
+}
+
+func (s *Service) downloadTarget(ctx context.Context, groupID, id uint64) (*Asset, error) {
+	if repo, ok := s.repo.(SharingRepository); ok {
+		return repo.FindDownloadTarget(ctx, groupID, id)
+	}
+	return s.repo.FindByID(ctx, groupID, id)
+}
+
+func (s *Service) sharingRepo() (SharingRepository, error) {
+	repo, ok := s.repo.(SharingRepository)
+	if !ok {
+		return nil, ErrSharingUnsupported
+	}
+	return repo, nil
+}
+
+func normalizeShareInput(input ShareInput) (ShareInput, error) {
+	switch input.Scope {
+	case "", ShareScopePrivate:
+		input.Scope = ShareScopePrivate
+		input.ConsumerGroupIDs = nil
+	case ShareScopeAllGroups:
+		input.ConsumerGroupIDs = nil
+	case ShareScopeSelectedGroups:
+		seen := map[uint64]bool{}
+		out := make([]uint64, 0, len(input.ConsumerGroupIDs))
+		for _, id := range input.ConsumerGroupIDs {
+			if id == 0 || seen[id] {
+				continue
+			}
+			seen[id] = true
+			out = append(out, id)
+		}
+		input.ConsumerGroupIDs = out
+	default:
+		return ShareInput{}, ErrInvalidShareScope
+	}
+	return input, nil
 }
 
 func sanitizeUploadName(name string) string {
@@ -242,14 +397,6 @@ func sanitizeUploadName(name string) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
-}
-
-func encodeURLPath(path string) string {
-	parts := strings.Split(strings.ReplaceAll(path, "\\", "/"), "/")
-	for i, part := range parts {
-		parts[i] = url.PathEscape(part)
-	}
-	return strings.Join(parts, "/")
 }
 
 func inferTaskBindingType(taskType, urlValue, fileName string) string {

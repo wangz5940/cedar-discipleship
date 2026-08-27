@@ -21,13 +21,7 @@
 
 不要求本机预装 Go、Node、MySQL。
 
-如果你依赖当前仓库内的静态资料库，还需要同时准备这些目录，或按实际路径修改 [`deploy/docker-compose.separated.yml`](file:///Users/bytedance/program/agp/deploy/docker-compose.separated.yml)：
-
-- `Book/`：静态 PDF 读物
-- `Newtestament/`：静态视频
-- `PPT/`：静态讲义
-
-后台上传到资源库的文件会写入 `data/assets/`，上线时需要把这个目录纳入持久化和备份。
+资源文件统一写入 `data/resources/`，上线时必须把这个目录纳入持久化和备份。
 
 ## 最简空库部署
 
@@ -55,7 +49,7 @@ export GOPROXY='https://goproxy.cn,direct'
 
 脚本会自动：
 
-1. 创建 `data/mysql`、`data/assets`、`data/backups/mysql`
+1. 创建 `data/mysql`、`data/resources`、`data/backups/mysql`
 2. 构建并启动 `mysql / backend / frontend`
 3. 等待 MySQL 就绪
 4. 输出访问地址与管理员账号

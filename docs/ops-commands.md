@@ -40,7 +40,7 @@ docker compose -f deploy/docker-compose.separated.yml logs -f mysql
 # 重启后端
 docker compose -f deploy/docker-compose.separated.yml restart backend
 
-# 停止服务，保留数据卷目录 data/mysql 和 data/assets
+# 停止服务，保留数据卷目录 data/mysql 和 data/resources
 docker compose -f deploy/docker-compose.separated.yml down
 ```
 

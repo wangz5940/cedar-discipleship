@@ -8,7 +8,7 @@ import {
 } from './downloads';
 
 describe('download runtime helpers', () => {
-  it('normalizes uploaded and static resources', () => {
+  it('normalizes database-backed resources', () => {
     expect(normalizeDownloadResource({
       id: 12,
       title: '课程讲义',
@@ -30,10 +30,12 @@ describe('download runtime helpers', () => {
 
     expect(normalizeDownloadResource({
       title: '门训视频',
-      url: '/Newtestament/week-1.mp4',
+      original_name: 'week-1.mp4',
+      url: '/api/assets/21/download',
+      type: 'video',
       source: 'learning',
     })).toMatchObject({
-      key: 'learning:/Newtestament/week-1.mp4',
+      key: 'learning:/api/assets/21/download',
       name: 'week-1.mp4',
       kind: 'video',
     });

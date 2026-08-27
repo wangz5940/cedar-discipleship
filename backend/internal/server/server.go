@@ -40,7 +40,6 @@ const (
 type app struct {
 	db            *sql.DB
 	secret        []byte
-	contentRoot   string
 	migrationsDir string
 	location      *time.Location
 	tokenTTL      time.Duration
@@ -59,8 +58,7 @@ type config struct {
 	Addr                 string
 	DSN                  string
 	JWTSecret            string
-	AssetsRoot           string
-	ContentRoot          string
+	ResourceRoot         string
 	MigrationsDir        string
 	BootstrapUsername    string
 	BootstrapPassword    string
@@ -117,7 +115,6 @@ func Run() error {
 	a := &app{
 		db:            db,
 		secret:        []byte(cfg.JWTSecret),
-		contentRoot:   cfg.ContentRoot,
 		migrationsDir: cfg.MigrationsDir,
 		location:      loc,
 		tokenTTL:      tokenTTL,
@@ -126,8 +123,8 @@ func Run() error {
 		backups:       backupdomain.NewService(backupdomain.NewMySQLRepository(db)),
 		assets: assetdomain.NewService(
 			assetdomain.NewMySQLRepository(db),
-			assetdomain.NewLocalStorage(cfg.AssetsRoot, cfg.ContentRoot),
-			cfg.ContentRoot,
+			assetdomain.NewLocalStorage(cfg.ResourceRoot),
+			"",
 		),
 		checkins: checkinSvc,
 		learning: learningdomain.NewService(
@@ -166,8 +163,7 @@ func loadConfig() config {
 		Addr:                 env("AGP_ADDR", ":8080"),
 		DSN:                  env("AGP_DSN", "agp:agp@tcp(127.0.0.1:3306)/agp?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"),
 		JWTSecret:            env("AGP_JWT_SECRET", ""),
-		AssetsRoot:           env("AGP_ASSETS_ROOT", "/data/agp/assets"),
-		ContentRoot:          env("AGP_CONTENT_ROOT", "/data/agp/content"),
+		ResourceRoot:         env("AGP_RESOURCE_ROOT", "/data/agp/resources"),
 		MigrationsDir:        env("AGP_MIGRATIONS_DIR", "./migrations"),
 		BootstrapUsername:    env("BOOTSTRAP_SUPERADMIN_USERNAME", "admin"),
 		BootstrapPassword:    env("BOOTSTRAP_SUPERADMIN_PASSWORD", ""),
@@ -272,12 +268,22 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/library", a.auth(a.handleResourceLibrary))
 	mux.HandleFunc("GET /api/assets/{id}/download", a.auth(a.handleDownloadAsset))
 	mux.HandleFunc("GET /api/assets/{id}/range", a.auth(a.handleDownloadAssetRange))
-	mux.HandleFunc("GET /api/assets/{kind}/{rest...}", a.auth(a.handleDownloadStaticAssetLink))
 	mux.HandleFunc("POST /api/admin/assets/upload", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminUploadAsset)))
+	mux.HandleFunc("GET /api/admin/assets/{id}/sharing", a.auth(a.requireRole(roleGroupAdmin, a.handleAssetSharing)))
+	mux.HandleFunc("PUT /api/admin/assets/{id}/sharing", a.auth(a.requireRole(roleGroupAdmin, a.handleUpdateAssetSharing)))
 	mux.HandleFunc("GET /api/admin/resource-library", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResourceLibrary)))
+	mux.HandleFunc("GET /api/admin/resource-groups", a.auth(a.requireRole(roleGroupAdmin, a.handleResourceGroups)))
+	mux.HandleFunc("GET /api/admin/shared-resources", a.auth(a.requireRole(roleGroupAdmin, a.handleSharedResources)))
+	mux.HandleFunc("POST /api/admin/resource-imports/preview", a.auth(a.requireRole(roleGroupAdmin, a.handleResourceImportPreview)))
+	mux.HandleFunc("POST /api/admin/resource-imports", a.auth(a.requireRole(roleGroupAdmin, a.handleResourceImport)))
+	mux.HandleFunc("PUT /api/admin/resource-batch/sharing", a.auth(a.requireRole(roleGroupAdmin, a.handleBatchAssetSharing)))
+	mux.HandleFunc("DELETE /api/admin/resource-batch/assets", a.auth(a.requireRole(roleGroupAdmin, a.handleBatchDeleteAssets)))
+	mux.HandleFunc("POST /api/admin/resource-batch/imports", a.auth(a.requireRole(roleGroupAdmin, a.handleBatchResourceImport)))
+	mux.HandleFunc("DELETE /api/admin/resource-imports/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleRemoveResourceImport)))
+	mux.HandleFunc("GET /api/admin/resource-import-history", a.auth(a.requireRole(roleGroupAdmin, a.handleResourceImportHistory)))
+	mux.HandleFunc("GET /api/admin/resource-dependencies/graph", a.auth(a.requireRole(roleGroupAdmin, a.handleResourceDependencyGraph)))
 	mux.HandleFunc("GET /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminLearningConfig)))
 	mux.HandleFunc("PUT /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminSaveLearningConfig)))
-	mux.HandleFunc("GET /api/content/pdf-range", a.auth(a.handleStaticPDFRange))
 	mux.HandleFunc("GET /api/admin/exports/checkins-detail", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportCheckinsCSV)))
 	mux.HandleFunc("GET /api/admin/exports/daily-summary", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportDailySummaryCSV)))
 	mux.HandleFunc("GET /api/admin/exports/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportStudyWeeksExcel)))
@@ -439,6 +445,12 @@ func (a *app) runMigrations() error {
 	if err != nil {
 		return err
 	}
+	ctx := context.Background()
+	conn, err := a.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
@@ -448,7 +460,7 @@ func (a *app) runMigrations() error {
 			return err
 		}
 		for _, stmt := range splitSQL(string(data)) {
-			if _, err := a.db.Exec(stmt); err != nil {
+			if _, err := conn.ExecContext(ctx, stmt); err != nil {
 				return fmt.Errorf("%s: %w", entry.Name(), err)
 			}
 		}

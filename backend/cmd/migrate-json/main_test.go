@@ -16,8 +16,8 @@ func TestTasksForWeekSplitsMultipleReadingsIntoMultipleWeeklyBookTasks(t *testin
 	week := oldWeek{
 		Title: titleJSON,
 		Readings: []oldAssetRef{
-			{Title: "《基督是一切》48-52页", URL: "/Book/book-a.pdf", Type: "pdf"},
-			{Title: "《救赎史剧》109-118页", URL: "/Book/book-b.pdf", Type: "pdf"},
+			{Title: "《基督是一切》48-52页", URL: "/api/assets/101/download", Type: "pdf"},
+			{Title: "《救赎史剧》109-118页", URL: "/api/assets/102/download", Type: "pdf"},
 		},
 		Video: "本周视频",
 		Verse: "背经",
@@ -40,10 +40,10 @@ func TestTasksForWeekSplitsMultipleReadingsIntoMultipleWeeklyBookTasks(t *testin
 	if bookTasks[1].Title != "《救赎史剧》109-118页" {
 		t.Fatalf("unexpected second title: %q", bookTasks[1].Title)
 	}
-	if len(bookTasks[0].Assets) != 1 || bookTasks[0].Assets[0].Ref.URL != "/Book/book-a.pdf" {
+	if len(bookTasks[0].Assets) != 1 || bookTasks[0].Assets[0].Ref.URL != "/api/assets/101/download" {
 		t.Fatalf("unexpected first assets: %+v", bookTasks[0].Assets)
 	}
-	if len(bookTasks[1].Assets) != 1 || bookTasks[1].Assets[0].Ref.URL != "/Book/book-b.pdf" {
+	if len(bookTasks[1].Assets) != 1 || bookTasks[1].Assets[0].Ref.URL != "/api/assets/102/download" {
 		t.Fatalf("unexpected second assets: %+v", bookTasks[1].Assets)
 	}
 }
@@ -56,8 +56,8 @@ func TestReadingTasksForWeekFallsBackWhenTitleCountDiffersFromReadingCount(t *te
 	week := oldWeek{
 		Title: titleJSON,
 		Readings: []oldAssetRef{
-			{Title: "", URL: "/Book/book-a.pdf", Type: "pdf"},
-			{Title: "《救赎史剧》109-118页", URL: "/Book/book-b.pdf", Type: "pdf"},
+			{Title: "", URL: "/api/assets/101/download", Type: "pdf"},
+			{Title: "《救赎史剧》109-118页", URL: "/api/assets/102/download", Type: "pdf"},
 		},
 	}
 
@@ -100,7 +100,7 @@ func TestMigratedReadingContentIsStructuredJSON(t *testing.T) {
 func TestNormalizeTaskSectionsBuildsCurrentScriptureAndDevotionShape(t *testing.T) {
 	raw := json.RawMessage(`{
 		"daily": {
-			"path": "/newtestament.md",
+			"path": "/api/assets/12/download",
 			"devotion": {"start_date": "2026-05-27", "start_section": 43},
 			"scripture": {
 				"book": "路加福音",
@@ -120,7 +120,7 @@ func TestNormalizeTaskSectionsBuildsCurrentScriptureAndDevotionShape(t *testing.
 	}
 	daily := sections["daily"].(map[string]any)
 	devotion := daily["devotion"].(map[string]any)
-	if devotion["path"] != "/newtestament.md" || devotion["numbered_start_date"] != "2026-05-27" || devotion["numbered_start"].(float64) != 43 {
+	if devotion["path"] != "/api/assets/12/download" || devotion["numbered_start_date"] != "2026-05-27" || devotion["numbered_start"].(float64) != 43 {
 		t.Fatalf("unexpected devotion config: %+v", devotion)
 	}
 	scripture := daily["scripture"].(map[string]any)

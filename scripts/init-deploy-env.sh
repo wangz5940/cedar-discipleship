@@ -81,6 +81,7 @@ append_env MYSQL_ROOT_PASSWORD "$(rand_password 32)"
 
 append_env AGP_JWT_SECRET "$(rand_hex 48)"
 append_env AGP_TOKEN_TTL ""
+append_env AGP_RESOURCE_ROOT "$(env_value AGP_DATA_DIR)/resources"
 append_env BOOTSTRAP_SUPERADMIN_USERNAME admin
 append_env BOOTSTRAP_SUPERADMIN_PASSWORD "$(rand_password 20)"
 append_env BOOTSTRAP_SUPERADMIN_DISPLAY_NAME "超级管理员"
@@ -90,9 +91,10 @@ append_env NPM_CONFIG_REGISTRY "https://registry.npmmirror.com"
 
 AGP_DATA_DIR_VALUE="$(env_value AGP_DATA_DIR)"
 AGP_LOG_DIR_VALUE="$(env_value AGP_LOG_DIR)"
+AGP_RESOURCE_ROOT_VALUE="$(env_value AGP_RESOURCE_ROOT)"
 mkdir -p \
   "$AGP_DATA_DIR_VALUE/mysql" \
-  "$AGP_DATA_DIR_VALUE/assets" \
+  "$AGP_RESOURCE_ROOT_VALUE" \
   "$AGP_DATA_DIR_VALUE/backups/mysql" \
   "$AGP_LOG_DIR_VALUE/backend" \
   "$AGP_LOG_DIR_VALUE/frontend" \

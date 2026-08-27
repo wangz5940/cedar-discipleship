@@ -51,25 +51,15 @@ services:
       AGP_DSN: "${MYSQL_USER:-agp}:${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}@tcp(mysql:3306)/${MYSQL_DATABASE:-agp}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
       AGP_JWT_SECRET: "${AGP_JWT_SECRET:?AGP_JWT_SECRET must be set in .env}"
       AGP_TOKEN_TTL: "${AGP_TOKEN_TTL:-}"
-      AGP_ASSETS_ROOT: "/data/agp/assets"
-      AGP_CONTENT_ROOT: "/data/agp/content"
+      AGP_RESOURCE_ROOT: "/data/agp/resources"
       AGP_MIGRATIONS_DIR: "/app/migrations"
       AGP_LOG_FILE: "/var/log/cedar/backend.log"
       BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
       BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
     volumes:
-      - ${AGP_DATA_DIR:-../data}/assets:/data/agp/assets
+      - ${AGP_RESOURCE_ROOT:-../data/resources}:/data/agp/resources
       - ${AGP_LOG_DIR:-../logs}/backend:/var/log/cedar
-      - ../Book:/data/agp/content/Book:ro
-      - ../Mentor:/data/agp/content/Mentor:ro
-      - ../Newtestament:/data/agp/content/Newtestament:ro
-      - ../Passage:/data/agp/content/Passage:ro
-      - ../PPT:/data/agp/content/PPT:ro
-      - ../newtestament.md:/data/agp/content/newtestament.md:ro
-      - ../weekly_task.md:/data/agp/content/weekly_task.md:ro
-      - ../Kuangye.md:/data/agp/content/Kuangye.md:ro
-      - ../README.md:/data/agp/content/README.md:ro
     logging:
       driver: json-file
       options:
@@ -88,14 +78,6 @@ services:
       - backend
     volumes:
       - ${AGP_LOG_DIR:-../logs}/frontend:/var/log/cedar
-      - ../Book:/usr/share/nginx/html/Book:ro
-      - ../Mentor:/usr/share/nginx/html/Mentor:ro
-      - ../Newtestament:/usr/share/nginx/html/Newtestament:ro
-      - ../Passage:/usr/share/nginx/html/Passage:ro
-      - ../PPT:/usr/share/nginx/html/PPT:ro
-      - ../newtestament.md:/usr/share/nginx/html/newtestament.md:ro
-      - ../weekly_task.md:/usr/share/nginx/html/weekly_task.md:ro
-      - ../Kuangye.md:/usr/share/nginx/html/Kuangye.md:ro
     ports:
       - "${AGP_WEB_PORT:-5114}:80"
     logging:

@@ -5164,6 +5164,13 @@ textarea::placeholder {
   box-shadow: 0 2px 10px rgba(33, 31, 27, 0.12);
 }
 
+.pdf-viewer-native-frame {
+  width: 100%;
+  min-height: min(68vh, 760px);
+  border: 0;
+  background: #ffffff;
+}
+
 .pdf-viewer-status,
 .pdf-viewer-error {
   align-self: center;
@@ -7289,6 +7296,558 @@ button.ministry-join-button {
   padding: 8px 12px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+}
+
+/* Resource governance */
+.resource-governance {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.resource-governance-head,
+.resource-governance-actions,
+.resource-governance-tabs,
+.resource-filter-bar,
+.resource-graph-tools,
+.resource-dialog header,
+.resource-dialog footer {
+  display: flex;
+  align-items: center;
+}
+
+.resource-governance-head,
+.resource-dialog header,
+.resource-dialog footer {
+  justify-content: space-between;
+}
+
+.resource-governance-head h2,
+.resource-dialog h3,
+.resource-dialog h4 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.resource-governance-actions {
+  gap: 8px;
+}
+
+.resource-batch-toolbar,
+.resource-batch-actions,
+.resource-row-check,
+.resource-batch-progress {
+  display: flex;
+  align-items: center;
+}
+
+.resource-batch-toolbar {
+  min-height: 48px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .62);
+}
+
+.resource-batch-toolbar > .muted {
+  margin-right: auto;
+  font-size: 12px;
+}
+
+.resource-batch-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.resource-batch-actions button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.resource-row-check {
+  gap: 7px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.resource-row-check input,
+.resource-select-column input {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  accent-color: var(--primary);
+}
+
+.resource-batch-progress {
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid rgba(37, 99, 235, .2);
+  border-radius: 6px;
+  background: rgba(37, 99, 235, .07);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.resource-icon-button {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.resource-imported-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.resource-governance-tabs {
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.resource-governance-tabs button {
+  min-height: 42px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.resource-governance-tabs button:hover,
+.resource-governance-tabs button.active {
+  transform: none;
+  box-shadow: none;
+}
+
+.resource-governance-tabs button.active {
+  background: rgba(37, 99, 235, .08);
+  color: var(--primary);
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+.resource-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .56);
+}
+
+.resource-governance-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.resource-governance-table th,
+.resource-governance-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.resource-governance-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8f9fb;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.resource-governance-table .resource-select-column {
+  width: 58px;
+  min-width: 58px;
+  text-align: center;
+}
+
+.resource-governance-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.resource-governance-table td:first-child {
+  min-width: 220px;
+}
+
+.resource-governance-table strong,
+.resource-governance-table small {
+  display: block;
+}
+
+.resource-governance-table small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.resource-governance-table button {
+  min-height: 36px;
+  padding: 7px 11px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: none;
+}
+
+.resource-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.resource-filter-bar input,
+.resource-filter-bar select,
+.resource-graph-tools input,
+.resource-graph-tools select {
+  min-height: 42px;
+  border-radius: 6px;
+}
+
+.resource-graph-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr)) auto 120px;
+  gap: 12px;
+}
+
+.segmented-control {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: 40px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .68);
+}
+
+.segmented-control button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.segmented-control button:hover,
+.segmented-control button.active {
+  transform: none;
+  box-shadow: none;
+}
+
+.segmented-control button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.resource-depth-input {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--line);
+}
+
+.resource-metrics > div {
+  padding: 14px;
+  border-right: 1px solid var(--line);
+}
+
+.resource-metrics > div:last-child {
+  border-right: 0;
+}
+
+.resource-metrics strong,
+.resource-metrics span {
+  display: block;
+}
+
+.resource-metrics strong {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.resource-metrics span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.resource-graph-canvas {
+  height: min(58vh, 620px);
+  min-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background:
+    linear-gradient(rgba(18,24,38,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18,24,38,.035) 1px, transparent 1px),
+    #fbfcfd;
+  background-size: 24px 24px;
+}
+
+.resource-graph-canvas svg {
+  min-width: 100%;
+  height: 100%;
+}
+
+.resource-edge {
+  stroke: #64748b;
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.resource-edge.status-broken,
+.resource-edge.status-revoked {
+  stroke: #dc2626;
+  stroke-dasharray: 5 4;
+}
+
+#resource-arrow path {
+  fill: #64748b;
+}
+
+.resource-node rect {
+  fill: #fff;
+  stroke: rgba(37, 99, 235, .34);
+  stroke-width: 1.5;
+}
+
+.resource-node.kind-group rect {
+  fill: #172033;
+  stroke: #172033;
+}
+
+.resource-node text {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.resource-node.kind-group text {
+  fill: #fff;
+}
+
+.resource-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-float);
+}
+
+.resource-dialog header,
+.resource-dialog footer {
+  gap: 12px;
+}
+
+.resource-dialog footer {
+  min-height: 48px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.resource-dialog footer > span {
+  flex: 1;
+}
+
+.resource-dialog-body {
+  display: grid;
+  gap: 12px;
+}
+
+.resource-dialog-body p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.resource-dialog-body dl {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 9px 14px;
+  margin: 0;
+}
+
+.resource-dialog-body dt {
+  color: var(--muted);
+}
+
+.resource-dialog-body dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.resource-confirm-list {
+  max-height: 300px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resource-confirm-list li {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+}
+
+.resource-confirm-list strong,
+.resource-confirm-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-confirm-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-scope-control {
+  width: 100%;
+}
+
+.resource-scope-control button {
+  flex: 1;
+}
+
+.resource-group-checks {
+  max-height: 260px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.resource-group-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.resource-group-checks input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.resource-import-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.resource-import-steps span {
+  height: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  font-size: 0;
+}
+
+.resource-import-steps span.active {
+  background: var(--primary);
+}
+
+.resource-validation-result {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid rgba(34, 197, 94, .24);
+  border-radius: 6px;
+  background: rgba(240, 253, 244, .72);
+  color: #166534;
+  font-weight: 700;
+}
+
+@media (max-width: 980px) {
+  .resource-filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resource-graph-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .resource-metrics > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .resource-metrics > div:nth-child(-n+2) {
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 620px) {
+  .resource-governance-head,
+  .resource-dialog header {
+    align-items: flex-start;
+  }
+
+  .resource-filter-bar,
+  .resource-group-checks {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-governance-tabs {
+    margin-inline: -4px;
+  }
+
+  .resource-dialog {
+    padding: 16px;
+  }
 }
 
 .resource-download-toolbar > .muted {

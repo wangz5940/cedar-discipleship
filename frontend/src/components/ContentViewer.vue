@@ -278,6 +278,7 @@ function downloadCurrent() {
           <PdfViewer
             v-else-if="viewer.type === 'pdf'"
             :src="viewer.url"
+            :data="viewer.pdfData"
             :title="viewer.title"
           />
           <iframe

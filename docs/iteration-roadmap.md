@@ -7,7 +7,7 @@
 1. 支持多小组成员设置默认展示小组。
 2. 增加旧 JSON 数据迁移 CLI，将 `config.json`、`data/records.json` 导入 MySQL。
 3. 扩展当前静态前端为更完整的管理台，包括周计划编辑、资源上传和统计图表。
-4. 根据 NAS 实际路径调整 `AGP_ASSETS_ROOT`，并把 `/data/agp/assets` 纳入备份策略。
+4. 根据 NAS 实际路径调整 `AGP_RESOURCE_ROOT`，并把 `data/resources` 纳入备份策略。
 
 ## 2. 默认展示小组
 
@@ -90,7 +90,6 @@ go run ./cmd/migrate-json \
   --config ../config.json \
   --records ../data/records.json \
   --default-password "Abc12345" \
-  --assets-root /volume1/agp-data/assets/agape-a \
   --dry-run=false
 ```
 
@@ -102,7 +101,6 @@ go run ./cmd/migrate-json \
 - `--config`：旧 `config.json` 路径。
 - `--records`：旧 `records.json` 路径。
 - `--default-password`：该组默认密码；未传则自动生成 8 位字母数字。
-- `--assets-root`：该组资源根目录。
 - `--dry-run`：只解析和统计，不写入数据库。
 
 ### 3.3 config.json 映射
@@ -223,17 +221,12 @@ API：
 - 写入 `assets` 元数据。
 - 支持按小组目录保存。
 
-NAS 路径建议：
+资源路径规范：
 
 ```text
-${AGP_ASSETS_ROOT}/
-  {group_code}/
-    book/
-    ppt/
-    video/
-    mentor/
-    outline/
-    markdown/
+${AGP_RESOURCE_ROOT}/
+└── team-{group_code}-resources/
+    └── objects/{resource_key}/{safe_filename}
 ```
 
 API：
@@ -284,18 +277,18 @@ API：
 
 ## 5. NAS 路径与备份
 
-### 5.1 AGP_ASSETS_ROOT 调整
+### 5.1 AGP_RESOURCE_ROOT 调整
 
 当前默认：
 
 ```text
-/data/agp/assets
+/data/agp/resources
 ```
 
 NAS 部署建议根据实际卷路径调整，例如：
 
 ```bash
-export AGP_ASSETS_ROOT=/volume1/agp-data/assets
+export AGP_RESOURCE_ROOT=/volume1/agp-data/resources
 ```
 
 Docker Compose volume 示例：
@@ -303,9 +296,9 @@ Docker Compose volume 示例：
 ```yaml
 backend:
   environment:
-    AGP_ASSETS_ROOT: /data/agp/assets
+    AGP_RESOURCE_ROOT: /data/agp/resources
   volumes:
-    - /volume1/agp-data/assets:/data/agp/assets
+    - /volume1/agp-data/resources:/data/agp/resources
 ```
 
 ### 5.2 备份范围
@@ -321,7 +314,7 @@ backend:
 - 资源目录：
 
 ```text
-/volume1/agp-data/assets
+/volume1/agp-data/resources
 ```
 
 - 迁移报告：
@@ -335,18 +328,18 @@ backend:
 建议：
 
 - MySQL：每日逻辑备份 `mysqldump` + NAS 快照。
-- assets：NAS 文件快照。
+- resources：NAS 文件快照。
 - 保留策略：
   - 每日备份保留 14 天。
   - 每周备份保留 8 周。
   - 每月备份保留 12 个月。
-- 每月至少做一次恢复演练，验证 MySQL + assets 能恢复到同一时间点。
+- 每月至少做一次恢复演练，验证 MySQL + resources 能恢复到同一时间点。
 
 示例备份命令：
 
 ```bash
 docker exec agp-mysql mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" agp > /volume1/agp-data/backups/mysql/agp-$(date +%F).sql
-rsync -a --delete /volume1/agp-data/assets/ /volume1/agp-data/backups/assets-latest/
+rsync -a --delete /volume1/agp-data/resources/ /volume1/agp-data/backups/resources-latest/
 ```
 
 ## 6. 实施顺序
@@ -362,7 +355,7 @@ rsync -a --delete /volume1/agp-data/assets/ /volume1/agp-data/backups/assets-lat
 7. 前端：实现周计划编辑。
 8. 后端 + 前端：实现资源上传。
 9. 后端 + 前端：实现统计图表。
-10. 部署：调整 `AGP_ASSETS_ROOT` 到 NAS 实际路径，并配置备份。
+10. 部署：调整 `AGP_RESOURCE_ROOT` 到 NAS 实际路径，并配置备份。
 
 ## 7. 验收标准
 
@@ -388,6 +381,6 @@ rsync -a --delete /volume1/agp-data/assets/ /volume1/agp-data/backups/assets-lat
 
 ### 备份
 
-- `AGP_ASSETS_ROOT` 指向 NAS 实际资源目录。
-- `/data/agp/assets` 对应的宿主机目录进入 NAS 备份。
-- MySQL 和 assets 可完成一次恢复演练。
+- `AGP_RESOURCE_ROOT` 指向 NAS 实际资源目录。
+- `data/resources` 对应的宿主机目录进入 NAS 备份。
+- MySQL 和 resources 可完成一次恢复演练。

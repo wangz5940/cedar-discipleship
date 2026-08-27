@@ -21,13 +21,14 @@ import {
   extractPdfPageRange,
   isPlainObject,
   normalizePageField,
-  normalizeLegacyStaticAssetURL,
   normalizeSearchText,
   parsePdfPageRangeParts,
+  sameOriginAPIPath,
   shouldRenderWeeklyTask,
   shouldUseNativePDFViewer,
   weeklyTitleFromContent,
 } from './runtime/content';
+import { mergeResourceAssets } from './runtime/resources';
 
 export { enabledFlag, extractPdfPageRange };
 
@@ -242,15 +243,6 @@ const navItems = [
   ['groups', '小组', 'Teams'],
   ['resources', '资源', 'Library'],
   ['admin', '管理', 'Admin'],
-];
-
-const staticContentItems = [
-  { title: '每日灵修新约', keywords: ['newtestament', '每日', '灵修新约'], url: '/newtestament.md', type: 'markdown' },
-  { title: '旷野甘泉', keywords: ['kuangye', '旷野'], url: '/Kuangye.md', type: 'markdown' },
-  { title: '每周任务', keywords: ['weekly', '任务'], url: '/weekly_task.md', type: 'markdown' },
-  { title: '基督是一切', keywords: ['基督是一切'], url: '/Book/基督是一切-江守道.pdf', type: 'pdf' },
-  { title: '救赎史剧-2', keywords: ['救赎史剧'], url: '/Book/圣经救赎史剧综览-2.pdf', type: 'pdf', minPage: 1, maxPage: 108 },
-  { title: '救赎史剧-3', keywords: ['救赎史剧'], url: '/Book/圣经救赎史剧综览-3.pdf', type: 'pdf', minPage: 109, maxPage: 9999 },
 ];
 
 export async function api(path, options = {}) {
@@ -632,8 +624,12 @@ function escapeHTML(value) {
 }
 
 function normalizeResourceSeriesKey(value) {
-  return normalizeSearchText(value)
-    .replace(/(passage|book|mentor|ppt|pdf|video|newtestament)/g, '')
+  return normalizeSearchText(
+    String(value || '')
+      .replace(/\d{1,4}\s*(?:[-~—–至到]\s*\d{1,4})?\s*页/g, '')
+      .replace(/\.(pdf|md|markdown|mp4|webm|mov|m4v|png|jpe?g|webp)$/i, ''),
+  )
+    .replace(/(passage|book|mentor|ppt|pdf|video)/g, '')
     .replace(/(讲义\d*|讲义|内容概要|导读|含问答|更正|待剪辑|720p|信息报告|信息)/g, '');
 }
 
@@ -642,6 +638,7 @@ function classifyViewerResource(item) {
   const category = String(item?.category || '').toLowerCase();
   const text = `${item?.title || ''} ${item?.original_name || ''} ${category}`.toLowerCase();
   if (type === 'video') return 'video';
+  if (category === 'mentor' || text.includes('mentor') || text.includes('导读') || text.includes('内容概要') || text.includes('圣经纵览的目的与价值')) return 'mentor';
   if (['handout', 'share', 'ppt'].includes(category)) return 'handout';
   if (['book', 'passage'].includes(category)) return 'passage';
   if (text.includes('讲义') || text.includes('ppt') || text.includes('handout')) return 'handout';
@@ -684,45 +681,14 @@ function assetDownloadURL(asset) {
   return asset?.url || '';
 }
 
-function joinPublicPath(publicPath, filename) {
-  const base = String(publicPath || '').replace(/\/+$/, '');
-  return `${base}/${encodeURIComponent(filename)}`;
-}
-
 function buildMountedSeriesLinks(title) {
   const baseTitle = String(title || '').trim().replace(/^\[B311\]/i, '');
   if (!baseTitle) return [];
-  const libraryMatches = state.assets
-    .filter((item) => ['passage', 'handout'].includes(classifyViewerResource(item)))
+  return state.assets
+    .filter((item) => ['mentor', 'passage', 'handout'].includes(classifyViewerResource(item)))
     .filter((item) => matchViewerResourceToTitle(item, baseTitle))
     .map((item) => viewerResourceLink(item, baseTitle))
     .filter((item) => item.url);
-  if (libraryMatches.length) return libraryMatches;
-  const mounted = state.siteConfig?.mounted_files || {};
-  const links = [];
-  const passagePath = mounted.passages?.publicPath || '/Passage';
-  const handoutPath = mounted.handouts?.publicPath || '/PPT';
-  if (passagePath) {
-    links.push({
-      id: `mounted-passage-${normalizeSearchText(baseTitle)}`,
-      title: `${baseTitle} (Passage)`,
-      original_name: `[B311]${baseTitle}.pdf`,
-      url: joinPublicPath(passagePath, `[B311]${baseTitle}.pdf`),
-      type: 'pdf',
-      category: 'passage',
-    });
-  }
-  if (handoutPath) {
-    links.push({
-      id: `mounted-handout-${normalizeSearchText(baseTitle)}`,
-      title: `${baseTitle}-讲义2`,
-      original_name: `[B311]${baseTitle}-讲义2.pdf`,
-      url: joinPublicPath(handoutPath, `[B311]${baseTitle}-讲义2.pdf`),
-      type: 'pdf',
-      category: 'handout',
-    });
-  }
-  return links;
 }
 
 function buildVideoViewerSections(target) {
@@ -747,9 +713,10 @@ function buildVideoViewerSections(target) {
     return arr.findIndex((other) => dedupeKey(other) === dedupeKey(item)) === index;
   });
   const sections = [
-    { key: 'video', label: 'Newtestament 视频', actionLabel: '观看' },
+    { key: 'mentor', label: 'Mentor 导读', actionLabel: '查看' },
     { key: 'passage', label: '读物 PDF', actionLabel: '查看' },
     { key: 'handout', label: '讲义 PDF', actionLabel: '查看' },
+    { key: 'video', label: '视频资源', actionLabel: '观看' },
   ];
   return sections.map((section) => ({
     ...section,
@@ -833,7 +800,8 @@ function extractNumberedMarkdownSection(text, number) {
 }
 
 function isTrimmedPDFSource(url) {
-  return /^\/api\/(?:assets\/\d+\/range|content\/pdf-range)\b/.test(String(url || ''));
+  const apiPath = sameOriginAPIPath(url, window.location.origin);
+  return /^\/api\/assets\/\d+\/range\b/.test(apiPath || String(url || ''));
 }
 
 function buildViewerURL(url, type, pageRange = '', sourceURL = '') {
@@ -866,23 +834,16 @@ function openPendingViewerWindow(title) {
 }
 
 function resolveContentSourceURL(target) {
-  const normalizedStaticURL = normalizeLegacyStaticAssetURL(target.url);
+  const originalURL = String(target.url || '').trim();
+  const originalAPIPath = sameOriginAPIPath(originalURL, window.location.origin);
   const type = String(target.type || inferResourceType(target.url)).toLowerCase();
-  if (normalizedStaticURL !== target.url) {
-    if (type === 'pdf' && target.pageRange) {
-      return `/api/content/pdf-range?path=${encodeURIComponent(normalizedStaticURL)}&pages=${encodeURIComponent(target.pageRange)}`;
-    }
-    return normalizedStaticURL;
-  }
+  const sourceForMatch = originalAPIPath || originalURL;
   if (type !== 'pdf' || !target.pageRange) return target.url;
-  const assetMatch = String(normalizedStaticURL).match(/^\/api\/assets\/(\d+)\/download$/);
+  const assetMatch = String(sourceForMatch).match(/^\/api\/assets\/(\d+)\/download$/);
   if (assetMatch) {
     return `/api/assets/${assetMatch[1]}/range?pages=${encodeURIComponent(target.pageRange)}`;
   }
-  if (String(normalizedStaticURL).startsWith('/Book/')) {
-    return `/api/content/pdf-range?path=${encodeURIComponent(normalizedStaticURL)}&pages=${encodeURIComponent(target.pageRange)}`;
-  }
-  return normalizedStaticURL;
+  return sourceForMatch;
 }
 
 export function closeViewer() {
@@ -894,7 +855,8 @@ export function closeViewer() {
 
 export async function openContentTarget(target) {
   const sourceURL = resolveContentSourceURL(target);
-  const downloadURL = normalizeLegacyStaticAssetURL(target.downloadURL || target.url);
+  const sourceAPIPath = sameOriginAPIPath(sourceURL, window.location.origin);
+  const downloadURL = target.downloadURL || target.url;
   const type = String(target.type || inferResourceType(target.url)).toLowerCase();
   const title = target.title || target.label || '阅读内容';
   const originalName = target.original_name || target.filename || '';
@@ -902,7 +864,7 @@ export async function openContentTarget(target) {
   const pageRange = target.pageRange || extractPdfPageRange(title);
   if (preferStandalonePDFViewer(type)) {
     const popup = openPendingViewerWindow(title);
-    if (!sourceURL.startsWith('/api/')) {
+    if (!sourceAPIPath) {
       const finalURL = new URL(buildViewerURL(sourceURL, type, pageRange, sourceURL), window.location.origin).toString();
       if (popup && !popup.closed) {
         popup.location.replace(finalURL);
@@ -912,7 +874,7 @@ export async function openContentTarget(target) {
       return;
     }
     try {
-      const res = await fetch(sourceURL, { headers: { Authorization: `Bearer ${state.token}` } });
+      const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const blobType = inferResourceTypeFromMime(blob.type, type);
@@ -930,8 +892,8 @@ export async function openContentTarget(target) {
     return;
   }
   closeViewer();
-  if (sourceURL.startsWith('/api/')) {
-    const res = await fetch(sourceURL, { headers: { Authorization: `Bearer ${state.token}` } });
+  if (sourceAPIPath) {
+    const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (type === 'markdown') {
       const text = await res.text();
@@ -940,11 +902,11 @@ export async function openContentTarget(target) {
         type: 'markdown',
         title,
         html: lines.length ? markdownToHTML(lines) : '<div class="viewer-empty">未找到对应内容。</div>',
-        sourceURL: sourceURL,
+        sourceURL: sourceAPIPath,
         downloadURL,
         downloadSource,
         originalName,
-        externalURL: target.hideExternalLink ? '' : sourceURL,
+        externalURL: target.hideExternalLink ? '' : sourceAPIPath,
         relatedSections: target.relatedSections || [],
       };
       syncViewerStore();
@@ -952,12 +914,14 @@ export async function openContentTarget(target) {
       const blob = await res.blob();
       const blobType = inferResourceTypeFromMime(blob.type, type);
       const objectURL = URL.createObjectURL(blob);
-      const viewerURL = buildViewerURL(objectURL, blobType, pageRange, sourceURL);
+      const pdfData = blobType === 'pdf' ? new Uint8Array(await blob.arrayBuffer()) : null;
+      const viewerURL = buildViewerURL(objectURL, blobType, pageRange, sourceAPIPath);
       state.viewer = {
         type: blobType,
         title,
         url: viewerURL,
-        sourceURL: sourceURL,
+        pdfData,
+        sourceURL: sourceAPIPath,
         downloadURL,
         downloadSource,
         originalName,
@@ -1012,14 +976,15 @@ export async function openContentTarget(target) {
 export async function openViewerItemInNewWindow(item, popup = null) {
   try {
     const sourceURL = resolveContentSourceURL(item);
+    const sourceAPIPath = sameOriginAPIPath(sourceURL, window.location.origin);
     const type = String(item.type || inferResourceType(item.url)).toLowerCase();
-    if (sourceURL.startsWith('/api/')) {
-      const res = await fetch(sourceURL, { headers: { Authorization: `Bearer ${state.token}` } });
+    if (sourceAPIPath) {
+      const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const blobType = inferResourceTypeFromMime(blob.type, type);
       const objectURL = URL.createObjectURL(blob);
-      const finalURL = buildViewerURL(objectURL, blobType, item.pageRange || extractPdfPageRange(item.title || ''), sourceURL);
+      const finalURL = buildViewerURL(objectURL, blobType, item.pageRange || extractPdfPageRange(item.title || ''), sourceAPIPath);
       if (popup && !popup.closed) {
         popup.location.replace(finalURL);
       } else {
@@ -1095,7 +1060,7 @@ function currentTaskOptions() {
       part: '',
       detail: dailyLabel,
       summary: dailyLinks.map((item) => item.label).join(' / ') || '完成今日灵修打卡',
-      contentURL: dailyLinks[0]?.url || findAssetURL('newtestament') || findAssetURL('每日') || '/newtestament.md',
+      contentURL: dailyLinks[0]?.url || findAssetURL('每日') || '',
       contentLinks: dailyLinks,
     });
   }
@@ -1291,28 +1256,11 @@ function currentWeekConfigPlan() {
     || null;
 }
 
-function staticContentLinksByTitle(title) {
-  const target = normalizeSearchText(title);
-  const pageRange = extractPdfPageRange(title || '');
-  const startPage = Number(String(pageRange || '').split('-')[0] || 0);
-  return staticContentItems
-    .filter((item) => item.keywords.some((keyword) => target.includes(normalizeSearchText(keyword))))
-    .filter((item) => !startPage || item.type !== 'pdf' || ((!item.minPage || startPage >= item.minPage) && (!item.maxPage || startPage <= item.maxPage)))
-    .map((item) => ({
-      label: item.title,
-      title: title || item.title,
-      url: item.url,
-      type: item.type,
-      pageRange: extractPdfPageRange(title || item.title),
-    }));
-}
-
 function bestAssetLinksForTitle(title, task) {
-  const target = normalizeSearchText(title);
   const localAssets = [...(task?.assets || []), ...state.assets];
   const matched = localAssets
     .filter((asset, index, arr) => assetDownloadURL(asset) && arr.findIndex((other) => assetDownloadURL(other) === assetDownloadURL(asset)) === index)
-    .filter((asset) => normalizeSearchText(`${asset.title || ''} ${asset.original_name || ''}`).includes(target) || target.includes(normalizeSearchText(asset.title || asset.original_name || '')))
+    .filter((asset) => matchViewerResourceToTitle(asset, title))
     .map((asset) => ({
       label: asset.title || asset.original_name || '打开内容',
       title: title,
@@ -1323,8 +1271,7 @@ function bestAssetLinksForTitle(title, task) {
   if (matched.length) return matched;
   const first = firstTaskAssetLink(task, title);
   if (first && splitBookTitles(task?.title || '').length <= 1) return [first];
-  const staticLinks = staticContentLinksByTitle(title);
-  return staticLinks.length ? staticLinks : [];
+  return [];
 }
 
 function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
@@ -1345,7 +1292,7 @@ function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
     const title = String(weekTitle || '周读物').trim() || '周读物';
     return [{
       title,
-      contentLinks: staticContentLinksByTitle(title),
+      contentLinks: bestAssetLinksForTitle(title, null),
     }];
   }
   return bookTasks.map((task) => {
@@ -1432,7 +1379,7 @@ function getDailyDevotionPlan(date = state.selectedDate) {
   return {
     label: title,
     title,
-    url: cfg.path || daily.path || '/newtestament.md',
+    url: cfg.path || daily.path || '',
     type: cfg.type || 'markdown',
     section,
   };
@@ -1585,32 +1532,6 @@ export async function openMemberCalendar(member, month = state.selectedDate.slic
   } catch (error) {
     toast(error.message);
   }
-}
-
-function mergeResourceAssets(uploadedAssets, sections) {
-  const seen = new Set();
-  const merged = [];
-  for (const section of sections || []) {
-    for (const item of section.items || []) {
-      const resource = {
-        ...item,
-        id: item.id || `${item.category || section.key}:${item.url || item.title || item.original_name}`,
-        category: item.category || section.key || 'resource',
-        sectionLabel: section.label || '',
-      };
-      const key = resource.id ? `id:${resource.id}` : `url:${resource.url || resource.title}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(resource);
-    }
-  }
-  for (const asset of uploadedAssets || []) {
-    const key = asset.id ? `id:${asset.id}` : `url:${asset.url || asset.title}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(asset);
-  }
-  return merged;
 }
 
 export async function loadAdminData(force = false) {
