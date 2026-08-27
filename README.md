@@ -160,7 +160,8 @@ docker compose -f deploy/docker-compose.separated.yml config
 1. 初始化 `data/mysql`、`data/resources`、`data/backups/mysql`
 2. 启动 `mysql / backend / frontend`
 3. 等待 MySQL 就绪
-4. 可选执行首个小组迁移
+4. 可选执行首个小组 JSON 数据迁移
+5. 可选执行资源文件迁移，将数据库中该组旧资源路径对应的文件复制到 `data/resources`
 
 ## 旧数据迁移
 
@@ -168,13 +169,17 @@ docker compose -f deploy/docker-compose.separated.yml config
 
 ```bash
 export PRIMARY_GROUP_CODE='agape-a'
-export PRIMARY_GROUP_NAME='AGAPE A组'
+export PRIMARY_GROUP_NAME='AGAPE A'
 export PRIMARY_GROUP_DEFAULT_PASSWORD='Abc12345'
 export PRIMARY_CONFIG_PATH='/absolute/path/to/config.json'
 export PRIMARY_RECORDS_PATH='/absolute/path/to/records.json'
+export RESOURCE_MIGRATION_GROUP_NAME='AGAPE A'
+export RESOURCE_LEGACY_ROOT='/absolute/path/to/old-resource-root'
 
 ./scripts/deploy-oneclick.sh
 ```
+
+资源文件迁移按 `RESOURCE_MIGRATION_GROUP_NAME` 查询数据库中的 `study_groups.name`。文件目标目录使用查到的 `study_groups.code`，最终路径为 `data/resources/team-{group_code}-resources/objects/{resource_key}/{filename}`。如果 `RESOURCE_MIGRATION_GROUP_NAME` 未设置，会使用 `PRIMARY_GROUP_NAME`；脚本不写死任何小组名称。
 
 ### 已上线后继续迁移其他组
 

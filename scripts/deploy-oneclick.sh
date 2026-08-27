@@ -25,6 +25,8 @@ for env_name in \
   PRIMARY_GROUP_CODE PRIMARY_GROUP_NAME PRIMARY_GROUP_DEFAULT_PASSWORD PRIMARY_CONFIG_PATH PRIMARY_RECORDS_PATH \
   MIGRATION_REPORT_DIR RUN_PRIMARY_MIGRATION PRIMARY_ALLOW_DUPLICATE_AS_DELETED \
   PRIMARY_FAIL_ON_GENERATED_USERNAMES PRIMARY_DRY_RUN_ONLY \
+  RUN_RESOURCE_FILE_MIGRATION RESOURCE_MIGRATION_GROUP_CODE RESOURCE_MIGRATION_GROUP_NAME \
+  RESOURCE_LEGACY_ROOT RESOURCE_MIGRATION_DRY_RUN_ONLY \
   GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY NPM_CONFIG_REGISTRY; do
   if [ -z "${!env_name:-}" ]; then
     printf -v "$env_name" '%s' "$(env_file_value "$env_name")"
@@ -64,6 +66,11 @@ RUN_PRIMARY_MIGRATION="${RUN_PRIMARY_MIGRATION:-auto}"
 PRIMARY_ALLOW_DUPLICATE_AS_DELETED="${PRIMARY_ALLOW_DUPLICATE_AS_DELETED:-false}"
 PRIMARY_FAIL_ON_GENERATED_USERNAMES="${PRIMARY_FAIL_ON_GENERATED_USERNAMES:-false}"
 PRIMARY_DRY_RUN_ONLY="${PRIMARY_DRY_RUN_ONLY:-false}"
+RUN_RESOURCE_FILE_MIGRATION="${RUN_RESOURCE_FILE_MIGRATION:-auto}"
+RESOURCE_MIGRATION_GROUP_CODE="${RESOURCE_MIGRATION_GROUP_CODE:-${PRIMARY_GROUP_CODE:-}}"
+RESOURCE_MIGRATION_GROUP_NAME="${RESOURCE_MIGRATION_GROUP_NAME:-${PRIMARY_GROUP_NAME:-}}"
+RESOURCE_LEGACY_ROOT="${RESOURCE_LEGACY_ROOT:-$ROOT_DIR}"
+RESOURCE_MIGRATION_DRY_RUN_ONLY="${RESOURCE_MIGRATION_DRY_RUN_ONLY:-false}"
 TMP_INPUT_DIR=""
 MIGRATION_CONFIG_IN_CONTAINER=""
 MIGRATION_RECORDS_IN_CONTAINER=""
@@ -181,6 +188,47 @@ run_migrate_json() {
     "${args[@]}"
 }
 
+run_migrate_resource_files() {
+  local dry_run="$1"
+  local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
+  local network_name="${COMPOSE_PROJECT_NAME}_default"
+  local legacy_root_abs
+  legacy_root_abs="$(abs_path "$RESOURCE_LEGACY_ROOT")"
+  local resource_root_abs
+  resource_root_abs="$(abs_path "$AGP_RESOURCE_ROOT")"
+  local docker_run_args=(--rm --network "$network_name")
+  local docker_env_args=()
+  local args=(
+    "go" "run" "./cmd/migrate-resource-files"
+    "--dsn" "$dsn"
+    "--legacy-root" "/legacy-root"
+    "--resource-root" "/resource-root"
+    "--dry-run=${dry_run}"
+  )
+  if [ -n "$RESOURCE_MIGRATION_GROUP_NAME" ]; then
+    args+=("--group-name" "$RESOURCE_MIGRATION_GROUP_NAME")
+  fi
+  if [ -n "$RESOURCE_MIGRATION_GROUP_CODE" ]; then
+    args+=("--group-code" "$RESOURCE_MIGRATION_GROUP_CODE")
+  fi
+  for env_name in GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY; do
+    if [ -n "${!env_name:-}" ]; then
+      docker_env_args+=(-e "${env_name}=${!env_name}")
+    fi
+  done
+  if [ -f "$ENV_FILE" ]; then
+    docker_run_args+=(--env-file "$ENV_FILE")
+  fi
+  docker run "${docker_run_args[@]}" \
+    "${docker_env_args[@]}" \
+    -v "$ROOT_DIR:/workspace" \
+    -v "$legacy_root_abs:/legacy-root:ro" \
+    -v "$resource_root_abs:/resource-root" \
+    -w /workspace/backend \
+    golang:1.25-bookworm \
+    "${args[@]}"
+}
+
 should_run_primary_migration() {
   case "$RUN_PRIMARY_MIGRATION" in
     true) return 0 ;;
@@ -196,11 +244,34 @@ should_run_primary_migration() {
   esac
 }
 
+should_run_resource_file_migration() {
+  case "$RUN_RESOURCE_FILE_MIGRATION" in
+    true) return 0 ;;
+    false) return 1 ;;
+    auto)
+      [ -n "$RESOURCE_MIGRATION_GROUP_CODE" ] || [ -n "$RESOURCE_MIGRATION_GROUP_NAME" ]
+      return
+      ;;
+    *)
+      echo "RUN_RESOURCE_FILE_MIGRATION 仅支持 true/false/auto" >&2
+      exit 1
+      ;;
+  esac
+}
+
 validate_primary_migration_inputs() {
   [ -n "$PRIMARY_GROUP_CODE" ] || { echo "缺少 PRIMARY_GROUP_CODE" >&2; exit 1; }
   [ -n "$PRIMARY_GROUP_NAME" ] || { echo "缺少 PRIMARY_GROUP_NAME" >&2; exit 1; }
   [ -f "$PRIMARY_CONFIG_PATH" ] || { echo "迁移配置文件不存在: $PRIMARY_CONFIG_PATH" >&2; exit 1; }
   [ -f "$PRIMARY_RECORDS_PATH" ] || { echo "迁移记录文件不存在: $PRIMARY_RECORDS_PATH" >&2; exit 1; }
+}
+
+validate_resource_file_migration_inputs() {
+  [ -n "$RESOURCE_MIGRATION_GROUP_CODE" ] || [ -n "$RESOURCE_MIGRATION_GROUP_NAME" ] || {
+    echo "缺少 RESOURCE_MIGRATION_GROUP_NAME 或 RESOURCE_MIGRATION_GROUP_CODE" >&2
+    exit 1
+  }
+  [ -d "$RESOURCE_LEGACY_ROOT" ] || { echo "资源源目录不存在: $RESOURCE_LEGACY_ROOT" >&2; exit 1; }
 }
 
 mkdir -p \
@@ -234,6 +305,10 @@ if should_run_primary_migration; then
   prepare_migration_inputs
 fi
 
+if should_run_resource_file_migration; then
+  validate_resource_file_migration_inputs
+fi
+
 export COMPOSE_PROJECT_NAME AGP_CONTAINER_PREFIX AGP_DATA_DIR AGP_LOG_DIR AGP_RESOURCE_ROOT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD
 export AGP_WEB_PORT AGP_MYSQL_PORT AGP_JWT_SECRET AGP_TOKEN_TTL BOOTSTRAP_SUPERADMIN_USERNAME BOOTSTRAP_SUPERADMIN_PASSWORD BOOTSTRAP_SUPERADMIN_DISPLAY_NAME
 export GOPROXY GOSUMDB GOPRIVATE GONOSUMDB GONOPROXY NPM_CONFIG_REGISTRY
@@ -256,6 +331,19 @@ else
   log "未检测到首组迁移参数，跳过数据迁移"
 fi
 
+if should_run_resource_file_migration; then
+  log "执行资源文件 dry-run 迁移"
+  run_migrate_resource_files true
+  if [ "$RESOURCE_MIGRATION_DRY_RUN_ONLY" != "true" ]; then
+    log "执行资源文件正式迁移"
+    run_migrate_resource_files false
+  else
+    log "已按 RESOURCE_MIGRATION_DRY_RUN_ONLY=true 跳过正式资源文件迁移"
+  fi
+else
+  log "未检测到资源文件迁移目标组，跳过资源文件迁移"
+fi
+
 cat <<EOF
 
 部署完成。
@@ -266,6 +354,8 @@ cat <<EOF
   Compose project: ${COMPOSE_PROJECT_NAME}
   Container prefix: ${AGP_CONTAINER_PREFIX}
   Data dir: ${AGP_DATA_DIR}
+  Resource root: ${AGP_RESOURCE_ROOT}
+  Resource migration group: ${RESOURCE_MIGRATION_GROUP_NAME:-${RESOURCE_MIGRATION_GROUP_CODE:-未配置}}
 
 超级管理员:
   用户名: ${BOOTSTRAP_SUPERADMIN_USERNAME}

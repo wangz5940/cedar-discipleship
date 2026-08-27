@@ -73,10 +73,12 @@ export BOOTSTRAP_SUPERADMIN_PASSWORD='替换为强密码'
 export AGP_TOKEN_TTL=''
 
 export PRIMARY_GROUP_CODE='agape-a'
-export PRIMARY_GROUP_NAME='AGAPE A组'
+export PRIMARY_GROUP_NAME='AGAPE A'
 export PRIMARY_GROUP_DEFAULT_PASSWORD='Abc12345'
 export PRIMARY_CONFIG_PATH='/absolute/path/to/config.json'
 export PRIMARY_RECORDS_PATH='/absolute/path/to/records.json'
+export RESOURCE_MIGRATION_GROUP_NAME='AGAPE A'
+export RESOURCE_LEGACY_ROOT='/absolute/path/to/old-resource-root'
 
 ./scripts/deploy-oneclick.sh
 ```
@@ -86,6 +88,9 @@ export PRIMARY_RECORDS_PATH='/absolute/path/to/records.json'
 1. 首组数据 `dry-run`
 2. 生成迁移报告到 `data/migration-reports/`
 3. 正式导入该组数据
+4. 按数据库小组名迁移资源文件到 `data/resources`
+
+资源文件迁移通过 `RESOURCE_MIGRATION_GROUP_NAME` 查询数据库中的 `study_groups.name`，并使用查到的 `study_groups.code` 生成 `team-{group_code}-resources` 目录。脚本不会写死小组名。
 
 如果你只想先看迁移报告，不马上写库：
 
@@ -124,10 +129,12 @@ GOSUMDB=sum.golang.org
 
 ```bash
 PRIMARY_GROUP_CODE=agape-a
-PRIMARY_GROUP_NAME='AGAPE A组'
+PRIMARY_GROUP_NAME='AGAPE A'
 PRIMARY_GROUP_DEFAULT_PASSWORD='Abc12345'
 PRIMARY_CONFIG_PATH=/absolute/path/to/config.json
 PRIMARY_RECORDS_PATH=/absolute/path/to/records.json
+RESOURCE_MIGRATION_GROUP_NAME='AGAPE A'
+RESOURCE_LEGACY_ROOT=/absolute/path/to/old-resource-root
 PRIMARY_ALLOW_DUPLICATE_AS_DELETED=false
 PRIMARY_FAIL_ON_GENERATED_USERNAMES=false
 PRIMARY_DRY_RUN_ONLY=false

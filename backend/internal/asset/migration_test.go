@@ -87,3 +87,24 @@ func TestClassifyMentorResourcesMigration(t *testing.T) {
 		}
 	}
 }
+
+func TestDropAssetBindingVersionColumnsMigration(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join("..", "..", "migrations", "010_drop_asset_binding_version_columns.sql")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	sql := string(data)
+	required := []string{
+		"DROP COLUMN active_version_id",
+		"DROP COLUMN version_policy",
+		"TABLE_NAME = 'asset_bindings'",
+	}
+	for _, item := range required {
+		if !strings.Contains(sql, item) {
+			t.Fatalf("migration does not contain %q", item)
+		}
+	}
+}
