@@ -1537,11 +1537,61 @@ input:focus, select:focus, textarea:focus {
 }
 
 .viewer-video-shell {
+  position: relative;
   width: 100%;
   overflow: hidden;
   border-radius: 24px;
   background: rgba(255,255,255,.92);
   box-shadow: 0 16px 36px rgba(15,23,42,.08);
+}
+
+.viewer-video-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  padding: 24px;
+  color: #1f2937;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(248,250,252,.9));
+  pointer-events: none;
+}
+
+.viewer-video-loading-error {
+  pointer-events: auto;
+}
+
+.viewer-video-loading-copy {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.viewer-video-loading-copy strong {
+  font-size: 1rem;
+}
+
+.viewer-video-loading-copy span {
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.viewer-video-progress {
+  width: min(320px, 80%);
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15,23,42,.1);
+}
+
+.viewer-video-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #19bf7a;
+  transition: width .2s ease;
 }
 
 .viewer-frame,

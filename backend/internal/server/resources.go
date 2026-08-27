@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -10,10 +13,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	assetdomain "agp/backend/internal/asset"
 
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
+)
+
+const (
+	assetPlaybackTTL    = 12 * time.Hour
+	assetPlaybackSuffix = ".playback.mp4"
 )
 
 func (a *app) handleListAssets(w http.ResponseWriter, r *http.Request) {
@@ -42,12 +51,114 @@ func (a *app) handleDownloadAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "asset_not_found")
 		return
 	}
-	mt := file.MimeType
-	if mt == "" {
-		mt = mime.TypeByExtension(filepath.Ext(file.OriginalName))
+	serveAssetFile(w, r, file)
+}
+
+func (a *app) handleAssetPlayback(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
 	}
-	w.Header().Set("Content-Type", mt)
-	http.ServeFile(w, r, file.AbsolutePath)
+	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	file, err := a.assets.DownloadFile(r.Context(), groupID, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	if !isVideoAsset(file) {
+		writeError(w, http.StatusBadRequest, "asset_not_video")
+		return
+	}
+	expiresAt := time.Now().Add(assetPlaybackTTL).Unix()
+	signature := a.signAssetPlayback(id, groupID, expiresAt)
+	playbackURL := fmt.Sprintf(
+		"/api/assets/%d/stream?group_id=%d&expires=%d&signature=%s",
+		id,
+		groupID,
+		expiresAt,
+		signature,
+	)
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"url": playbackURL, "expires_at": expiresAt})
+}
+
+func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	groupID, _ := strconv.ParseUint(r.URL.Query().Get("group_id"), 10, 64)
+	expiresAt, _ := strconv.ParseInt(r.URL.Query().Get("expires"), 10, 64)
+	signature := strings.TrimSpace(r.URL.Query().Get("signature"))
+	if id == 0 || groupID == 0 || expiresAt < time.Now().Unix() || !a.verifyAssetPlayback(id, groupID, expiresAt, signature) {
+		writeError(w, http.StatusForbidden, "invalid_playback_url")
+		return
+	}
+	file, err := a.assets.DownloadFile(r.Context(), groupID, id)
+	if err != nil || !isVideoAsset(file) {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	serveAssetFile(w, r, playbackAssetFile(file))
+}
+
+func serveAssetFile(w http.ResponseWriter, r *http.Request, file *assetdomain.DownloadFile) {
+	fh, err := os.Open(file.AbsolutePath)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	defer fh.Close()
+	info, err := fh.Stat()
+	if err != nil || info.IsDir() {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	setAssetDownloadHeaders(w, file, info)
+	http.ServeContent(w, r, file.OriginalName, info.ModTime(), fh)
+}
+
+func (a *app) signAssetPlayback(assetID, groupID uint64, expiresAt int64) string {
+	mac := hmac.New(sha256.New, a.secret)
+	_, _ = fmt.Fprintf(mac, "%d:%d:%d", assetID, groupID, expiresAt)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *app) verifyAssetPlayback(assetID, groupID uint64, expiresAt int64, signature string) bool {
+	got, err := base64.RawURLEncoding.DecodeString(signature)
+	if err != nil {
+		return false
+	}
+	expected, err := base64.RawURLEncoding.DecodeString(a.signAssetPlayback(assetID, groupID, expiresAt))
+	return err == nil && hmac.Equal(expected, got)
+}
+
+func isVideoAsset(file *assetdomain.DownloadFile) bool {
+	if file == nil {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(file.MimeType)), "video/") {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(file.OriginalName)) {
+	case ".mp4", ".m4v", ".mov", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
+func playbackAssetFile(file *assetdomain.DownloadFile) *assetdomain.DownloadFile {
+	if file == nil {
+		return nil
+	}
+	playbackPath := file.AbsolutePath + assetPlaybackSuffix
+	info, err := os.Stat(playbackPath)
+	if err != nil || info.IsDir() || info.Size() == 0 {
+		return file
+	}
+	optimized := *file
+	optimized.AbsolutePath = playbackPath
+	optimized.MimeType = "video/mp4"
+	return &optimized
 }
 
 func (a *app) handleDownloadAssetRange(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +185,22 @@ func (a *app) handleDownloadAssetRange(w http.ResponseWriter, r *http.Request) {
 	if err := servePDFRange(w, file.AbsolutePath, file.OriginalName, pages); err != nil {
 		writeError(w, http.StatusInternalServerError, "pdf_range_failed")
 	}
+}
+
+func setAssetDownloadHeaders(w http.ResponseWriter, file *assetdomain.DownloadFile, info os.FileInfo) {
+	mt := file.MimeType
+	if mt == "" {
+		mt = mime.TypeByExtension(filepath.Ext(file.OriginalName))
+	}
+	if mt == "" {
+		mt = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", mt)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(file.OriginalName)))
+	w.Header().Set("Cache-Control", "private, max-age=604800, immutable")
+	w.Header().Set("ETag", fmt.Sprintf(`"agp-%x-%x"`, info.Size(), info.ModTime().UTC().Unix()))
+	w.Header().Set("Last-Modified", info.ModTime().UTC().Format(http.TimeFormat))
 }
 
 func normalizePageRange(input string) (string, error) {

@@ -3,15 +3,20 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	assetdomain "agp/backend/internal/asset"
 	statisticsdomain "agp/backend/internal/statistics"
 )
 
@@ -218,6 +223,127 @@ func TestWithRequestLoggingRecordsErrorResponses(t *testing.T) {
 	}
 }
 
+func TestDownloadAssetSupportsRangeAndCacheHeaders(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := dir + "/lesson.mp4"
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatalf("write temp video: %v", err)
+	}
+	service := assetdomain.NewService(
+		&downloadAssetRepo{asset: assetdomain.Asset{
+			ID:           16,
+			GroupID:      1,
+			OriginalName: "lesson.mp4",
+			StoragePath:  "team-agp-resources/objects/test/lesson.mp4",
+			MimeType:     "video/mp4",
+		}},
+		&downloadAssetStorage{path: path},
+		"",
+	)
+	a := &app{assets: service}
+	request := httptest.NewRequest(http.MethodGet, "/api/assets/16/download", nil)
+	request.SetPathValue("id", "16")
+	request.Header.Set("Range", "bytes=0-3")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID:             1,
+		CurrentGroupID: 1,
+	}))
+	recorder := httptest.NewRecorder()
+
+	a.handleDownloadAsset(recorder, request)
+
+	if recorder.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusPartialContent)
+	}
+	if got := recorder.Body.String(); got != "0123" {
+		t.Fatalf("body = %q, want first range bytes", got)
+	}
+	for header, want := range map[string]string{
+		"Accept-Ranges": "bytes",
+		"Content-Type":  "video/mp4",
+		"Content-Range": "bytes 0-3/10",
+	} {
+		if got := recorder.Header().Get(header); got != want {
+			t.Fatalf("%s = %q, want %q", header, got, want)
+		}
+	}
+	if got := recorder.Header().Get("Cache-Control"); !strings.Contains(got, "max-age=604800") {
+		t.Fatalf("Cache-Control = %q, want one week cache", got)
+	}
+	if got := recorder.Header().Get("ETag"); got == "" {
+		t.Fatal("ETag is empty")
+	}
+}
+
+func TestAssetPlaybackSignatureIsScoped(t *testing.T) {
+	t.Parallel()
+
+	a := &app{secret: []byte("test-playback-secret")}
+	expiresAt := time.Now().Add(time.Hour).Unix()
+	signature := a.signAssetPlayback(16, 1, expiresAt)
+
+	if !a.verifyAssetPlayback(16, 1, expiresAt, signature) {
+		t.Fatal("valid playback signature was rejected")
+	}
+	if a.verifyAssetPlayback(17, 1, expiresAt, signature) {
+		t.Fatal("signature accepted for a different asset")
+	}
+	if a.verifyAssetPlayback(16, 2, expiresAt, signature) {
+		t.Fatal("signature accepted for a different group")
+	}
+	if a.verifyAssetPlayback(16, 1, expiresAt+1, signature) {
+		t.Fatal("signature accepted for a different expiration")
+	}
+}
+
+func TestPlaybackAssetFilePrefersGeneratedDerivative(t *testing.T) {
+	t.Parallel()
+
+	sourcePath := filepath.Join(t.TempDir(), "lesson.mp4")
+	if err := os.WriteFile(sourcePath, []byte("source"), 0o600); err != nil {
+		t.Fatalf("write source video: %v", err)
+	}
+	file := &assetdomain.DownloadFile{
+		AbsolutePath: sourcePath,
+		OriginalName: "lesson.mp4",
+		MimeType:     "video/mp4",
+	}
+	if got := playbackAssetFile(file); got.AbsolutePath != sourcePath {
+		t.Fatalf("path without derivative = %q, want %q", got.AbsolutePath, sourcePath)
+	}
+
+	derivativePath := sourcePath + assetPlaybackSuffix
+	if err := os.WriteFile(derivativePath, []byte("fragmented"), 0o600); err != nil {
+		t.Fatalf("write playback derivative: %v", err)
+	}
+	if got := playbackAssetFile(file); got.AbsolutePath != derivativePath {
+		t.Fatalf("path with derivative = %q, want %q", got.AbsolutePath, derivativePath)
+	}
+}
+
+func TestStreamAssetRejectsExpiredPlaybackURL(t *testing.T) {
+	t.Parallel()
+
+	a := &app{secret: []byte("test-playback-secret")}
+	expiresAt := time.Now().Add(-time.Minute).Unix()
+	signature := a.signAssetPlayback(16, 1, expiresAt)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/api/assets/16/stream?group_id=1&expires=%d&signature=%s", expiresAt, signature),
+		nil,
+	)
+	request.SetPathValue("id", "16")
+	recorder := httptest.NewRecorder()
+
+	a.handleStreamAsset(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+}
+
 func TestSafeCSVCellEscapesFormulaPrefix(t *testing.T) {
 	for _, value := range []string{"=cmd()", "+1", "-1", "@SUM(A1:A2)", " \t=cmd()"} {
 		if got := safeCSVCell(value); !strings.HasPrefix(got, "'") {
@@ -227,6 +353,46 @@ func TestSafeCSVCellEscapesFormulaPrefix(t *testing.T) {
 	if got := safeCSVCell("ordinary"); got != "ordinary" {
 		t.Fatalf("safeCSVCell(ordinary) = %q", got)
 	}
+}
+
+type downloadAssetRepo struct {
+	asset assetdomain.Asset
+}
+
+func (r *downloadAssetRepo) FindByID(_ context.Context, groupID, id uint64) (*assetdomain.Asset, error) {
+	if r.asset.GroupID == groupID && r.asset.ID == id {
+		item := r.asset
+		return &item, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func (r *downloadAssetRepo) List(context.Context, uint64, int) ([]assetdomain.Asset, error) {
+	return nil, nil
+}
+
+func (r *downloadAssetRepo) Create(context.Context, *assetdomain.Asset, uint64) (uint64, error) {
+	return 0, os.ErrPermission
+}
+
+func (r *downloadAssetRepo) Delete(context.Context, uint64, uint64) error {
+	return os.ErrPermission
+}
+
+type downloadAssetStorage struct {
+	path string
+}
+
+func (s *downloadAssetStorage) Save(context.Context, string, string, io.Reader) (*assetdomain.StoredObject, error) {
+	return nil, os.ErrPermission
+}
+
+func (s *downloadAssetStorage) Resolve(context.Context, string) (*assetdomain.ResolvedObject, error) {
+	return &assetdomain.ResolvedObject{AbsolutePath: s.path, OriginalName: "lesson.mp4"}, nil
+}
+
+func (s *downloadAssetStorage) Delete(context.Context, string) error {
+	return os.ErrPermission
 }
 
 func TestValidateConfigRejectsWeakSecrets(t *testing.T) {

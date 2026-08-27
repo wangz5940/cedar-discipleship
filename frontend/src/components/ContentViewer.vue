@@ -1,7 +1,7 @@
 <script setup>
-import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Download } from '@lucide/vue';
+import { Download, RotateCcw } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
@@ -23,6 +23,13 @@ const readerPreferenceKey = 'agp_reader_preferences_v1';
 const readerPreferences = loadReaderPreferences();
 const readerFontSize = ref(readerPreferences.fontSize);
 const readerLineHeight = ref(readerPreferences.lineHeight);
+const videoElement = ref(null);
+const videoSource = ref('');
+const videoLoadState = ref('idle');
+const videoLoadProgress = ref(0);
+const videoLoadError = ref('');
+const videoRetryKey = ref(0);
+let videoLoadTimer = 0;
 
 watch(
   [readerFontSize, readerLineHeight],
@@ -62,6 +69,32 @@ const readerStyle = computed(() => ({
   '--reader-font-size': `${readerFontSize.value}px`,
   '--reader-line-height': String(readerLineHeight.value),
 }));
+const videoLoadingLabel = computed(() => {
+  if (videoLoadState.value === 'error') return videoLoadError.value || '视频加载失败';
+  if (videoLoadState.value === 'ready') return '视频已可播放';
+  if (videoLoadProgress.value > 0) return `正在加载视频 ${videoLoadProgress.value}%`;
+  return '正在准备视频';
+});
+
+watch(
+  () => [viewer.value?.type, viewer.value?.url],
+  ([type, url]) => {
+    resetVideoLoading();
+    if (type !== 'video' || !url) return;
+    videoLoadState.value = 'loading';
+    nextTick(() => {
+      const scheduleLoad = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 16));
+      videoLoadTimer = scheduleLoad(() => {
+        videoSource.value = url;
+      });
+    });
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  resetVideoLoading();
+});
 
 function clampNumber(value, minimum, maximum, fallback) {
   const number = Number(value);
@@ -83,6 +116,47 @@ function loadReaderPreferences() {
 
 function closeOnBackdrop(event) {
   if (event.target.className === 'modal-backdrop') closeViewer();
+}
+
+function resetVideoLoading() {
+  if (videoLoadTimer) {
+    const cancelLoad = window.cancelAnimationFrame || window.clearTimeout;
+    cancelLoad(videoLoadTimer);
+    videoLoadTimer = 0;
+  }
+  videoSource.value = '';
+  videoLoadState.value = 'idle';
+  videoLoadProgress.value = 0;
+  videoLoadError.value = '';
+}
+
+function handleVideoProgress(event) {
+  const media = event.target;
+  if (!media?.duration || !Number.isFinite(media.duration) || media.buffered.length === 0) return;
+  const bufferedEnd = media.buffered.end(media.buffered.length - 1);
+  videoLoadProgress.value = Math.min(99, Math.max(videoLoadProgress.value, Math.round((bufferedEnd / media.duration) * 100)));
+}
+
+function handleVideoReady() {
+  videoLoadState.value = 'ready';
+  videoLoadProgress.value = 100;
+}
+
+function handleVideoError() {
+  videoLoadState.value = 'error';
+  videoLoadError.value = '视频加载失败，请检查网络后重试';
+}
+
+function retryVideoLoad() {
+  const url = viewer.value?.url;
+  if (!url) return;
+  videoRetryKey.value += 1;
+  resetVideoLoading();
+  videoLoadState.value = 'loading';
+  nextTick(() => {
+    videoSource.value = url;
+    videoElement.value?.load();
+  });
 }
 
 function openItem(item) {
@@ -265,11 +339,47 @@ function downloadCurrent() {
             <img class="viewer-image" :src="viewer.url" :alt="viewer.title" />
           </div>
           <div v-else-if="viewer.type === 'video'" class="viewer-video-shell">
+            <div
+              v-if="videoLoadState !== 'ready'"
+              class="viewer-video-loading"
+              :class="{ 'viewer-video-loading-error': videoLoadState === 'error' }"
+            >
+              <div class="viewer-video-loading-copy">
+                <strong>{{ videoLoadingLabel }}</strong>
+                <span v-if="videoLoadState !== 'error'">播放器已就绪，视频正在后台加载。</span>
+                <span v-else>可以重新加载，或先使用下载查看。</span>
+              </div>
+              <div
+                v-if="videoLoadState !== 'error'"
+                class="viewer-video-progress"
+                role="progressbar"
+                :aria-valuenow="videoLoadProgress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span :style="{ width: `${Math.max(8, videoLoadProgress)}%` }"></span>
+              </div>
+              <button
+                v-else
+                class="secondary icon-text-button"
+                type="button"
+                @click="retryVideoLoad"
+              >
+                <RotateCcw :size="16" />重试
+              </button>
+            </div>
             <video
+              :key="videoRetryKey"
+              ref="videoElement"
               class="viewer-video"
-              :src="viewer.url"
+              :src="videoSource"
               controls
               playsinline
+              preload="auto"
+              @progress="handleVideoProgress"
+              @loadeddata="handleVideoReady"
+              @canplay="handleVideoReady"
+              @error="handleVideoError"
             ></video>
           </div>
           <div v-else-if="viewer.type === 'audio'" class="viewer-audio-shell">

@@ -862,6 +862,44 @@ export async function openContentTarget(target) {
   const originalName = target.original_name || target.filename || '';
   const downloadSource = target.downloadSource || 'learning';
   const pageRange = target.pageRange || extractPdfPageRange(title);
+  const videoAssetMatch = type === 'video'
+    ? String(sourceAPIPath || '').match(/^\/api\/assets\/(\d+)\/download$/)
+    : null;
+  if (videoAssetMatch) {
+    closeViewer();
+    const pendingViewer = {
+      type: 'video',
+      title,
+      url: '',
+      sourceURL: sourceAPIPath,
+      downloadURL,
+      downloadSource,
+      originalName,
+      externalURL: '',
+      pageRange,
+      relatedSections: target.relatedSections || buildVideoViewerSections({
+        ...target,
+        sourceURL,
+        url: sourceAPIPath,
+        type,
+        title,
+      }),
+    };
+    state.viewer = pendingViewer;
+    syncViewerStore();
+    render();
+    try {
+      const playback = await api(`/assets/${videoAssetMatch[1]}/playback`);
+      if (state.viewer !== pendingViewer) return;
+      pendingViewer.url = playback.url;
+      syncViewerStore();
+      render();
+    } catch (error) {
+      if (state.viewer === pendingViewer) closeViewer();
+      throw error;
+    }
+    return;
+  }
   if (preferStandalonePDFViewer(type)) {
     const popup = openPendingViewerWindow(title);
     if (!sourceAPIPath) {
@@ -978,6 +1016,18 @@ export async function openViewerItemInNewWindow(item, popup = null) {
     const sourceURL = resolveContentSourceURL(item);
     const sourceAPIPath = sameOriginAPIPath(sourceURL, window.location.origin);
     const type = String(item.type || inferResourceType(item.url)).toLowerCase();
+    const videoAssetMatch = type === 'video'
+      ? String(sourceAPIPath || '').match(/^\/api\/assets\/(\d+)\/download$/)
+      : null;
+    if (videoAssetMatch) {
+      const playback = await api(`/assets/${videoAssetMatch[1]}/playback`);
+      if (popup && !popup.closed) {
+        popup.location.replace(playback.url);
+      } else {
+        window.open(playback.url, '_blank', 'noopener');
+      }
+      return;
+    }
     if (sourceAPIPath) {
       const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

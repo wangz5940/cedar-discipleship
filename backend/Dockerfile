@@ -22,6 +22,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/agp-server ./cmd/server \
 
 FROM debian:bookworm-slim
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=builder /out/agp-server /app/agp-server
 COPY --from=builder /out/migrate-json /app/migrate-json

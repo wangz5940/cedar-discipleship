@@ -267,6 +267,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/assets", a.auth(a.handleListAssets))
 	mux.HandleFunc("GET /api/library", a.auth(a.handleResourceLibrary))
 	mux.HandleFunc("GET /api/assets/{id}/download", a.auth(a.handleDownloadAsset))
+	mux.HandleFunc("GET /api/assets/{id}/playback", a.auth(a.handleAssetPlayback))
+	mux.HandleFunc("GET /api/assets/{id}/stream", a.handleStreamAsset)
 	mux.HandleFunc("GET /api/assets/{id}/range", a.auth(a.handleDownloadAssetRange))
 	mux.HandleFunc("POST /api/admin/assets/upload", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminUploadAsset)))
 	mux.HandleFunc("GET /api/admin/assets/{id}/sharing", a.auth(a.requireRole(roleGroupAdmin, a.handleAssetSharing)))
