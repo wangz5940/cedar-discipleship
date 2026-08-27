@@ -89,6 +89,13 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"id": id})
 		return
 	}
+	a.audit(groupID, u.ID, "create_checkin", "checkin_records", id, nil, map[string]any{
+		"logical_date": req.LogicalDate,
+		"task_type":    req.TaskType,
+		"task_id":      req.TaskID,
+		"week_id":      req.WeekID,
+		"part":         req.Part,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
@@ -112,6 +119,7 @@ func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "delete_failed")
 		return
 	}
+	a.audit(groupID, u.ID, "delete_own_checkin", "checkin_records", id, nil, nil, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

@@ -7,6 +7,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --lower-case-table-names=${MYSQL_LOWER_CASE_TABLE_NAMES:-0}
+      - --log-error=/var/log/cedar/error.log
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-agp}
       MYSQL_USER: ${MYSQL_USER:-agp}
@@ -17,6 +18,7 @@ services:
       - "127.0.0.1:${AGP_MYSQL_PORT:-3307}:3306"
     volumes:
       - ${AGP_DATA_DIR:-../data}/mysql:/var/lib/mysql
+      - ${AGP_LOG_DIR:-../logs}/mysql:/var/log/cedar
     healthcheck:
       test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysql --protocol=TCP -h 127.0.0.1 -u\"$${MYSQL_USER}\" \"$${MYSQL_DATABASE}\" -Nse 'SELECT 1'"]
       interval: 10s
@@ -52,11 +54,13 @@ services:
       AGP_ASSETS_ROOT: "/data/agp/assets"
       AGP_CONTENT_ROOT: "/data/agp/content"
       AGP_MIGRATIONS_DIR: "/app/migrations"
+      AGP_LOG_FILE: "/var/log/cedar/backend.log"
       BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
       BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
     volumes:
       - ${AGP_DATA_DIR:-../data}/assets:/data/agp/assets
+      - ${AGP_LOG_DIR:-../logs}/backend:/var/log/cedar
       - ../Book:/data/agp/content/Book:ro
       - ../Mentor:/data/agp/content/Mentor:ro
       - ../Newtestament:/data/agp/content/Newtestament:ro
@@ -83,6 +87,7 @@ services:
     depends_on:
       - backend
     volumes:
+      - ${AGP_LOG_DIR:-../logs}/frontend:/var/log/cedar
       - ../Book:/usr/share/nginx/html/Book:ro
       - ../Mentor:/usr/share/nginx/html/Mentor:ro
       - ../Newtestament:/usr/share/nginx/html/Newtestament:ro

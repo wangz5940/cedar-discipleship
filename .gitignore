@@ -27,6 +27,7 @@ docs/
 
 # Logs and local OS noise
 log/
+logs/*
 *.log
 npm-debug.log*
 .DS_Store

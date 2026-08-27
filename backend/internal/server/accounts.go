@@ -41,7 +41,14 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), currentUserKey, u)))
+		auditState := &requestAuditState{}
+		ctx := context.WithValue(r.Context(), currentUserKey, u)
+		ctx = context.WithValue(ctx, requestAuditStateKey, auditState)
+		authenticatedRequest := r.WithContext(ctx)
+		next(w, authenticatedRequest)
+		if !auditState.recorded {
+			logUserOperation(authenticatedRequest, w, u)
+		}
 	}
 }
 
@@ -51,8 +58,6 @@ func logAuthFailure(r *http.Request, reason string, err error) {
 		"path", r.URL.Path,
 		"reason", reason,
 		"authorization_header_present", r.Header.Get("Authorization") != "",
-		"referer", r.Referer(),
-		"user_agent", r.UserAgent(),
 		"client_ip", clientIP(r),
 	}
 	if err != nil {
@@ -173,7 +178,23 @@ func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID
 			"group_id", groupID,
 			"error", err,
 		)
+		return
 	}
+	if state, ok := r.Context().Value(requestAuditStateKey).(*requestAuditState); ok {
+		state.recorded = true
+	}
+	actor, _ := r.Context().Value(currentUserKey).(currentUser)
+	attrs := []any{
+		"actor_user_id", actorID,
+		"actor_username", actor.Username,
+		"actor_display_name", actor.DisplayName,
+		"group_id", groupID,
+		"action", action,
+		"target_type", targetType,
+		"target_id", targetID,
+		"client_ip", clientIP(r),
+	}
+	slog.InfoContext(r.Context(), "audit event recorded", attrs...)
 }
 
 func (a *app) signToken(c tokenClaims) (string, error) {
@@ -355,5 +376,23 @@ func (l *loginLimiter) success(ip, username string) {
 func (a *app) recordLoginLog(r *http.Request, input userdomain.LoginLog) {
 	input.IP = clientIP(r)
 	input.UserAgent = r.UserAgent()
-	_ = a.users.RecordLoginLog(r.Context(), input, time.Now().UTC())
+	if err := a.users.RecordLoginLog(r.Context(), input, time.Now().UTC()); err != nil {
+		slog.ErrorContext(r.Context(), "login audit write failed", "username", input.Username, "error", err)
+		return
+	}
+	attrs := []any{
+		"actor_user_id", input.UserID,
+		"actor_username", input.Username,
+		"group_id", input.GroupID,
+		"success", input.Success,
+		"client_ip", input.IP,
+	}
+	if input.FailureReason != "" {
+		attrs = append(attrs, "failure_reason", input.FailureReason)
+	}
+	if input.Success {
+		slog.InfoContext(r.Context(), "user login", attrs...)
+		return
+	}
+	slog.WarnContext(r.Context(), "user login failed", attrs...)
 }

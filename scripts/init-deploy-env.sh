@@ -71,6 +71,7 @@ append_env AGP_CONTAINER_PREFIX cedar
 append_env AGP_WEB_PORT 5114
 append_env AGP_MYSQL_PORT 3307
 append_env AGP_DATA_DIR /volume2/docker/cedar-discipleship-data
+append_env AGP_LOG_DIR "$ROOT_DIR/logs"
 
 append_env MYSQL_DATABASE agp
 append_env MYSQL_USER agp
@@ -88,16 +89,21 @@ append_env GOPROXY "https://goproxy.cn,direct"
 append_env NPM_CONFIG_REGISTRY "https://registry.npmmirror.com"
 
 AGP_DATA_DIR_VALUE="$(env_value AGP_DATA_DIR)"
+AGP_LOG_DIR_VALUE="$(env_value AGP_LOG_DIR)"
 mkdir -p \
   "$AGP_DATA_DIR_VALUE/mysql" \
   "$AGP_DATA_DIR_VALUE/assets" \
-  "$AGP_DATA_DIR_VALUE/backups/mysql"
+  "$AGP_DATA_DIR_VALUE/backups/mysql" \
+  "$AGP_LOG_DIR_VALUE/backend" \
+  "$AGP_LOG_DIR_VALUE/frontend" \
+  "$AGP_LOG_DIR_VALUE/mysql"
 
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 cat <<EOF
 部署环境变量已写入: $ENV_FILE
 部署数据目录已创建: $AGP_DATA_DIR_VALUE
+日志目录已创建: $AGP_LOG_DIR_VALUE
 
 启动命令:
   docker compose --env-file "$ENV_FILE" -f deploy/docker-compose.separated.yml up -d --build

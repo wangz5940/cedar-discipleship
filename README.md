@@ -247,6 +247,19 @@ docker compose --env-file .env -f deploy/docker-compose.separated.yml logs -f
 docker compose --env-file .env -f deploy/docker-compose.separated.yml down
 ```
 
+运行日志会持续写入项目内的 `logs/` 目录，同时保留 Docker 控制台输出：
+
+- `logs/backend/backend.log`
+- `logs/frontend/access.log`
+- `logs/frontend/error.log`
+- `logs/mysql/error.log`
+
+这些文件通过宿主机目录挂载持久化，重建容器后不会丢失。生产环境应为
+`logs/` 配置日志轮转，避免长期运行后占满磁盘。
+其中 `backend/backend.log` 侧重用户操作和异常，用户操作包含账号、显示名、
+小组、动作、目标及来源 IP。成功的 GET、HEAD、OPTIONS 请求不记录，失败请求
+仍保留用于排障。
+
 MySQL 进入方式：
 
 ```bash

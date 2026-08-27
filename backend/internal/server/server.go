@@ -70,7 +70,14 @@ type config struct {
 
 type ctxKey string
 
-const currentUserKey ctxKey = "currentUser"
+const (
+	currentUserKey       ctxKey = "currentUser"
+	requestAuditStateKey ctxKey = "requestAuditState"
+)
+
+type requestAuditState struct {
+	recorded bool
+}
 
 type currentUser = userdomain.UserVO
 type group = userdomain.Group
@@ -372,7 +379,6 @@ func logHTTPRequest(r *http.Request, w *statusResponseWriter, duration time.Dura
 		"bytes", w.bytes,
 		"duration_ms", duration.Milliseconds(),
 		"client_ip", clientIP(r),
-		"user_agent", r.UserAgent(),
 	}
 	if errorCode := w.Header().Get("X-AGP-Error-Code"); errorCode != "" {
 		attrs = append(attrs, "error_code", errorCode)
@@ -388,9 +394,37 @@ func logHTTPRequest(r *http.Request, w *statusResponseWriter, duration time.Dura
 	}
 	if status >= http.StatusBadRequest {
 		slog.WarnContext(r.Context(), "http request rejected", attrs...)
+	}
+}
+
+func logUserOperation(r *http.Request, w http.ResponseWriter, user currentUser) {
+	switch r.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+	default:
 		return
 	}
-	slog.InfoContext(r.Context(), "http request completed", attrs...)
+	status := http.StatusOK
+	if recorder, ok := w.(*statusResponseWriter); ok {
+		status = recorder.statusCode()
+	}
+	if status >= http.StatusBadRequest {
+		return
+	}
+	action := requestPattern(r)
+	if !strings.HasPrefix(action, r.Method+" ") {
+		action = r.Method + " " + action
+	}
+	slog.InfoContext(
+		r.Context(),
+		"user operation completed",
+		"actor_user_id", user.ID,
+		"actor_username", user.Username,
+		"actor_display_name", user.DisplayName,
+		"group_id", user.CurrentGroupID,
+		"action", action,
+		"status", status,
+		"client_ip", clientIP(r),
+	)
 }
 
 func requestPattern(r *http.Request) string {
