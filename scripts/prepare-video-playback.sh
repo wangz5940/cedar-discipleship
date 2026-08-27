@@ -79,7 +79,11 @@ while IFS=$'\t' read -r asset_id storage_path || [ -n "${asset_id:-}" ]; do
 
   source_path="/data/agp/resources/$storage_path"
   playback_path="${source_path}.playback.mp4"
-  if compose exec -T backend sh -c 'test -s "$1" && ffprobe -v error "$1" >/dev/null 2>&1' sh "$playback_path" </dev/null; then
+  if compose exec -T backend sh -c '
+    test -s "$1" &&
+      ffprobe -v error "$1" >/dev/null 2>&1 &&
+      head -c 65536 "$1" | grep -aq sidx
+  ' sh "$playback_path" </dev/null; then
     echo "跳过 asset_id=${asset_id}，播放衍生文件已存在"
     skipped=$((skipped + 1))
     continue
@@ -99,9 +103,10 @@ while IFS=$'\t' read -r asset_id storage_path || [ -n "${asset_id:-}" ]; do
     trap "rm -f \"$temp_path\"" EXIT
     ffmpeg -nostdin -hide_banner -loglevel error \
       -i "$source_path" -map 0 -c copy \
-      -movflags +frag_keyframe+empty_moov+default_base_moof \
+      -movflags +frag_keyframe+empty_moov+default_base_moof+global_sidx \
       "$temp_path"
     ffprobe -v error "$temp_path" >/dev/null
+    head -c 65536 "$temp_path" | grep -aq sidx
     chmod 0640 "$temp_path"
     mv "$temp_path" "$playback_path"
     trap - EXIT

@@ -375,8 +375,9 @@ function downloadCurrent() {
               :src="videoSource"
               controls
               playsinline
-              preload="auto"
+              preload="metadata"
               @progress="handleVideoProgress"
+              @loadedmetadata="handleVideoReady"
               @loadeddata="handleVideoReady"
               @canplay="handleVideoReady"
               @error="handleVideoError"
