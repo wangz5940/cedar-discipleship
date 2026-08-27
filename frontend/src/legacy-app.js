@@ -28,7 +28,7 @@ import {
   shouldUseNativePDFViewer,
   weeklyTitleFromContent,
 } from './runtime/content';
-import { mergeResourceAssets } from './runtime/resources';
+import { mergeResourceAssets, resourceSelectionValue } from './runtime/resources';
 
 export { enabledFlag, extractPdfPageRange };
 
@@ -1613,10 +1613,7 @@ function librarySections() {
 }
 
 export function librarySelectionValue(item) {
-  if (!item) return '';
-  if (item.id) return `asset:${item.id}`;
-  if (item.url) return `url:${item.url}`;
-  return '';
+  return resourceSelectionValue(item);
 }
 
 function normalizeBindingMatchText(value) {

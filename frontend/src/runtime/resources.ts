@@ -1,5 +1,6 @@
 export type ResourceLike = {
   id?: number | string;
+  asset_id?: number | string;
   title?: string;
   original_name?: string;
   url?: string;
@@ -64,4 +65,18 @@ export function mergeResourceAssets(uploadedAssets: ResourceLike[] = [], section
     }
   }
   return merged;
+}
+
+export function resourceSelectionValue(item?: ResourceLike | null): string {
+  if (!item) return '';
+  const id = numericID(item.id);
+  if (id) return `asset:${id}`;
+  const assetID = numericID(item.asset_id);
+  if (assetID) return `asset:${assetID}`;
+
+  const url = String(item.url || '').trim();
+  const assetURLMatch = url.match(/^(?:https?:\/\/[^/]+)?\/api\/assets\/(\d+)\/download(?:[?#].*)?$/);
+  if (assetURLMatch) return `asset:${assetURLMatch[1]}`;
+  if (url) return `url:${url}`;
+  return '';
 }

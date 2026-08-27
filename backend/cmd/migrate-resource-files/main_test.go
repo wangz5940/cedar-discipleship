@@ -219,6 +219,124 @@ func TestPreferCleanupAssetUsesCanonicalFileTitle(t *testing.T) {
 	}
 }
 
+func TestCanonicalAssetTitleRepairsPageScopedBookTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		title        string
+		originalName string
+		want         string
+	}{
+		{
+			name:         "christ is all",
+			title:        "《基督是一切》36-40页",
+			originalName: "基督是一切-江守道.pdf",
+			want:         "基督是一切-江守道",
+		},
+		{
+			name:         "redemption drama overview",
+			title:        "《救赎史剧》纵览 88-96页",
+			originalName: "圣经救赎史剧综览-2.pdf",
+			want:         "圣经救赎史剧综览-2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := canonicalAssetTitle("book", tt.title, tt.originalName)
+			if !ok {
+				t.Fatal("canonicalAssetTitle() ok = false, want true")
+			}
+			if got != tt.want {
+				t.Fatalf("canonicalAssetTitle() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChooseHistoricalReadingAssetUsesCanonicalAsset(t *testing.T) {
+	t.Parallel()
+
+	candidates := []historicalReadingAsset{
+		{
+			ID:             7,
+			Category:       "book",
+			Title:          "《基督是一切》36-40页",
+			OriginalName:   "基督是一切-江守道.pdf",
+			FileSize:       1024,
+			ChecksumSHA256: "0ede4c556a220000000000000000000000000000000000000000000000000000",
+			AssetKind:      assetKindOwned,
+			Active:         false,
+		},
+		{
+			ID:             21,
+			Category:       "book",
+			Title:          "基督是一切-江守道",
+			OriginalName:   "基督是一切-江守道.pdf",
+			FileSize:       1024,
+			ChecksumSHA256: "0ede4c556a220000000000000000000000000000000000000000000000000000",
+			AssetKind:      assetKindOwned,
+			Active:         true,
+		},
+	}
+
+	id, category, err := chooseHistoricalReadingAsset(
+		historicalReadingRefs(
+			"《基督是一切》36-40页",
+			`{"book_name":"基督是一切","page_start":36,"page_end":40,"source_title":"《基督是一切》36-40页"}`,
+		),
+		candidates,
+	)
+	if err != nil {
+		t.Fatalf("chooseHistoricalReadingAsset() error = %v", err)
+	}
+	if id != 21 || category != "book" {
+		t.Fatalf("chooseHistoricalReadingAsset() = (%d,%q), want (21,book)", id, category)
+	}
+}
+
+func TestChooseHistoricalReadingAssetSkipsAmbiguousMatches(t *testing.T) {
+	t.Parallel()
+
+	candidates := []historicalReadingAsset{
+		{
+			ID:           22,
+			Category:     "book",
+			Title:        "圣经救赎史剧综览-2",
+			OriginalName: "圣经救赎史剧综览-2.pdf",
+			Active:       true,
+		},
+		{
+			ID:           23,
+			Category:     "book",
+			Title:        "圣经救赎史剧综览-3",
+			OriginalName: "圣经救赎史剧综览-3.pdf",
+			Active:       true,
+		},
+	}
+
+	id, category, err := chooseHistoricalReadingAsset([]string{"救赎史剧96-102页"}, candidates)
+	if err != nil {
+		t.Fatalf("chooseHistoricalReadingAsset() error = %v", err)
+	}
+	if id != 0 || category != "" {
+		t.Fatalf("chooseHistoricalReadingAsset() = (%d,%q), want no match", id, category)
+	}
+}
+
+func TestHistoricalReadingRefsUsesJSONMetadata(t *testing.T) {
+	t.Parallel()
+
+	got := historicalReadingRefs(
+		"《救赎史剧》纵览 88-96页",
+		`{"book_name":"救赎史剧","page_start":88,"page_end":96,"source_title":"《救赎史剧》纵览 88-96页"}`,
+	)
+	want := []string{"《救赎史剧》纵览 88-96页", "救赎史剧"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("historicalReadingRefs() = %v, want %v", got, want)
+	}
+}
+
 func TestSafeFileName(t *testing.T) {
 	t.Parallel()
 

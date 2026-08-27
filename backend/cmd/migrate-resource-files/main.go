@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -179,6 +180,10 @@ func run(opt options) error {
 	if err != nil {
 		return err
 	}
+	repairedAssetTitles, err := repairTaskScopedAssetTitles(ctx, db, group.ID, opt.dryRun)
+	if err != nil {
+		return err
+	}
 	repairedConfigPaths, err := repairLearningConfigPaths(ctx, db, group.ID, opt.dryRun)
 	if err != nil {
 		return err
@@ -188,8 +193,8 @@ func run(opt options) error {
 	if opt.dryRun {
 		mode = "dry-run"
 	}
-	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d repaired_task_links=%d repaired_config_paths=%d deduped_resources=%d\n",
-		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, repairedLinks, repairedConfigPaths, dedupedResources)
+	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d repaired_task_links=%d repaired_asset_titles=%d repaired_config_paths=%d deduped_resources=%d\n",
+		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, repairedLinks, repairedAssetTitles, repairedConfigPaths, dedupedResources)
 	return nil
 }
 
@@ -773,8 +778,8 @@ func linkTasksForAsset(ctx context.Context, tx *sql.Tx, groupID, assetID uint64,
 }
 
 func repairTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id,task_type,content FROM study_tasks
-		WHERE group_id=? AND COALESCE(content,'')<>''`, groupID)
+	rows, err := db.QueryContext(ctx, `SELECT id,task_type,title,COALESCE(content,'') FROM study_tasks
+		WHERE group_id=?`, groupID)
 	if err != nil {
 		return 0, err
 	}
@@ -783,15 +788,16 @@ func repairTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRu
 	type taskContent struct {
 		ID       uint64
 		TaskType string
+		Title    string
 		Content  string
 	}
 	var tasks []taskContent
 	for rows.Next() {
 		var task taskContent
-		if err := rows.Scan(&task.ID, &task.TaskType, &task.Content); err != nil {
+		if err := rows.Scan(&task.ID, &task.TaskType, &task.Title, &task.Content); err != nil {
 			return 0, err
 		}
-		if normalizedLegacyKey(task.Content) != "" {
+		if normalizedLegacyKey(task.Content) != "" || task.TaskType == "weekly_book" {
 			tasks = append(tasks, task)
 		}
 	}
@@ -807,6 +813,19 @@ func repairTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRu
 		assetID, category, err := findAssetForTaskContent(ctx, db, groupID, task.Content)
 		if err != nil {
 			return 0, err
+		}
+		if assetID == 0 && task.TaskType == "weekly_book" {
+			hasLinks, err := taskHasAssetLinks(ctx, db, groupID, task.ID)
+			if err != nil {
+				return 0, err
+			}
+			if hasLinks {
+				continue
+			}
+			assetID, category, err = findAssetForHistoricalReading(ctx, db, groupID, task.Title, task.Content)
+			if err != nil {
+				return 0, err
+			}
 		}
 		if assetID == 0 {
 			continue
@@ -1107,6 +1126,244 @@ func findAssetForTaskContent(ctx context.Context, db *sql.DB, groupID uint64, co
 	return assetID, assetCategory, rows.Err()
 }
 
+func taskHasAssetLinks(ctx context.Context, db *sql.DB, groupID, taskID uint64) (bool, error) {
+	var exists int
+	err := db.QueryRowContext(ctx, `SELECT 1 FROM task_assets
+		WHERE group_id=? AND task_id=?
+		LIMIT 1`, groupID, taskID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+type historicalReadingMetadata struct {
+	BookName    string `json:"book_name"`
+	SourceTitle string `json:"source_title"`
+}
+
+type historicalReadingAsset struct {
+	ID             uint64
+	Category       string
+	Title          string
+	OriginalName   string
+	FileSize       uint64
+	ChecksumSHA256 string
+	AssetKind      string
+	SourceAssetID  uint64
+	Active         bool
+}
+
+func findAssetForHistoricalReading(ctx context.Context, db *sql.DB, groupID uint64, title, content string) (uint64, string, error) {
+	refs := historicalReadingRefs(title, content)
+	if len(refs) == 0 {
+		return 0, "", nil
+	}
+	candidates, err := listHistoricalReadingAssets(ctx, db, groupID)
+	if err != nil {
+		return 0, "", err
+	}
+	return chooseHistoricalReadingAsset(refs, candidates)
+}
+
+func historicalReadingRefs(title, content string) []string {
+	var refs []string
+	add := func(value string) {
+		if normalizeHistoricalReadingText(value) == "" {
+			return
+		}
+		for _, existing := range refs {
+			if normalizeHistoricalReadingText(existing) == normalizeHistoricalReadingText(value) {
+				return
+			}
+		}
+		refs = append(refs, strings.TrimSpace(value))
+	}
+
+	var metadata historicalReadingMetadata
+	if strings.HasPrefix(strings.TrimSpace(content), "{") && json.Unmarshal([]byte(content), &metadata) == nil {
+		add(metadata.SourceTitle)
+		add(metadata.BookName)
+	}
+	add(title)
+	return refs
+}
+
+func listHistoricalReadingAssets(ctx context.Context, db *sql.DB, groupID uint64) ([]historicalReadingAsset, error) {
+	rows, err := db.QueryContext(ctx, `SELECT a.id,a.category,a.title,a.original_name,a.file_size,a.checksum_sha256,
+			COALESCE(b.asset_kind,''),COALESCE(b.source_asset_id,0),
+			EXISTS(SELECT 1 FROM asset_bindings active_b
+				WHERE active_b.asset_id=a.id AND active_b.group_id=a.group_id AND active_b.deleted_at IS NULL)
+		FROM assets a
+		LEFT JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id
+		WHERE a.group_id=? AND a.storage_path LIKE ? AND a.category IN ('book','passage','markdown')
+		ORDER BY a.category,a.original_name,a.id`, groupID, newResourceStorageSQLPattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []historicalReadingAsset
+	for rows.Next() {
+		var item historicalReadingAsset
+		var active int
+		if err := rows.Scan(
+			&item.ID,
+			&item.Category,
+			&item.Title,
+			&item.OriginalName,
+			&item.FileSize,
+			&item.ChecksumSHA256,
+			&item.AssetKind,
+			&item.SourceAssetID,
+			&active,
+		); err != nil {
+			return nil, err
+		}
+		item.Active = active > 0
+		candidates = append(candidates, item)
+	}
+	return candidates, rows.Err()
+}
+
+func chooseHistoricalReadingAsset(refs []string, candidates []historicalReadingAsset) (uint64, string, error) {
+	type scoredAsset struct {
+		ID       uint64
+		Category string
+		Score    int
+	}
+	bestByCanonical := map[uint64]scoredAsset{}
+	for _, candidate := range candidates {
+		canonicalID, category, ok := canonicalHistoricalReadingAsset(candidate, candidates)
+		if !ok {
+			continue
+		}
+		score := historicalReadingAssetMatchScore(refs, candidate)
+		if score == 0 {
+			continue
+		}
+		if current, ok := bestByCanonical[canonicalID]; !ok || score > current.Score {
+			bestByCanonical[canonicalID] = scoredAsset{ID: canonicalID, Category: category, Score: score}
+		}
+	}
+
+	var best scoredAsset
+	for _, item := range bestByCanonical {
+		if item.Score > best.Score {
+			best = item
+		}
+	}
+	if best.Score == 0 {
+		return 0, "", nil
+	}
+	for _, item := range bestByCanonical {
+		if item.Score == best.Score && item.ID != best.ID {
+			return 0, "", nil
+		}
+	}
+	return best.ID, best.Category, nil
+}
+
+func canonicalHistoricalReadingAsset(candidate historicalReadingAsset, candidates []historicalReadingAsset) (uint64, string, bool) {
+	key := historicalReadingAssetDedupeKey(candidate)
+	if key == "" {
+		if candidate.Active {
+			return candidate.ID, candidate.Category, true
+		}
+		return 0, "", false
+	}
+
+	var canonical historicalReadingAsset
+	found := false
+	for _, item := range candidates {
+		if !item.Active || historicalReadingAssetDedupeKey(item) != key {
+			continue
+		}
+		if !found || preferCleanupAsset(toCleanupAssetCandidate(item), toCleanupAssetCandidate(canonical)) {
+			canonical = item
+			found = true
+		}
+	}
+	if !found {
+		return 0, "", false
+	}
+	return canonical.ID, canonical.Category, true
+}
+
+func historicalReadingAssetDedupeKey(item historicalReadingAsset) string {
+	return cleanupAssetDedupeKey(toCleanupAssetCandidate(item))
+}
+
+func toCleanupAssetCandidate(item historicalReadingAsset) cleanupAssetCandidate {
+	return cleanupAssetCandidate{
+		ID:             item.ID,
+		Category:       item.Category,
+		Title:          item.Title,
+		OriginalName:   item.OriginalName,
+		FileSize:       item.FileSize,
+		ChecksumSHA256: item.ChecksumSHA256,
+		AssetKind:      item.AssetKind,
+		SourceAssetID:  item.SourceAssetID,
+	}
+}
+
+func historicalReadingAssetMatchScore(refs []string, candidate historicalReadingAsset) int {
+	best := 0
+	for _, ref := range refs {
+		refKey := normalizeHistoricalReadingText(ref)
+		if refKey == "" {
+			continue
+		}
+		for _, candidateValue := range []string{candidate.Title, candidate.OriginalName} {
+			score := historicalReadingTextMatchScore(refKey, normalizeHistoricalReadingText(candidateValue))
+			if score > best {
+				best = score
+			}
+		}
+	}
+	return best
+}
+
+func historicalReadingTextMatchScore(refKey, candidateKey string) int {
+	if refKey == "" || candidateKey == "" {
+		return 0
+	}
+	switch {
+	case refKey == candidateKey:
+		return 100
+	case strings.Contains(refKey, candidateKey) && len([]rune(candidateKey)) >= 4:
+		return 90
+	case strings.Contains(candidateKey, refKey) && len([]rune(refKey)) >= 4:
+		return 80
+	default:
+		return 0
+	}
+}
+
+func normalizeHistoricalReadingText(value string) string {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return ""
+	}
+	if decoded, err := url.PathUnescape(text); err == nil {
+		text = decoded
+	}
+	text = path.Base(strings.ReplaceAll(text, "\\", "/"))
+	text = strings.TrimSuffix(text, path.Ext(text))
+	text = taskScopedTitleRegexp.ReplaceAllString(text, "")
+
+	var builder strings.Builder
+	for _, r := range text {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			builder.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return builder.String()
+}
+
 type cleanupAssetCandidate struct {
 	ID             uint64
 	Category       string
@@ -1226,6 +1483,73 @@ func cleanupDuplicateResourceBindings(ctx context.Context, db *sql.DB, groupID u
 		return 0, err
 	}
 	return len(duplicates), nil
+}
+
+func repairTaskScopedAssetTitles(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
+	rows, err := db.QueryContext(ctx, `SELECT a.id,a.category,a.title,a.original_name
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+		WHERE a.group_id=? AND a.storage_path LIKE ? AND a.original_name<>''`,
+		groupID, newResourceStorageSQLPattern)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type titleRepair struct {
+		ID    uint64
+		Title string
+	}
+	var repairs []titleRepair
+	for rows.Next() {
+		var id uint64
+		var category, title, originalName string
+		if err := rows.Scan(&id, &category, &title, &originalName); err != nil {
+			return 0, err
+		}
+		if repaired, ok := canonicalAssetTitle(category, title, originalName); ok {
+			repairs = append(repairs, titleRepair{ID: id, Title: repaired})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(repairs) == 0 || dryRun {
+		return len(repairs), nil
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	for _, repair := range repairs {
+		if _, err := tx.ExecContext(ctx, `UPDATE assets SET title=?,updated_at=? WHERE id=? AND group_id=?`,
+			repair.Title, now, repair.ID, groupID); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(repairs), nil
+}
+
+func canonicalAssetTitle(category, title, originalName string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "book", "passage":
+	default:
+		return "", false
+	}
+	if !taskScopedTitleRegexp.MatchString(title) {
+		return "", false
+	}
+	baseTitle := strings.TrimSpace(strings.TrimSuffix(filepath.Base(originalName), filepath.Ext(originalName)))
+	if baseTitle == "" || normalizeCleanupAssetTitle(baseTitle) == normalizeCleanupAssetTitle(title) {
+		return "", false
+	}
+	return baseTitle, true
 }
 
 func cleanupAssetDedupeKey(item cleanupAssetCandidate) string {

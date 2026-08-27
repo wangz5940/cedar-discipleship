@@ -27,6 +27,86 @@ func TestMapBackupTaskIDsHandlesDuplicateTitles(t *testing.T) {
 	}
 }
 
+func TestBackupResourceKeyFromStoragePath(t *testing.T) {
+	t.Parallel()
+
+	got := backupResourceKeyFromStoragePath("team-agape-a-resources/objects/A2DB2A2E5D31A9EDC6215E79F9B499DE/newtestament.md")
+	if got != "a2db2a2e5d31a9edc6215e79f9b499de" {
+		t.Fatalf("backupResourceKeyFromStoragePath() = %q, want normalized resource key", got)
+	}
+	if invalid := backupResourceKeyFromStoragePath("legacy/newtestament.md"); invalid != "" {
+		t.Fatalf("backupResourceKeyFromStoragePath() = %q, want empty for legacy path", invalid)
+	}
+}
+
+func TestBackupTaskAssetRefsUsesReadingMetadata(t *testing.T) {
+	t.Parallel()
+
+	got := backupTaskAssetRefs(
+		"《救赎史剧》纵览 88-96页",
+		`{"book_name":"救赎史剧","page_start":88,"page_end":96,"source_title":"《救赎史剧》纵览 88-96页"}`,
+	)
+	if len(got) != 2 || got[0] != "《救赎史剧》纵览 88-96页" || got[1] != "救赎史剧" {
+		t.Fatalf("backupTaskAssetRefs() = %v, want source title and book name", got)
+	}
+}
+
+func TestBackupTaskAssetMatchScorePrefersSpecificTitle(t *testing.T) {
+	t.Parallel()
+
+	sourceTitle := normalizeBackupTaskAssetText("《救赎史剧》纵览 79-84页（读到基督的赎罪工作为止）")
+	specificAsset := normalizeBackupTaskAssetText("《救赎史剧》纵览 88-96页")
+	broadAsset := normalizeBackupTaskAssetText("圣经救赎史剧综览-3.pdf")
+	specificScore := backupTaskAssetMatchScore(sourceTitle, specificAsset)
+	broadScore := backupTaskAssetMatchScore(normalizeBackupTaskAssetText("救赎史剧"), broadAsset)
+	if specificScore <= broadScore {
+		t.Fatalf("specific score = %d, broad score = %d, want specific higher", specificScore, broadScore)
+	}
+}
+
+func TestCanonicalBackupAssetTitleRepairsPageScopedBookTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		title        string
+		originalName string
+		want         string
+	}{
+		{
+			name:         "christ is all",
+			title:        "《基督是一切》36-40页",
+			originalName: "基督是一切-江守道.pdf",
+			want:         "基督是一切-江守道",
+		},
+		{
+			name:         "redemption drama overview",
+			title:        "《救赎史剧》纵览 88-96页",
+			originalName: "圣经救赎史剧综览-2.pdf",
+			want:         "圣经救赎史剧综览-2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canonicalBackupAssetTitle("book", tt.title, tt.originalName); got != tt.want {
+				t.Fatalf("canonicalBackupAssetTitle() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeBackupLogicalDateAcceptsExportedRFC3339Date(t *testing.T) {
+	t.Parallel()
+
+	got, err := normalizeBackupLogicalDate("2026-05-12T00:00:00Z")
+	if err != nil {
+		t.Fatalf("normalizeBackupLogicalDate() error = %v", err)
+	}
+	if got != "2026-05-12" {
+		t.Fatalf("normalizeBackupLogicalDate() = %q, want 2026-05-12", got)
+	}
+}
+
 func TestNormalizeBackupSettingsRemapsLegacyDailyPaths(t *testing.T) {
 	t.Parallel()
 

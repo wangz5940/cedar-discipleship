@@ -2,12 +2,15 @@ package backup
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +24,9 @@ const (
 	roleGroupLeader = "group_leader"
 
 	resourceStoragePattern = "team-%-resources/objects/%"
+	assetKindOwned         = "owned"
+	sharePermissionImport  = "import"
+	shareStatusActive      = "active"
 )
 
 type MySQLRepository struct {
@@ -161,8 +167,8 @@ func (r *MySQLRepository) BackupCheckins(ctx context.Context, groupID uint64) ([
 	for rows.Next() {
 		var item Checkin
 		var taskID, weekID sql.NullInt64
-		var checkinTime time.Time
-		if err := rows.Scan(&item.Username, &taskID, &weekID, &item.LogicalDate, &checkinTime, &item.TaskType, &item.Part, &item.Detail, &item.Note, &item.IsRetro); err != nil {
+		var logicalDate, checkinTime time.Time
+		if err := rows.Scan(&item.Username, &taskID, &weekID, &logicalDate, &checkinTime, &item.TaskType, &item.Part, &item.Detail, &item.Note, &item.IsRetro); err != nil {
 			return nil, err
 		}
 		if taskID.Valid && taskID.Int64 > 0 {
@@ -171,6 +177,7 @@ func (r *MySQLRepository) BackupCheckins(ctx context.Context, groupID uint64) ([
 		if weekID.Valid && weekID.Int64 > 0 {
 			item.WeekID = uint64(weekID.Int64)
 		}
+		item.LogicalDate = logicalDate.Format("2006-01-02")
 		item.CheckinTime = checkinTime.Format(time.RFC3339)
 		items = append(items, item)
 	}
@@ -558,6 +565,7 @@ func (r *MySQLRepository) importBackupAssetsTx(
 		if storagePath == "" {
 			continue
 		}
+		title := canonicalBackupAssetTitle(item.Category, item.Title, item.OriginalName)
 		var id uint64
 		err := tx.QueryRowContext(ctx, `
 			SELECT id
@@ -576,7 +584,7 @@ func (r *MySQLRepository) importBackupAssetsTx(
 				VALUES (?,?,?,?,?,?,?,'group',?,?,?)`,
 				groupID,
 				item.Category,
-				item.Title,
+				title,
 				item.OriginalName,
 				storagePath,
 				item.MimeType,
@@ -605,7 +613,7 @@ func (r *MySQLRepository) importBackupAssetsTx(
 				    file_size=?,updated_at=?
 				WHERE id=? AND group_id=?`,
 				item.Category,
-				item.Title,
+				title,
 				item.OriginalName,
 				item.MimeType,
 				item.FileSize,
@@ -616,11 +624,111 @@ func (r *MySQLRepository) importBackupAssetsTx(
 				return nil, err
 			}
 		}
+		if err := ensureBackupAssetBindingTx(ctx, tx, groupID, actorID, id, storagePath, now); err != nil {
+			return nil, err
+		}
 		if item.ID > 0 {
 			assetIDs[item.ID] = id
 		}
 	}
 	return assetIDs, nil
+}
+
+func ensureBackupAssetBindingTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, actorID, assetID uint64,
+	storagePath string,
+	now time.Time,
+) error {
+	resourceKey := backupResourceKeyFromStoragePath(storagePath)
+	if resourceKey != "" {
+		ownerID, exists, err := backupResourceKeyOwnerTx(ctx, tx, resourceKey)
+		if err != nil {
+			return err
+		}
+		if exists && ownerID != assetID {
+			resourceKey = ""
+		}
+	}
+	if resourceKey == "" {
+		var err error
+		resourceKey, err = randomUnusedBackupResourceKeyTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_bindings
+		(asset_id,group_id,resource_key,asset_kind,source_asset_id,imported_at,deleted_at,created_at,updated_at)
+		VALUES (?,?,?,?,NULL,NULL,NULL,?,?)
+		ON DUPLICATE KEY UPDATE group_id=VALUES(group_id),resource_key=VALUES(resource_key),asset_kind=VALUES(asset_kind),
+			source_asset_id=NULL,imported_at=NULL,deleted_at=NULL,updated_at=VALUES(updated_at)`,
+		assetID, groupID, resourceKey, assetKindOwned, now, now); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO asset_share_grants
+		(asset_id,owner_group_id,consumer_group_id,permission,status,created_by,created_at,revoked_by,revoked_at)
+		VALUES (?,?,NULL,?,?,?,?,NULL,NULL)
+		ON DUPLICATE KEY UPDATE status=VALUES(status),created_by=VALUES(created_by),created_at=VALUES(created_at),
+			revoked_by=NULL,revoked_at=NULL`,
+		assetID, groupID, sharePermissionImport, shareStatusActive, firstNonZero(actorID, 1), now)
+	return err
+}
+
+func backupResourceKeyOwnerTx(ctx context.Context, tx *sql.Tx, resourceKey string) (uint64, bool, error) {
+	var assetID uint64
+	err := tx.QueryRowContext(ctx, `SELECT asset_id FROM asset_bindings WHERE resource_key=? LIMIT 1`, resourceKey).Scan(&assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return assetID, true, nil
+}
+
+func randomUnusedBackupResourceKeyTx(ctx context.Context, tx *sql.Tx) (string, error) {
+	for attempt := 0; attempt < 16; attempt++ {
+		resourceKey, err := randomBackupResourceKey()
+		if err != nil {
+			return "", err
+		}
+		if _, exists, err := backupResourceKeyOwnerTx(ctx, tx, resourceKey); err != nil {
+			return "", err
+		} else if !exists {
+			return resourceKey, nil
+		}
+	}
+	return "", errors.New("generate_unique_resource_key_failed")
+}
+
+func randomBackupResourceKey() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generate resource key: %w", err)
+	}
+	return hex.EncodeToString(value[:]), nil
+}
+
+func backupResourceKeyFromStoragePath(storagePath string) string {
+	parts := strings.Split(strings.Trim(strings.ReplaceAll(storagePath, "\\", "/"), "/"), "/")
+	if len(parts) < 4 || strings.ToLower(parts[1]) != "objects" || !isBackupResourceKey(parts[2]) {
+		return ""
+	}
+	return strings.ToLower(parts[2])
+}
+
+func isBackupResourceKey(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	for _, r := range value {
+		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') && !('A' <= r && r <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *MySQLRepository) remapWeekAssetsTx(
@@ -631,12 +739,14 @@ func (r *MySQLRepository) remapWeekAssetsTx(
 	assetIDs map[uint64]uint64,
 ) (learning.WeekInput, error) {
 	for index := range week.Readings {
-		id, err := remapAssetIDTx(
+		id, err := remapTaskBindingAssetIDTx(
 			ctx,
 			tx,
 			groupID,
 			week.Readings[index].AssetID,
 			week.Readings[index].Title,
+			week.Readings[index].URL,
+			"book",
 			assetIDs,
 		)
 		if err != nil {
@@ -645,12 +755,14 @@ func (r *MySQLRepository) remapWeekAssetsTx(
 		week.Readings[index].AssetID = id
 	}
 	for index := range week.Videos {
-		id, err := remapAssetIDTx(
+		id, err := remapTaskBindingAssetIDTx(
 			ctx,
 			tx,
 			groupID,
 			week.Videos[index].AssetID,
 			week.Videos[index].Title,
+			week.Videos[index].URL,
+			"video",
 			assetIDs,
 		)
 		if err != nil {
@@ -658,12 +770,14 @@ func (r *MySQLRepository) remapWeekAssetsTx(
 		}
 		week.Videos[index].AssetID = id
 	}
-	id, err := remapAssetIDTx(
+	id, err := remapTaskBindingAssetIDTx(
 		ctx,
 		tx,
 		groupID,
 		week.Outline.AssetID,
 		week.Outline.Title,
+		week.Outline.URL,
+		"outline",
 		assetIDs,
 	)
 	if err != nil {
@@ -673,39 +787,193 @@ func (r *MySQLRepository) remapWeekAssetsTx(
 	return week, nil
 }
 
-func remapAssetIDTx(
+func remapTaskBindingAssetIDTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	groupID, oldID uint64,
-	title string,
+	title, urlValue, preferredCategory string,
 	assetIDs map[uint64]uint64,
 ) (uint64, error) {
-	if oldID == 0 {
+	for _, assetID := range []uint64{oldID, backupAssetIDFromDownloadURL(urlValue)} {
+		if assetID == 0 {
+			continue
+		}
+		if id := assetIDs[assetID]; id > 0 {
+			return id, nil
+		}
+		exists, err := activeBackupAssetExistsTx(ctx, tx, groupID, assetID)
+		if err != nil {
+			return 0, err
+		}
+		if exists {
+			return assetID, nil
+		}
+	}
+
+	if fileName := backupResourceFileName(urlValue); fileName != "" {
+		id, err := findBackupAssetByFileNameTx(ctx, tx, groupID, fileName, preferredCategory)
+		if err != nil || id > 0 {
+			return id, err
+		}
+	}
+
+	return findBackupTaskAssetByReferenceTx(ctx, tx, groupID, preferredCategory, backupTaskAssetRefs(title, urlValue))
+}
+
+func findBackupTaskAssetByReferenceTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID uint64,
+	preferredCategory string,
+	refs []string,
+) (uint64, error) {
+	if len(refs) == 0 {
 		return 0, nil
 	}
-	if id := assetIDs[oldID]; id > 0 {
-		return id, nil
+
+	matchedID := uint64(0)
+	matchedScore := 0
+	ambiguous := false
+	for _, ref := range refs {
+		refKey := normalizeBackupTaskAssetText(ref)
+		if refKey == "" {
+			continue
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT a.id,a.title,a.original_name
+			FROM assets a
+			JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.deleted_at IS NULL
+			WHERE a.group_id=? AND a.storage_path LIKE ? AND a.category=?
+			ORDER BY a.id`, groupID, resourceStoragePattern, preferredCategory)
+		if err != nil {
+			return 0, err
+		}
+		for rows.Next() {
+			var id uint64
+			var title, originalName string
+			if err := rows.Scan(&id, &title, &originalName); err != nil {
+				_ = rows.Close()
+				return 0, err
+			}
+			score := maxInt(
+				backupTaskAssetMatchScore(refKey, normalizeBackupTaskAssetText(title)),
+				backupTaskAssetMatchScore(refKey, normalizeBackupTaskAssetText(originalName)),
+			)
+			if score > matchedScore {
+				matchedID = id
+				matchedScore = score
+				ambiguous = false
+			} else if score > 0 && score == matchedScore && id != matchedID {
+				ambiguous = true
+			}
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		if err := rows.Close(); err != nil {
+			return 0, err
+		}
 	}
-	title = strings.TrimSpace(title)
-	if title == "" {
+	if ambiguous || matchedScore == 0 {
 		return 0, nil
 	}
-	var id uint64
-	var count int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(MIN(id),0),COUNT(*)
-		FROM assets
-		WHERE group_id=? AND (title=? OR original_name=?)`,
-		groupID,
-		title,
-		title,
-	).Scan(&id, &count); err != nil {
-		return 0, err
+	return matchedID, nil
+}
+
+func backupTaskAssetRefs(title, urlValue string) []string {
+	var refs []string
+	add := func(value string) {
+		if normalizeBackupTaskAssetText(value) == "" {
+			return
+		}
+		for _, existing := range refs {
+			if normalizeBackupTaskAssetText(existing) == normalizeBackupTaskAssetText(value) {
+				return
+			}
+		}
+		refs = append(refs, strings.TrimSpace(value))
 	}
-	if count != 1 {
-		return 0, nil
+
+	var metadata struct {
+		BookName    string `json:"book_name"`
+		SourceTitle string `json:"source_title"`
 	}
-	return id, nil
+	if strings.HasPrefix(strings.TrimSpace(urlValue), "{") && json.Unmarshal([]byte(urlValue), &metadata) == nil {
+		add(metadata.SourceTitle)
+		add(metadata.BookName)
+	}
+	add(title)
+	return refs
+}
+
+func backupTaskAssetMatchScore(refKey, candidateKey string) int {
+	if refKey == "" || candidateKey == "" {
+		return 0
+	}
+	switch {
+	case refKey == candidateKey:
+		return 100
+	case strings.Contains(refKey, candidateKey) && len([]rune(candidateKey)) >= 4:
+		return 90
+	case strings.Contains(candidateKey, refKey) && len([]rune(refKey)) >= 4:
+		return 80
+	default:
+		return 0
+	}
+}
+
+func normalizeBackupTaskAssetText(value string) string {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return ""
+	}
+	if decoded, err := url.PathUnescape(text); err == nil {
+		text = decoded
+	}
+	text = path.Base(strings.ReplaceAll(text, "\\", "/"))
+	text = strings.TrimSuffix(text, path.Ext(text))
+	text = regexp.MustCompile(`[0-9]{1,4}\s*(?:[-~—–至到]\s*[0-9]{1,4})?\s*页`).ReplaceAllString(text, "")
+	text = regexp.MustCompile(`[12][0-9]{5,7}`).ReplaceAllString(text, "")
+
+	var builder strings.Builder
+	for _, r := range text {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			builder.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return builder.String()
+}
+
+func canonicalBackupAssetTitle(category, title, originalName string) string {
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "book", "passage":
+	default:
+		return title
+	}
+	if !regexp.MustCompile(`[0-9]{1,4}\s*(?:[-~—–至到]\s*[0-9]{1,4})?\s*页`).MatchString(title) {
+		return title
+	}
+	baseTitle := strings.TrimSpace(strings.TrimSuffix(path.Base(originalName), path.Ext(originalName)))
+	if baseTitle == "" || normalizeBackupTaskAssetText(baseTitle) == normalizeBackupTaskAssetText(title) {
+		return title
+	}
+	return baseTitle
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}
+
+func firstNonZero(values ...uint64) uint64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func (r *MySQLRepository) memberRoleMap(ctx context.Context, groupID uint64) (map[string][]string, error) {
@@ -828,6 +1096,11 @@ func (r *MySQLRepository) replaceCheckinsTx(
 		if userID == 0 {
 			continue
 		}
+		logicalDate, err := normalizeBackupLogicalDate(checkin.LogicalDate)
+		if err != nil {
+			return err
+		}
+		checkin.LogicalDate = logicalDate
 		checkinTime := parseTimeOrNow(checkin.CheckinTime, now)
 		taskID, weekID, err := resolveCheckinTargetTx(ctx, tx, groupID, weekIDs, taskIDs, checkin)
 		if err != nil {
@@ -984,6 +1257,17 @@ func parseTimeOrNow(value string, fallback time.Time) time.Time {
 		}
 	}
 	return fallback
+}
+
+func normalizeBackupLogicalDate(value string) (string, error) {
+	text := strings.TrimSpace(value)
+	if len(text) >= len("2006-01-02") {
+		text = text[:len("2006-01-02")]
+	}
+	if _, err := time.Parse("2006-01-02", text); err != nil {
+		return "", fmt.Errorf("invalid logical_date %q: %w", value, err)
+	}
+	return text, nil
 }
 
 func truncate(s string, n int) string {

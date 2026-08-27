@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { mergeResourceAssets } from './resources';
+import { mergeResourceAssets, resourceSelectionValue } from './resources';
 
 describe('resource runtime helpers', () => {
+  it('builds stable selection values for persisted task bindings', () => {
+    expect(resourceSelectionValue({ asset_id: 193, url: '/api/assets/193/download' })).toBe('asset:193');
+    expect(resourceSelectionValue({ url: 'https://mouss.synology.me:7399/api/assets/193/download' })).toBe('asset:193');
+    expect(resourceSelectionValue({ url: 'https://mouss.synology.me:7399/newtestament.md' })).toBe('url:https://mouss.synology.me:7399/newtestament.md');
+  });
+
   it('deduplicates resources by database asset id', () => {
     const result = mergeResourceAssets(
       [{
