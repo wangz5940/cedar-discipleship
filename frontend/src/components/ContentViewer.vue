@@ -33,6 +33,7 @@ const videoRetryKey = ref(0);
 const videoFallbackAttempted = ref(false);
 const videoSilentFallbackAttempted = ref(false);
 const videoMuted = ref(false);
+const videoAutoPlayAttempted = ref(false);
 let videoLoadTimer = 0;
 
 watch(
@@ -135,6 +136,7 @@ function resetVideoLoading() {
   videoFallbackAttempted.value = false;
   videoSilentFallbackAttempted.value = false;
   videoMuted.value = false;
+  videoAutoPlayAttempted.value = false;
 }
 
 function handleVideoProgress(event) {
@@ -147,6 +149,26 @@ function handleVideoProgress(event) {
 function handleVideoReady() {
   videoLoadState.value = 'ready';
   videoLoadProgress.value = 100;
+  tryAutoPlayVideo();
+}
+
+async function tryAutoPlayVideo() {
+  const media = videoElement.value;
+  if (!media || videoAutoPlayAttempted.value || !videoSource.value) return;
+  videoAutoPlayAttempted.value = true;
+  try {
+    await media.play?.();
+  } catch {
+    if (videoMuted.value) return;
+    videoMuted.value = true;
+    await nextTick();
+    media.muted = true;
+    try {
+      await media.play?.();
+    } catch {
+      // Browser policy may still require an explicit user click.
+    }
+  }
 }
 
 function handleVideoError(event) {
@@ -159,6 +181,7 @@ function handleVideoError(event) {
     videoLoadError.value = '';
     const retryURL = videoSource.value;
     videoRetryKey.value += 1;
+    videoAutoPlayAttempted.value = false;
     videoSource.value = '';
     nextTick(() => {
       videoSource.value = retryURL;
@@ -184,6 +207,7 @@ function handleVideoError(event) {
     videoLoadProgress.value = 0;
     videoLoadError.value = '';
     videoRetryKey.value += 1;
+    videoAutoPlayAttempted.value = false;
     videoSource.value = '';
     nextTick(() => {
       videoSource.value = fallbackURL;
@@ -417,11 +441,13 @@ function downloadCurrent() {
               </button>
             </div>
             <video
+              v-if="videoSource"
               :key="videoRetryKey"
               ref="videoElement"
               class="viewer-video"
               :src="videoSource"
               controls
+              autoplay
               :muted="videoMuted"
               playsinline
               preload="metadata"
