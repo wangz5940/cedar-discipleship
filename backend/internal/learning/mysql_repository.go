@@ -213,7 +213,7 @@ func InsertWeekTx(ctx context.Context, tx *sql.Tx, groupID uint64, input WeekInp
 func (r *MySQLRepository) taskAssets(ctx context.Context, groupID, taskID uint64) ([]TaskAsset, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT a.id,a.category,a.title,a.original_name,ta.usage_type
 		FROM task_assets ta JOIN assets a ON a.id=ta.asset_id
-		WHERE ta.group_id=? AND ta.task_id=?
+		WHERE ta.group_id=? AND ta.task_id=? AND a.group_id=ta.group_id
 		ORDER BY ta.sort_order,ta.id`, groupID, taskID)
 	if err != nil {
 		return nil, err

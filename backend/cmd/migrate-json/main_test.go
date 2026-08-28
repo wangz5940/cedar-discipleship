@@ -73,6 +73,29 @@ func TestReadingTasksForWeekFallsBackWhenTitleCountDiffersFromReadingCount(t *te
 	}
 }
 
+func TestReadingTasksForWeekKeepsExternalHTMLAsContent(t *testing.T) {
+	week := oldWeek{
+		Readings: []oldAssetRef{
+			{
+				Title: "第一章 基督的血",
+				URL:   "https://pages.uoregon.edu/fyin/book/001.htm",
+				Type:  "iframe",
+			},
+		},
+	}
+
+	tasks := readingTasksForWeek(week)
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 reading task, got %d", len(tasks))
+	}
+	if tasks[0].Content != "https://pages.uoregon.edu/fyin/book/001.htm" {
+		t.Fatalf("content = %q, want external URL", tasks[0].Content)
+	}
+	if shouldImportAssetRef(tasks[0].Assets[0].Ref.URL) {
+		t.Fatal("external HTML should not be imported as an asset")
+	}
+}
+
 func TestParseReadingMetadata(t *testing.T) {
 	got := parseReadingMetadata("《基督是一切》基督是神的仆人--马可福音（22-25页，读到事奉的性质为止）")
 	if got.BookName != "基督是一切" {
@@ -138,5 +161,12 @@ func TestNormalizeTaskSectionsBuildsCurrentScriptureAndDevotionShape(t *testing.
 	}
 	if scripture["book"] != "路加福音" || scripture["book_id"] != "42" || scripture["max_chapters"].(float64) != 24 {
 		t.Fatalf("unexpected scripture start book: %+v", scripture)
+	}
+}
+
+func TestDatabaseAssetDownloadURLCanonicalizesAbsoluteAPIURL(t *testing.T) {
+	got := databaseAssetDownloadURL("https://mouss.synology.me:7399/api/assets/181/download")
+	if got != "/api/assets/181/download" {
+		t.Fatalf("databaseAssetDownloadURL() = %q, want canonical API path", got)
 	}
 }

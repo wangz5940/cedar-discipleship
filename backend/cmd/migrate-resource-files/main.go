@@ -172,6 +172,10 @@ func run(opt options) error {
 	}
 	missing += discoveredMissing
 	skipped += discoveredSkipped
+	remappedTaskLinks, err := remapSourceTaskAssetLinks(ctx, db, group.ID, opt.dryRun)
+	if err != nil {
+		return err
+	}
 	repairedLinks, err := repairTaskAssetLinks(ctx, db, group.ID, opt.dryRun)
 	if err != nil {
 		return err
@@ -193,8 +197,8 @@ func run(opt options) error {
 	if opt.dryRun {
 		mode = "dry-run"
 	}
-	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d repaired_task_links=%d repaired_asset_titles=%d repaired_config_paths=%d deduped_resources=%d\n",
-		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, repairedLinks, repairedAssetTitles, repairedConfigPaths, dedupedResources)
+	fmt.Printf("resource_file_migration mode=%s group_id=%d group_code=%s group_name=%q total=%d legacy_assets=%d discovered_files=%d migrated=%d registered_files=%d existing_files=%d missing=%d skipped=%d remapped_task_links=%d repaired_task_links=%d repaired_asset_titles=%d repaired_config_paths=%d deduped_resources=%d\n",
+		mode, group.ID, group.Code, group.Name, len(assets)+len(discoveredFiles), len(assets), len(discoveredFiles), migrated, registeredFiles, existingFiles, missing, skipped, remappedTaskLinks, repairedLinks, repairedAssetTitles, repairedConfigPaths, dedupedResources)
 	return nil
 }
 
@@ -854,6 +858,49 @@ func repairTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRu
 	return repaired, nil
 }
 
+func remapSourceTaskAssetLinks(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
+	var count int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*)
+		FROM task_assets ta
+		JOIN assets source ON source.id=ta.asset_id AND source.group_id<>ta.group_id
+		JOIN asset_bindings imported ON imported.group_id=ta.group_id
+			AND imported.source_asset_id=ta.asset_id
+			AND imported.deleted_at IS NULL
+		WHERE ta.group_id=?`, groupID).Scan(&count)
+	if err != nil || count == 0 || dryRun {
+		return count, err
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO task_assets
+			(group_id,task_id,asset_id,usage_type,sort_order,created_at)
+		SELECT ta.group_id,ta.task_id,imported.asset_id,ta.usage_type,ta.sort_order,ta.created_at
+		FROM task_assets ta
+		JOIN assets source ON source.id=ta.asset_id AND source.group_id<>ta.group_id
+		JOIN asset_bindings imported ON imported.group_id=ta.group_id
+			AND imported.source_asset_id=ta.asset_id
+			AND imported.deleted_at IS NULL
+		WHERE ta.group_id=?`, groupID); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE ta FROM task_assets ta
+		JOIN assets source ON source.id=ta.asset_id AND source.group_id<>ta.group_id
+		JOIN asset_bindings imported ON imported.group_id=ta.group_id
+			AND imported.source_asset_id=ta.asset_id
+			AND imported.deleted_at IS NULL
+		WHERE ta.group_id=?`, groupID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func repairLearningConfigPaths(ctx context.Context, db *sql.DB, groupID uint64, dryRun bool) (int, error) {
 	var raw sql.NullString
 	err := db.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=?`, groupID).Scan(&raw)
@@ -960,10 +1007,17 @@ func nestedSettingsMap(root map[string]any, path ...string) (map[string]any, boo
 func findAssetForConfigPath(ctx context.Context, db *sql.DB, groupID uint64, value string) (uint64, error) {
 	if assetID := assetIDFromDownloadURL(value); assetID > 0 {
 		exists, err := activeAssetExists(ctx, db, groupID, assetID)
-		if err != nil || !exists {
+		if err != nil {
 			return 0, err
 		}
-		return assetID, nil
+		if exists {
+			return assetID, nil
+		}
+		importedID, err := importedAssetIDForSource(ctx, db, groupID, assetID)
+		if err != nil {
+			return 0, err
+		}
+		return importedID, nil
 	}
 	fileName := configResourceFileName(value)
 	if fileName == "" {
@@ -998,6 +1052,22 @@ func activeAssetExists(ctx context.Context, db *sql.DB, groupID, assetID uint64)
 		return false, err
 	}
 	return true, nil
+}
+
+func importedAssetIDForSource(ctx context.Context, db *sql.DB, groupID, sourceAssetID uint64) (uint64, error) {
+	var assetID uint64
+	err := db.QueryRowContext(ctx, `SELECT asset_id
+		FROM asset_bindings
+		WHERE group_id=? AND source_asset_id=? AND deleted_at IS NULL
+		ORDER BY asset_id
+		LIMIT 1`, groupID, sourceAssetID).Scan(&assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return assetID, nil
 }
 
 func assetDownloadURL(assetID uint64) string {

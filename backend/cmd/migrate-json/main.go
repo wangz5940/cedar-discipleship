@@ -21,6 +21,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -408,7 +409,7 @@ func planDryRun(cfg oldConfig, records []oldRecord, usernameMap map[string]strin
 			report.Tasks.WouldSave += len(tasks)
 			for _, task := range tasks {
 				for _, link := range task.Assets {
-					if strings.TrimSpace(link.Ref.URL) == "" {
+					if !shouldImportAssetRef(link.Ref.URL) {
 						continue
 					}
 					report.Assets.Parsed++
@@ -549,7 +550,7 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 				report.Tasks.Reused++
 			}
 			for _, link := range task.Assets {
-				if strings.TrimSpace(link.Ref.URL) == "" {
+				if !shouldImportAssetRef(link.Ref.URL) {
 					continue
 				}
 				report.Assets.Parsed++
@@ -819,6 +820,16 @@ func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRe
 	if storagePath == "" {
 		return 0, false, false, errors.New("empty asset url")
 	}
+	if assetID := assetIDFromDownloadURL(storagePath); assetID > 0 {
+		if ok, err := assetBelongsToGroup(ctx, tx, groupID, assetID); err != nil || ok {
+			return assetID, false, false, err
+		}
+		importedID, ok, err := importSharedAssetByID(ctx, tx, groupID, assetID, now)
+		if err != nil || ok {
+			return importedID, false, ok, err
+		}
+		return 0, false, false, errors.New("asset_download_url_not_importable")
+	}
 	var id uint64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM assets WHERE group_id=? AND storage_path=? LIMIT 1", groupID, storagePath).Scan(&id)
 	if err == nil {
@@ -849,7 +860,26 @@ func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRe
 	return newID, true, false, err
 }
 
+func assetBelongsToGroup(ctx context.Context, tx *sql.Tx, groupID, assetID uint64) (bool, error) {
+	var exists int
+	err := tx.QueryRowContext(ctx, "SELECT 1 FROM assets WHERE id=? AND group_id=? LIMIT 1", assetID, groupID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func importMatchingSharedAsset(ctx context.Context, tx *sql.Tx, targetGroupID uint64, ref oldAssetRef, category, now string) (uint64, bool, error) {
+	if sourceAssetID := assetIDFromDownloadURL(ref.URL); sourceAssetID > 0 {
+		assetID, ok, err := importSharedAssetByID(ctx, tx, targetGroupID, sourceAssetID, now)
+		if err != nil || ok {
+			return assetID, ok, err
+		}
+	}
+
 	original := assetBaseName(strings.TrimSpace(ref.URL))
 	title := firstNonEmpty(ref.Title, strings.TrimSuffix(original, filepath.Ext(original)))
 	categories := sharedCategoryCandidates(category)
@@ -883,6 +913,52 @@ func importMatchingSharedAsset(ctx context.Context, tx *sql.Tx, targetGroupID ui
 		ORDER BY CASE WHEN a.original_name=? THEN 0 ELSE 1 END,a.id
 		LIMIT 1`, strings.Join(categoryConditions, " OR "))
 	err := tx.QueryRowContext(ctx, query, args...).Scan(
+		&source.id,
+		&source.groupID,
+		&source.category,
+		&source.title,
+		&source.originalName,
+		&source.storagePath,
+		&source.mimeType,
+		&source.fileSize,
+		&source.checksumSHA256,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	assetID, err := importSharedAsset(ctx, tx, targetGroupID, source.id, source.groupID, source.category, source.title, source.originalName, source.storagePath, source.mimeType, source.fileSize, source.checksumSHA256, now)
+	if err != nil {
+		return 0, false, err
+	}
+	return assetID, true, nil
+}
+
+func importSharedAssetByID(ctx context.Context, tx *sql.Tx, targetGroupID, sourceAssetID uint64, now string) (uint64, bool, error) {
+	var source struct {
+		id             uint64
+		groupID        uint64
+		category       string
+		title          string
+		originalName   string
+		storagePath    string
+		mimeType       string
+		fileSize       uint64
+		checksumSHA256 string
+	}
+	err := tx.QueryRowContext(ctx, `
+		SELECT a.id,a.group_id,a.category,a.title,a.original_name,a.storage_path,a.mime_type,a.file_size,a.checksum_sha256
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.asset_kind=? AND b.deleted_at IS NULL
+		JOIN asset_share_grants g ON g.asset_id=a.id AND g.owner_group_id=a.group_id
+		WHERE a.id=? AND a.group_id<>?
+		  AND g.permission=? AND g.status=?
+		  AND (g.consumer_group_id IS NULL OR g.consumer_group_id=?)
+		LIMIT 1`,
+		assetKindOwned, sourceAssetID, targetGroupID, sharePermImport, shareStatusOn, targetGroupID,
+	).Scan(
 		&source.id,
 		&source.groupID,
 		&source.category,
@@ -1136,6 +1212,9 @@ func readingTasksForWeek(week oldWeek) []plannedTask {
 			Title:   title,
 			Content: migratedReadingContent(title),
 			Enabled: enabled,
+		}
+		if isExternalContentURL(ref.URL) {
+			task.Content = strings.TrimSpace(ref.URL)
 		}
 		if hasRef && (strings.TrimSpace(ref.URL) != "" || strings.TrimSpace(ref.Title) != "") {
 			task.Assets = []plannedAssetLink{{
@@ -1444,10 +1523,50 @@ func stringValue(value any) string {
 
 func databaseAssetDownloadURL(value any) string {
 	text := stringValue(value)
-	if !assetDownloadURLPattern.MatchString(text) {
+	assetID := assetIDFromDownloadURL(text)
+	if assetID == 0 {
 		return ""
 	}
-	return text
+	return fmt.Sprintf("/api/assets/%d/download", assetID)
+}
+
+func assetIDFromDownloadURL(value string) uint64 {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return 0
+	}
+	pathValue := text
+	if parsed, err := url.Parse(text); err == nil && parsed.Path != "" {
+		pathValue = parsed.Path
+	}
+	if !assetDownloadURLPattern.MatchString(pathValue) {
+		return 0
+	}
+	idText := strings.TrimSuffix(strings.TrimPrefix(pathValue, "/api/assets/"), "/download")
+	assetID, err := strconv.ParseUint(idText, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return assetID
+}
+
+func shouldImportAssetRef(value string) bool {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return false
+	}
+	if assetIDFromDownloadURL(text) > 0 {
+		return true
+	}
+	return !isExternalContentURL(text)
+}
+
+func isExternalContentURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func numberValue(value any) int {
