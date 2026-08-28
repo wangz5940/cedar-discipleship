@@ -15,6 +15,7 @@ import {
 } from '@lucide/vue';
 import { api, loadAdminData, reloadApp, toast } from '../legacy-app';
 import { filterSharedResources } from '../runtime/resourceGovernance';
+import { normalizeResourceCategory, resourceCategoryLabel, resourceCategorySort } from '../runtime/resources';
 import { useAppStateStore } from '../stores/appState';
 
 const app = useAppStateStore();
@@ -56,7 +57,9 @@ const importedResources = computed(() => databaseResources.value.filter((item) =
 const selectedAssets = computed(() => databaseResources.value.filter((item) => selectedAssetIDs.value.includes(Number(item.id))));
 const selectedOwnedAssets = computed(() => ownedResources.value.filter((item) => selectedAssetIDs.value.includes(Number(item.id))));
 const selectedSharedResources = computed(() => sharedResources.value.filter((item) => selectedSharedAssetIDs.value.includes(Number(item.asset_id))));
-const resourceTypes = computed(() => [...new Set(sharedResources.value.map((item) => item.category).filter(Boolean))].sort());
+const resourceTypes = computed(() => [...new Set(sharedResources.value
+  .map((item) => normalizeResourceCategory(item.category))
+  .filter(Boolean))].sort(resourceCategorySort));
 const visibleSharedResources = computed(() => filterSharedResources(sharedResources.value, {
   ownerGroupID: ownerFilter.value,
   category: typeFilter.value,
@@ -106,18 +109,7 @@ function formatSize(value) {
 }
 
 function categoryLabel(category) {
-  const labels = {
-    mentor: '导读',
-    book: '读物',
-    passage: '读物',
-    markdown: '文字',
-    pdf: 'PDF',
-    handout: '讲义',
-    share: '讲义',
-    outline: '提纲',
-    video: '视频',
-  };
-  return labels[String(category || '').toLowerCase()] || category || '资源';
+  return resourceCategoryLabel(category);
 }
 
 function statusText(status) {

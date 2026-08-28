@@ -1,10 +1,19 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { ChevronDown, ChevronRight, Download, LogOut } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
+import { filterSharedResources } from '../runtime/resourceGovernance';
+import {
+  RESOURCE_UPLOAD_CATEGORIES,
+  normalizeResourceCategory,
+  resourceCategoryGroupKey,
+  resourceCategoryGroups,
+  resourceCategoryLabel,
+  resourceCategorySort,
+} from '../runtime/resources';
 import MinistryCatalogAdmin from './MinistryCatalogAdmin.vue';
 import ResourceGovernance from './ResourceGovernance.vue';
 import {
@@ -79,10 +88,8 @@ const loginUsername = ref('');
 const loginPassword = ref('');
 const groupPassword = ref('');
 const memberName = ref('');
-const memberUsername = ref('');
-const groupCode = ref('');
 const groupName = ref('');
-const groupDescription = ref('');
+const groupEditName = ref('');
 const uploadCategory = ref('markdown');
 const uploadInput = ref(null);
 const studyWeeksImportInput = ref(null);
@@ -90,6 +97,10 @@ const localBackupImportInput = ref(null);
 const selectedResourceKeys = ref(new Set());
 const collapsedResourceSections = ref(new Set());
 const collapsedAdminResourceSections = ref(new Set());
+const resourceSearchQuery = ref('');
+const resourceTypeFilter = ref('');
+const resourceDateFilter = ref('');
+const resourceStatusFilter = ref('all');
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const canManageRoles = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))));
@@ -124,53 +135,49 @@ const markdownFileOptions = computed(() => {
   });
 });
 const readingOptions = computed(() => libraryItems.value.filter((item) => (
-  ['book', 'passage', 'markdown'].includes(String(item.category || '').toLowerCase())
+  ['book', 'passage', 'markdown'].includes(normalizeResourceCategory(item.category))
 )));
 const videoOptions = computed(() => libraryItems.value.filter((item) => item.type === 'video'));
 const outlineOptions = computed(() => libraryItems.value.filter((item) => (
   item.type === 'image' || item.type === 'outline' || item.category === 'outline'
 )));
-const resourceCategoryCount = computed(() => new Set(resources.value.map((item) => item.category).filter(Boolean)).size);
+const resourceTypeOptions = computed(() => [...new Set(resources.value
+  .map((item) => normalizeResourceCategory(item.category))
+  .filter(Boolean))].sort(resourceCategorySort));
+const filteredResources = computed(() => filterSharedResources(resources.value, {
+  category: resourceTypeFilter.value,
+  keyword: resourceSearchQuery.value,
+  updatedFrom: resourceDateFilter.value,
+  status: resourceStatusFilter.value,
+}));
+const selectedVisibleResources = computed(() => filteredResources.value.filter(resourceSelected));
+const allVisibleResourcesSelected = computed(() => (
+  filteredResources.value.length > 0 &&
+  filteredResources.value.every((item) => selectedResourceKeys.value.has(resourceSelectionKey(item)))
+));
+const resourceCategoryCount = computed(() => new Set(filteredResources.value
+  .map((item) => normalizeResourceCategory(item.category))
+  .filter(Boolean)).size);
 const resourcePrimaryCategory = computed(() => {
-  const first = resources.value.find((item) => item.category);
+  const first = filteredResources.value.find((item) => item.category);
   if (isMentorResource(first)) return '导读';
-  const labels = {
-    mentor: '导读',
-    book: '读物',
-    markdown: '文字',
-    pdf: 'PDF',
-    handout: '讲义',
-    outline: '提纲',
-    video: '视频',
-  };
-  return labels[first?.category] || '资料归档';
+  return resourceCategoryLabel(first?.category) || '资料归档';
 });
 const groupedResources = computed(() => {
-  const buckets = [
-    { key: 'mentor', label: '导读', description: 'Mentor 导读材料', items: [] },
-    { key: 'reading', label: '读物', description: '读物 PDF 与文字材料', items: [] },
-    { key: 'handout', label: '讲义', description: '配套讲义与提纲材料', items: [] },
-    { key: 'video', label: '视频', description: '视频与播放材料', items: [] },
-    { key: 'other', label: '其他', description: '未归入主分类的资料', items: [] },
-  ];
+  const buckets = resourceCategoryGroups();
   const map = Object.fromEntries(buckets.map((bucket) => [bucket.key, bucket]));
 
-  for (const asset of resources.value) {
-    if (isMentorResource(asset)) {
-      map.mentor.items.push(asset);
-    } else if (['book', 'passage', 'markdown', 'pdf'].includes(asset.category)) {
-      map.reading.items.push(asset);
-    } else if (['handout', 'outline'].includes(asset.category)) {
-      map.handout.items.push(asset);
-    } else if (asset.category === 'video') {
-      map.video.items.push(asset);
-    } else {
-      map.other.items.push(asset);
-    }
+  for (const asset of filteredResources.value) {
+    const key = isMentorResource(asset) ? 'mentor' : resourceCategoryGroupKey(asset.category);
+    (map[key] || map.other).items.push(asset);
   }
 
   return buckets.filter((bucket) => bucket.items.length);
 });
+
+watch(activeGroup, (group) => {
+  groupEditName.value = group?.name || '';
+}, { immediate: true });
 
 function navLabel(item) {
   return sidebarCollapsed.value ? item[1].slice(0, 1) : item[1];
@@ -207,22 +214,47 @@ async function submitLogin() {
 }
 
 async function createGroup() {
-  const result = await api('/super-admin/groups', {
-    method: 'POST',
-    body: JSON.stringify({ code: groupCode.value, name: groupName.value, description: groupDescription.value }),
-  });
-  window.alert(`小组已创建，默认密码：${result.default_password}`);
-  await switchGroup(result.id);
+  try {
+    const result = await api('/super-admin/groups', {
+      method: 'POST',
+      body: JSON.stringify({ name: groupName.value }),
+    });
+    window.alert(`小组已创建，默认密码：${result.default_password}`);
+    await switchGroup(result.id);
+  } catch (error) {
+    showToast(groupSaveErrorMessage(error.message));
+  }
+}
+
+async function updateCurrentGroup() {
+  if (!currentGroupID.value) return;
+  try {
+    await api(`/super-admin/groups/${currentGroupID.value}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: groupEditName.value }),
+    });
+    showToast('小组信息已更新');
+    await reloadApp();
+  } catch (error) {
+    showToast(groupSaveErrorMessage(error.message));
+  }
+}
+
+function groupSaveErrorMessage(message) {
+  return {
+    group_name_required: '小组名称不能为空',
+    group_name_exists: '小组名称已存在',
+    group_not_found: '小组不存在',
+  }[message] || message;
 }
 
 async function createMember() {
   try {
     await api('/admin/members', {
       method: 'POST',
-      body: JSON.stringify({ create_user: true, display_name: memberName.value, username: memberUsername.value, name_pinyin: memberUsername.value }),
+      body: JSON.stringify({ create_user: true, display_name: memberName.value }),
     });
     memberName.value = '';
-    memberUsername.value = '';
     showToast('成员已创建，初始密码为本组当前默认密码');
     await reloadApp();
   } catch (error) {
@@ -351,11 +383,14 @@ function toggleResourceSelection(asset) {
 }
 
 function toggleAllResources() {
-  if (selectedResourceKeys.value.size === resources.value.length) {
-    selectedResourceKeys.value = new Set();
+  const visibleKeys = filteredResources.value.map(resourceSelectionKey);
+  if (visibleKeys.length && visibleKeys.every((key) => selectedResourceKeys.value.has(key))) {
+    const next = new Set(selectedResourceKeys.value);
+    visibleKeys.forEach((key) => next.delete(key));
+    selectedResourceKeys.value = next;
     return;
   }
-  selectedResourceKeys.value = new Set(resources.value.map(resourceSelectionKey));
+  selectedResourceKeys.value = new Set([...selectedResourceKeys.value, ...visibleKeys]);
 }
 
 function enqueueResources(items) {
@@ -378,13 +413,8 @@ function downloadSelectedResources() {
 }
 
 function resourceTypeLabel(asset) {
-  if (isMentorResource(asset)) return '导读资料';
-  if (asset.type === 'video' || asset.category === 'video') return '视频资料';
-  if (asset.category === 'book' || asset.category === 'passage') return '读物 PDF';
-  if (asset.category === 'handout') return '讲义 PDF';
-  if (asset.type === 'markdown' || asset.category === 'markdown') return '文字材料';
-  if (asset.type === 'image' || asset.category === 'outline') return '提纲图片';
-  return '归档资料';
+  if (isMentorResource(asset)) return resourceCategoryLabel('mentor');
+  return resourceCategoryLabel(asset.category);
 }
 
 function isMentorResource(asset) {
@@ -496,7 +526,7 @@ async function selectCalendarDate(day) {
           <span class="avatar mini">{{ (user?.display_name || '?').slice(0, 1) }}</span>
           <span v-if="!sidebarCollapsed">{{ user?.username || '' }}</span>
         </div>
-        <button v-if="tab === 'home'" class="ghost" type="button" @click="logout">退出</button>
+        <button class="ghost" type="button" @click="logout">退出</button>
       </div>
     </aside>
 
@@ -510,9 +540,6 @@ async function selectCalendarDate(day) {
               {{ activeGroup?.name || '当前工作区' }} · {{ user?.display_name || user?.username || '当前用户' }}
             </p>
           </div>
-          <button v-if="tab === 'home'" class="ghost icon-text-button mobile-title-logout" type="button" @click="logout">
-            <LogOut :size="16" />退出
-          </button>
         </section>
         <div v-if="groups.length > 1" class="toolbar-card toolbar-card-group">
           <div class="toolbar-card-label">
@@ -565,7 +592,7 @@ async function selectCalendarDate(day) {
               </div>
               <div class="resource-library-stats">
                 <div class="resource-library-stat">
-                  <strong>{{ resources.length }}</strong>
+                  <strong>{{ filteredResources.length }}</strong>
                   <span>资料总数</span>
                 </div>
                 <div class="resource-library-stat">
@@ -579,17 +606,32 @@ async function selectCalendarDate(day) {
               </div>
             </section>
 
+            <div class="resource-filter-bar resource-center-filter-bar">
+              <input v-model.trim="resourceSearchQuery" type="search" placeholder="搜索标题、文件名或类型" />
+              <select v-model="resourceTypeFilter">
+                <option value="">全部资源类型</option>
+                <option v-for="type in resourceTypeOptions" :key="type" :value="type">{{ resourceCategoryLabel(type) }}</option>
+              </select>
+              <select v-model="resourceStatusFilter">
+                <option value="all">全部来源</option>
+                <option value="available">本组资源</option>
+                <option value="imported">已导入资源</option>
+              </select>
+              <input v-model="resourceDateFilter" type="date" title="最早更新时间" />
+            </div>
+
             <div class="resource-download-toolbar">
               <label class="resource-select-all">
                 <input
                   type="checkbox"
-                  :checked="selectedResourceKeys.size === resources.length"
-                  :indeterminate="selectedResourceKeys.size > 0 && selectedResourceKeys.size < resources.length"
+                  :checked="allVisibleResourcesSelected"
+                  :indeterminate="selectedVisibleResources.length > 0 && selectedVisibleResources.length < filteredResources.length"
+                  :disabled="!filteredResources.length"
                   @change="toggleAllResources"
                 />
-                <span>选择全部</span>
+                <span>选择当前结果</span>
               </label>
-              <span class="muted">已选择 {{ selectedResourceKeys.size }} 项</span>
+              <span class="muted">已选择 {{ selectedResourceKeys.size }} 项，当前筛选 {{ filteredResources.length }} 项</span>
               <button
                 class="secondary icon-text-button"
                 type="button"
@@ -650,6 +692,7 @@ async function selectCalendarDate(day) {
                 </div>
               </div>
             </section>
+            <div v-if="!groupedResources.length" class="empty">没有符合筛选条件的资料。</div>
           </div>
           <div v-else class="empty">暂无资源，请在管理后台登记资料。</div>
         </section>
@@ -680,17 +723,20 @@ async function selectCalendarDate(day) {
                 <div class="grid cols-2">
                   <div v-if="user?.is_super_admin" class="card">
                     <h2>超级管理员：创建小组</h2>
-                    <p class="muted">系统会生成 8 位默认密码，仅在创建结果中展示一次。</p>
                     <div class="form-stack">
-                      <input v-model="groupCode" placeholder="小组编码，例如 agape-a" />
                       <input v-model="groupName" placeholder="小组名称" />
-                      <textarea v-model="groupDescription" placeholder="小组说明，可选" rows="3"></textarea>
                       <button type="button" @click="createGroup">创建小组</button>
+                    </div>
+                  </div>
+                  <div v-if="user?.is_super_admin && currentGroupID" class="card">
+                    <h2>修改当前小组</h2>
+                    <div class="form-stack">
+                      <input v-model="groupEditName" placeholder="小组名称" />
+                      <button type="button" @click="updateCurrentGroup">保存小组信息</button>
                     </div>
                   </div>
                   <div v-if="currentGroupID" class="card">
                     <h2>修改本组默认密码</h2>
-                    <p class="muted">仅影响只属于本组、非组长、非超级管理员的成员。多小组成员不会被覆盖。</p>
                     <div class="form-stack">
                       <input v-model="groupPassword" placeholder="新的本组默认密码（至少 8 位）" type="password" />
                       <button type="button" @click="updateGroupPassword(groupPassword)">更新默认密码</button>
@@ -700,7 +746,6 @@ async function selectCalendarDate(day) {
                     <h2>添加成员</h2>
                     <div class="form-stack">
                       <input v-model="memberName" placeholder="成员姓名" />
-                      <input v-model="memberUsername" placeholder="账号拼音，例如 zhangjiale" />
                       <button type="button" @click="createMember">创建本组成员</button>
                     </div>
                   </div>
@@ -875,7 +920,12 @@ async function selectCalendarDate(day) {
                   <h2>上传本组资源</h2>
                   <p class="muted">上传后会自动刷新列表，随后即可在“周任务”里选择挂载。</p>
                   <div class="form-stack admin-form-grid">
-                    <label class="admin-field"><span class="admin-field-label">上传到</span><select v-model="uploadCategory"><option value="mentor">Mentor 导读</option><option value="markdown">Markdown 读物</option><option value="book">PDF 读物</option><option value="video">视频文件</option><option value="handout">讲义 PDF</option><option value="outline">提纲图片</option></select></label>
+                    <label class="admin-field">
+                      <span class="admin-field-label">上传到</span>
+                      <select v-model="uploadCategory">
+                        <option v-for="category in RESOURCE_UPLOAD_CATEGORIES" :key="category.key" :value="category.key">{{ category.label }}</option>
+                      </select>
+                    </label>
                     <label class="admin-field"><span class="admin-field-label">选择文件</span><input ref="uploadInput" type="file" /></label>
                     <div class="form-actions">
                       <button :disabled="!canEditLearning" type="button" @click="uploadSelectedFile">上传到资源库</button>
@@ -929,6 +979,10 @@ async function selectCalendarDate(day) {
 
       <div class="mobile-tabs">
         <button v-for="item in navItems" :key="item[0]" :class="{ active: tab === item[0] }" type="button" @click="setTab(item[0])">{{ item[1] }}</button>
+        <button class="mobile-tab-logout" type="button" aria-label="退出登录" title="退出登录" @click="logout">
+          <LogOut :size="15" />
+          <span>退出</span>
+        </button>
       </div>
     </main>
   </div>

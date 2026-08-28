@@ -145,10 +145,7 @@ func (r *MySQLRepository) DependencyGraph(
 		WHERE (d.consumer_group_id=? OR d.provider_group_id=?)
 		  AND ca.storage_path LIKE ? AND pa.storage_path LIKE ?`
 	args := []any{scopeGroupID, scopeGroupID, newResourceStorageSQLPattern, newResourceStorageSQLPattern}
-	if filter.Category != "" {
-		query += " AND (ca.category=? OR pa.category=?)"
-		args = append(args, filter.Category, filter.Category)
-	}
+	query, args = appendAssetCategoryFilter(query, args, filter.Category, "ca.category", "pa.category")
 	query += " ORDER BY d.provider_group_id,d.consumer_group_id,d.id"
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

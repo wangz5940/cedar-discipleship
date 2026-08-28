@@ -1,216 +1,114 @@
-# 其他组数据迁移方案
+# 旧独立小组项目迁移
 
-这个方案用于首套平台已经上线后，把其他组的旧数据继续迁入当前平台。
+本流程用于把 `zw1-checkin` 这类旧独立项目迁入当前 `cedar-discipleship` 平台，并创建为新的学习小组。
 
-独立脚本入口：
+## 适用输入
 
-```bash
-./scripts/migrate-group.sh
+旧项目目录需包含：
+
+```text
+zw1-checkin/
+  ├── config.json
+  ├── data/records.json
+  ├── Passage/
+  ├── PPT/
+  ├── MP3/
+  └── MP4/
 ```
-
-它和首次部署脚本解耦，适合后续按组逐批迁移。
-
-## 适用前提
-
-先确保平台已经在目标环境运行：
-
-```bash
-docker compose -p agp -f deploy/docker-compose.separated.yml ps
-```
-
-至少要保证：
-
-- `mysql` 已启动
-- `backend` 已启动
 
 ## 迁移原则
 
-每个组单独迁移，单独指定：
+- 每个旧项目迁入为一个新的学习小组。
+- `GROUP_NAME` 是后台展示和维护的小组名称。
+- `GROUP_CODE` 是迁移和资源目录使用的内部稳定标识，迁入后后台不再修改。
+- 成员只以中文姓名导入，系统生成拼音账号。
+- 周任务、任务资源绑定和历史打卡按小组隔离写入。
+- 资源迁移优先复用其他小组已共享的同名同类资源。
+- 未命中共享资源的本组独有文件复制到 `data/resources`。
 
-- `GROUP_CODE`
-- `GROUP_NAME`
-- `config.json`
-- `records.json`
-
-这样可以做到：
-
-1. 每组独立 dry-run
-2. 每组独立导入
-3. 出问题时只影响当前组
-4. 迁移报告能按组留档
-
-## 标准流程
-
-### 1. 准备源数据
-
-建议每个待迁移小组准备一套目录，例如：
-
-```text
-/migration-inputs/agape-b/
-  ├── config.json
-  └── records.json
-```
-
-其中：
-
-- `config.json`：该组的成员、周任务、学习配置
-- `records.json`：该组历史打卡
-
-### 2. 先 dry-run
+## Dry Run
 
 ```bash
-cd /path/to/agp
+cd /volume1/docker/cedar-discipleship
 
-GROUP_CODE='agape-b' \
-GROUP_NAME='AGAPE B组' \
-CONFIG_PATH='/migration-inputs/agape-b/config.json' \
-RECORDS_PATH='/migration-inputs/agape-b/records.json' \
+SOURCE_PROJECT_DIR=/volume1/docker/zw1-checkin \
+GROUP_CODE=zw1 \
+GROUP_NAME="ZW1小组" \
 GROUP_DEFAULT_PASSWORD='Abc12345' \
-./scripts/migrate-group.sh
+EXECUTE_IMPORT=false \
+./scripts/migrate-legacy-project.sh
 ```
 
-默认只执行 dry-run，不会写数据库。
-
-### 3. 检查迁移报告
-
-报告默认输出到：
+检查报告目录：
 
 ```text
 data/migration-reports/
 ```
 
-重点检查：
+重点确认：
 
-- `generated_usernames`
-- `warnings`
-- `failures`
-- 周任务、资源、成员数是否符合预期
+- 小组名称和内部编码正确。
+- 成员、周任务、打卡记录数量符合旧项目。
+- `warnings` 和 `failures` 为空或已确认。
+- `shared_assets` 中列出的资源确实可复用。
 
-### 4. 正式导入
+## 正式迁移
 
 ```bash
-GROUP_CODE='agape-b' \
-GROUP_NAME='AGAPE B组' \
-CONFIG_PATH='/migration-inputs/agape-b/config.json' \
-RECORDS_PATH='/migration-inputs/agape-b/records.json' \
+cd /volume1/docker/cedar-discipleship
+
+SOURCE_PROJECT_DIR=/volume1/docker/zw1-checkin \
+GROUP_CODE=zw1 \
+GROUP_NAME="ZW1小组" \
 GROUP_DEFAULT_PASSWORD='Abc12345' \
 EXECUTE_IMPORT=true \
-./scripts/migrate-group.sh
+./scripts/migrate-legacy-project.sh
 ```
 
-脚本会自动执行：
+正式迁移会依次执行：
 
-1. dry-run
-2. 正式导入
+1. 数据 dry-run。
+2. 写入新学习小组、成员、周任务、资源引用和打卡记录。
+3. 资源文件 dry-run。
+4. 复制本组独有资料文件。
 
-### 5. 已启动环境实例：导入 agape-a
-
-如果服务已经通过 `docker compose -f deploy/docker-compose.separated.yml up -d backend frontend`
-启动，但没有显式使用 `-p agp`，脚本会尝试从正在运行的 `agp-mysql` 容器读取实际
-`COMPOSE_PROJECT_NAME`，避免迁移脚本报 `service "mysql" is not running`：
+## 可选参数
 
 ```bash
-GROUP_CODE=agape-a \
-GROUP_NAME="AGAPE A组" \
-CONFIG_PATH=./config.json \
-RECORDS_PATH=./data/records.json \
-GROUP_DEFAULT_PASSWORD='Abc12345' \
-EXECUTE_IMPORT=true \
-GOPROXY=https://goproxy.cn,direct \
-./scripts/migrate-group.sh
+PREFER_SHARED_ASSETS=true
+ALLOW_DUPLICATE_AS_DELETED=false
+FAIL_ON_GENERATED_USERNAMES=false
+RESOURCE_MIGRATION_DRY_RUN_ONLY=false
+RESOURCE_LEGACY_ASSETS_ROOT=/volume1/docker/zw1-checkin/data/assets
 ```
 
-注意每行末尾的 `\` 后面不能再跟空格。
+说明：
 
-## 推荐的批量迁移节奏
-
-不要多个组并发导入。建议串行：
-
-1. A 组 dry-run
-2. A 组正式导入
-3. A 组登录验收
-4. B 组 dry-run
-5. B 组正式导入
-6. B 组登录验收
-
-这样更容易定位问题。
-
-## 账号生成策略
-
-为了避免不同组之间账号冲突，建议遵循：
-
-1. 先执行 dry-run，检查迁移报告中的 `generated_usernames`
-2. 平台账号优先使用内置用户名映射和标准化规则生成
-3. 账号一旦导入，后续不要重复改动
-
-## 冲突处理建议
-
-### 1. 组编码冲突
-
-现象：
-
-- `GROUP_CODE` 已存在
-
-处理：
-
-- 不要覆盖旧组
-- 改成新的稳定编码，例如 `agape-b`
-
-### 2. 成员账号冲突
-
-现象：
-
-- 自动生成的用户名不符合预期
-
-处理：
-
-- 先做 dry-run，检查 `generated_usernames`
-- 如需调整，修正源数据后重新导入
-
-### 3. 重复打卡
-
-默认行为：
-
-- 重复有效打卡会跳过
-
-如果你想保留重复记录为软删除历史：
-
-```bash
-ALLOW_DUPLICATE_AS_DELETED=true
-```
-
-### 4. 自动生成用户名不可信
-
-如果你希望一旦需要自动生成用户名就直接失败：
-
-```bash
-FAIL_ON_GENERATED_USERNAMES=true
-```
+- `PREFER_SHARED_ASSETS=true`：优先复用其他小组已共享资源。
+- `ALLOW_DUPLICATE_AS_DELETED=true`：重复打卡以软删除历史保留。
+- `FAIL_ON_GENERATED_USERNAMES=true`：需要自动生成账号时直接失败。
+- `RESOURCE_MIGRATION_DRY_RUN_ONLY=true`：只写入数据，不复制资源文件。
+- `RESOURCE_LEGACY_ASSETS_ROOT`：旧项目存在额外上传目录时指定。
 
 ## 验收清单
 
-正式迁移后，建议逐项确认：
+正式迁移后逐项确认：
 
-1. 小组已出现在管理后台
-2. 成员名单正确
-3. 管理员 / 组长角色正确
-4. 学习内容配置正确
-5. 周任务和挂载资源正确
-6. 月历和历史打卡记录数量合理
-7. 资源打开路径正常
+1. 新学习小组出现在后台小组列表。
+2. 成员名单、组长和管理员角色正确。
+3. 历史打卡按成员、日期、任务类型统计一致。
+4. 周任务日期范围、标题、页码和任务开关正确。
+5. 历史读物、视频、讲义和提纲能打开。
+6. 共享复用资源没有重复文件。
+7. 本组独有文件已复制到 `data/resources/team-{group_code}-resources/objects/`。
 
-## 回滚建议
+## 回滚
 
-迁移前先做一次数据库备份：
+迁移前导出数据库备份：
 
 ```bash
 mkdir -p data/backups/mysql
-docker exec agp-mysql mysqldump -uagp -pagp agp > data/backups/mysql/agp-before-group-import-$(date +%F-%H%M%S).sql
+docker exec cedar-mysql mysqldump -uagp -p"$MYSQL_PASSWORD" agp > data/backups/mysql/before-zw1-$(date +%F-%H%M%S).sql
 ```
 
-如果某个组导入结果不对，建议优先：
-
-1. 停止新的迁移
-2. 保留迁移报告
-3. 基于备份回滚数据库
-4. 修正源数据后重新导入
+迁移结果异常时，停止新的导入，保留迁移报告，使用备份恢复后重新执行。

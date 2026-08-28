@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { mergeResourceAssets, resourceSelectionValue } from './resources';
+import {
+  RESOURCE_UPLOAD_CATEGORIES,
+  mergeResourceAssets,
+  normalizeResourceCategory,
+  resourceCategoryGroupKey,
+  resourceCategoryLabel,
+  resourceSelectionValue,
+} from './resources';
 
 describe('resource runtime helpers', () => {
+  it('uses one category registry for labels, aliases, upload options, and groups', () => {
+    expect(resourceCategoryLabel('book')).toBe('书籍');
+    expect(resourceCategoryLabel('passage')).toBe('读物');
+    expect(normalizeResourceCategory('share')).toBe('handout');
+    expect(normalizeResourceCategory('ministry-2')).toBe('ministry_attachment');
+    expect(resourceCategoryGroupKey('pdf')).toBe('passage');
+    expect(resourceCategoryLabel('ministry-2')).toBe('专项附件');
+    expect(RESOURCE_UPLOAD_CATEGORIES.map((item) => item.key)).toEqual([
+      'mentor',
+      'book',
+      'markdown',
+      'video',
+      'handout',
+      'outline',
+    ]);
+  });
+
   it('builds stable selection values for persisted task bindings', () => {
     expect(resourceSelectionValue({ asset_id: 193, url: '/api/assets/193/download' })).toBe('asset:193');
     expect(resourceSelectionValue({ url: 'https://mouss.synology.me:7399/api/assets/193/download' })).toBe('asset:193');

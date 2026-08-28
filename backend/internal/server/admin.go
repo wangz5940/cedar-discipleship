@@ -54,8 +54,6 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 		CreateUser  bool   `json:"create_user"`
 		UserID      uint64 `json:"user_id"`
 		DisplayName string `json:"display_name"`
-		Username    string `json:"username"`
-		NamePinyin  string `json:"name_pinyin"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -64,8 +62,6 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 		CreateUser:  req.CreateUser,
 		UserID:      req.UserID,
 		DisplayName: req.DisplayName,
-		Username:    req.Username,
-		NamePinyin:  req.NamePinyin,
 	})
 	if errors.Is(err, userdomain.ErrUsernameDisplayNameRequired) {
 		writeError(w, http.StatusBadRequest, "username_display_name_required")

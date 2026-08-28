@@ -21,9 +21,7 @@ func (a *app) handleSuperListGroups(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleSuperCreateGroup(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	var req struct {
-		Code        string `json:"code"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name string `json:"name"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -34,12 +32,44 @@ func (a *app) handleSuperCreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "password_failed")
 		return
 	}
-	id, err := a.users.CreateGroup(r.Context(), req.Code, req.Name, req.Description, hash, u.ID, time.Now().UTC())
+	id, err := a.users.CreateGroup(r.Context(), req.Name, hash, u.ID, time.Now().UTC())
+	if errors.Is(err, userdomain.ErrGroupNameRequired) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
-		writeError(w, http.StatusConflict, "group_create_failed")
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "default_password": password})
+}
+
+func (a *app) handleSuperUpdateGroup(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	err := a.users.UpdateGroup(r.Context(), groupID, req.Name, time.Now().UTC())
+	if errors.Is(err, userdomain.ErrGroupNameRequired) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, userdomain.ErrGroupNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	a.audit(groupID, u.ID, "update_group", "study_groups", groupID, nil, map[string]any{
+		"name": req.Name,
+	}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *app) handleSuperSetGroupDefaultPassword(w http.ResponseWriter, r *http.Request) {

@@ -16,6 +16,129 @@ export type LibrarySectionLike = {
   items?: ResourceLike[];
 };
 
+export type ResourceCategoryDefinition = {
+  key: string;
+  label: string;
+  uploadLabel?: string;
+  groupLabel: string;
+  groupDescription: string;
+  uploadable?: boolean;
+  aliases?: string[];
+};
+
+// Add or rename resource categories here first; upload, filter, and display UI derive from this registry.
+export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
+  {
+    key: 'mentor',
+    label: '导读',
+    uploadLabel: 'Mentor 导读',
+    groupLabel: '导读',
+    groupDescription: 'Mentor 导读材料',
+    uploadable: true,
+  },
+  {
+    key: 'book',
+    label: '书籍',
+    uploadLabel: 'PDF 书籍',
+    groupLabel: '书籍',
+    groupDescription: '书籍 PDF 与阅读任务材料',
+    uploadable: true,
+  },
+  {
+    key: 'passage',
+    label: '读物',
+    groupLabel: '读物',
+    groupDescription: '读物 PDF 与经文材料',
+    aliases: ['pdf'],
+  },
+  {
+    key: 'markdown',
+    label: '文字',
+    uploadLabel: 'Markdown 文字',
+    groupLabel: '文字',
+    groupDescription: 'Markdown 与文字材料',
+    uploadable: true,
+  },
+  {
+    key: 'video',
+    label: '视频',
+    uploadLabel: '视频文件',
+    groupLabel: '视频',
+    groupDescription: '视频与播放材料',
+    uploadable: true,
+  },
+  {
+    key: 'handout',
+    label: '讲义',
+    uploadLabel: '讲义 PDF',
+    groupLabel: '讲义',
+    groupDescription: '配套讲义材料',
+    uploadable: true,
+    aliases: ['share', 'ppt'],
+  },
+  {
+    key: 'outline',
+    label: '提纲',
+    uploadLabel: '提纲图片',
+    groupLabel: '提纲',
+    groupDescription: '提纲背诵图片',
+    uploadable: true,
+  },
+  {
+    key: 'ministry_attachment',
+    label: '专项附件',
+    groupLabel: '专项附件',
+    groupDescription: '专项小组进展中上传的附件',
+  },
+];
+
+export const RESOURCE_UPLOAD_CATEGORIES = RESOURCE_CATEGORIES
+  .filter((item) => item.uploadable)
+  .map((item) => ({ key: item.key, label: item.uploadLabel || item.label }));
+
+const CATEGORY_ALIAS_MAP = new Map<string, string>(
+  RESOURCE_CATEGORIES.flatMap((item) => [
+    [item.key, item.key] as [string, string],
+    ...(item.aliases || []).map((alias) => [alias, item.key] as [string, string]),
+  ]),
+);
+
+export function normalizeResourceCategory(category?: unknown): string {
+  const key = String(category || '').toLowerCase().trim();
+  if (/^ministry-\d+$/.test(key)) return 'ministry_attachment';
+  return CATEGORY_ALIAS_MAP.get(key) || key;
+}
+
+export function resourceCategoryLabel(category?: unknown): string {
+  const key = normalizeResourceCategory(category);
+  return RESOURCE_CATEGORIES.find((item) => item.key === key)?.label || String(category || '') || '资源';
+}
+
+export function resourceCategorySort(left?: unknown, right?: unknown): number {
+  const leftKey = normalizeResourceCategory(left);
+  const rightKey = normalizeResourceCategory(right);
+  const leftIndex = RESOURCE_CATEGORIES.findIndex((item) => item.key === leftKey);
+  const rightIndex = RESOURCE_CATEGORIES.findIndex((item) => item.key === rightKey);
+  return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex) || leftKey.localeCompare(rightKey);
+}
+
+export function resourceCategoryGroups() {
+  return [
+    ...RESOURCE_CATEGORIES.map((item) => ({
+      key: item.key,
+      label: item.groupLabel,
+      description: item.groupDescription,
+      items: [] as ResourceLike[],
+    })),
+    { key: 'other', label: '其他', description: '未归入主分类的资料', items: [] as ResourceLike[] },
+  ];
+}
+
+export function resourceCategoryGroupKey(category?: unknown): string {
+  const key = normalizeResourceCategory(category);
+  return RESOURCE_CATEGORIES.some((item) => item.key === key) ? key : 'other';
+}
+
 function numericID(value: unknown): number {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : 0;

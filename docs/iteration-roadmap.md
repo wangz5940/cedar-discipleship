@@ -127,8 +127,8 @@ go run ./cmd/migrate-json \
 
 账号生成规则：
 
-- 优先使用内置用户名映射和标准化规则生成 `username`。
-- 如果仍无法得到稳定用户名，CLI 会在迁移报告中输出 `generated_usernames` 供人工确认。
+- 成员账号由系统按中文姓名生成拼音。
+- 重名账号自动追加数字后缀。
 
 ### 3.4 records.json 映射
 

@@ -2,8 +2,12 @@ package user
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -52,12 +56,70 @@ func (r *MySQLRepository) ListAllGroups(ctx context.Context) ([]Group, error) {
 	return scanGroups(rows)
 }
 
-func (r *MySQLRepository) CreateGroup(ctx context.Context, code, name, description, passwordHash string, actorID uint64, at time.Time) (uint64, error) {
-	res, err := r.db.ExecContext(ctx, `INSERT INTO study_groups (code,name,description,default_password_hash,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)`, code, name, description, passwordHash, actorID, at, at)
+func (r *MySQLRepository) CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time) (uint64, error) {
+	name = strings.TrimSpace(name)
+	if err := r.ensureGroupNameUnique(ctx, 0, name); err != nil {
+		return 0, err
+	}
+	code, err := r.generateGroupCode(ctx)
+	if err != nil {
+		return 0, err
+	}
+	res, err := r.db.ExecContext(ctx, `INSERT INTO study_groups (code,name,description,default_password_hash,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)`, code, name, "", passwordHash, actorID, at, at)
 	if err != nil {
 		return 0, err
 	}
 	return insertedID(res)
+}
+
+func (r *MySQLRepository) UpdateGroup(ctx context.Context, id uint64, name string, at time.Time) error {
+	name = strings.TrimSpace(name)
+	if err := r.ensureGroupNameUnique(ctx, id, name); err != nil {
+		return err
+	}
+	res, err := r.db.ExecContext(ctx, `UPDATE study_groups SET name=?,updated_at=? WHERE id=? AND status=1`, name, at, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrGroupNotFound
+	}
+	return nil
+}
+
+func (r *MySQLRepository) ensureGroupNameUnique(ctx context.Context, ownID uint64, name string) error {
+	var id uint64
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE name=? AND id<>? LIMIT 1`, name, ownID).Scan(&id)
+	if err == nil {
+		return errors.New("group_name_exists")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return nil
+}
+
+func (r *MySQLRepository) generateGroupCode(ctx context.Context) (string, error) {
+	for range 16 {
+		var raw [4]byte
+		if _, err := rand.Read(raw[:]); err != nil {
+			return "", err
+		}
+		code := "group-" + hex.EncodeToString(raw[:])
+		var id uint64
+		err := r.db.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE code=? LIMIT 1`, code).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return code, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return "", errors.New("group_code_generate_failed")
 }
 
 func (r *MySQLRepository) ListUsers(ctx context.Context, limit int) ([]UserListItem, error) {
@@ -151,6 +213,11 @@ func (r *MySQLRepository) CreateMember(ctx context.Context, groupID, actorID uin
 		if err != nil {
 			return 0, ErrGroupDefaultPasswordMissing
 		}
+		username, err := nextAvailableUsernameTx(ctx, tx, input.Username)
+		if err != nil {
+			return 0, err
+		}
+		input.Username = username
 		userID, err = createUserWithHashTx(ctx, tx, input.Username, input.DisplayName, firstNonEmpty(input.NamePinyin, input.Username), hash, false, actorID, now)
 		if err != nil {
 			return 0, fmt.Errorf("%w: %v", ErrUserCreateFailed, err)
@@ -390,6 +457,28 @@ func createUserWithHash(ctx context.Context, execer execer, username, displayNam
 		return 0, err
 	}
 	return insertedID(res)
+}
+
+func nextAvailableUsernameTx(ctx context.Context, tx *sql.Tx, base string) (string, error) {
+	base = normalizeUsername(base)
+	if base == "" {
+		return "", ErrUsernameDisplayNameRequired
+	}
+	for i := 0; i < 1000; i++ {
+		candidate := base
+		if i > 0 {
+			candidate = fmt.Sprintf("%s%d", base, i+1)
+		}
+		var id uint64
+		err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE username=? LIMIT 1`, candidate).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return "", errors.New("username_generate_failed")
 }
 
 func addMemberTx(ctx context.Context, tx *sql.Tx, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {

@@ -54,7 +54,8 @@
 ├── scripts/
 │   ├── init-deploy-env.sh      # 生成本地部署 .env
 │   ├── deploy-oneclick.sh       # 新环境一键部署
-│   └── migrate-group.sh         # 独立迁移其他组
+│   ├── migrate-group.sh         # 底层旧 JSON 迁移入口
+│   └── migrate-legacy-project.sh # 旧独立项目一站式迁移入口
 ├── docs/
 │   ├── ops-commands.md
 │   ├── deploy-new-environment.md
@@ -183,17 +184,18 @@ export RESOURCE_LEGACY_ROOT='/absolute/path/to/old-resource-root'
 
 ### 已上线后继续迁移其他组
 
+旧独立项目目录迁移使用一站式入口。它会读取旧项目下的 `config.json` 和 `data/records.json`，正式导入后迁移本组独有资料文件；已由其他小组共享的同名同类资源会优先复用，不重复复制文件。
+
 ```bash
-GROUP_CODE='agape-b' \
-GROUP_NAME='AGAPE B组' \
-CONFIG_PATH='/absolute/path/to/config.json' \
-RECORDS_PATH='/absolute/path/to/records.json' \
+SOURCE_PROJECT_DIR='/volume1/docker/zw1-checkin' \
+GROUP_CODE='zw1' \
+GROUP_NAME='ZW1小组' \
 GROUP_DEFAULT_PASSWORD='Abc12345' \
-EXECUTE_IMPORT=true \
-./scripts/migrate-group.sh
+EXECUTE_IMPORT=false \
+./scripts/migrate-legacy-project.sh
 ```
 
-默认建议先只做 dry-run，检查迁移报告里的 `generated_usernames`、`warnings` 和 `failures` 后再导入。
+确认 dry-run 报告后，将 `EXECUTE_IMPORT=true` 重新执行。`GROUP_CODE` 是迁移和资源路径使用的内部稳定标识；管理后台只展示和维护小组名称。
 
 ## 跨组资源治理
 

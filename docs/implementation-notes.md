@@ -99,7 +99,8 @@ export BOOTSTRAP_SUPERADMIN_PASSWORD='你的强密码'
 
 - `backend/cmd/migrate-json/main.go`：旧 `config.json` / `records.json` 导入 MySQL 的 CLI。
 - `scripts/deploy-oneclick.sh`：新环境一键部署，并可串联首组迁移。
-- `scripts/migrate-group.sh`：已上线环境补迁其他组数据。
+- `scripts/migrate-legacy-project.sh`：已上线环境迁入旧独立项目，并优先复用共享资源。
+- `scripts/migrate-group.sh`：旧 JSON 数据迁移的底层入口。
 - `/api/library` 和资源库后台只读取 MySQL 中当前学习小组的资源绑定；文件统一保存在 `data/resources`。
 
 ## 本地检查

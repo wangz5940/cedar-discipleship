@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -147,10 +146,7 @@ func (r *MySQLRepository) SharedResources(ctx context.Context, targetGroupID uin
 		query += " AND a.group_id=?"
 		args = append(args, filter.OwnerGroupID)
 	}
-	if strings.TrimSpace(filter.Category) != "" {
-		query += " AND a.category=?"
-		args = append(args, strings.TrimSpace(filter.Category))
-	}
+	query, args = appendAssetCategoryFilter(query, args, filter.Category, "a.category")
 	query += " ORDER BY sg.name,a.category,a.title,a.id"
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

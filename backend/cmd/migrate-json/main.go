@@ -30,6 +30,10 @@ import (
 const (
 	roleMember      = "member"
 	sourceMigration = "json_migration"
+	assetKindOwned  = "owned"
+	assetKindImport = "imported"
+	sharePermImport = "import"
+	shareStatusOn   = "active"
 )
 
 type options struct {
@@ -46,6 +50,7 @@ type options struct {
 	skipRecords              bool
 	failOnGeneratedUsernames bool
 	forceOverwrite           bool
+	preferSharedAssets       bool
 }
 
 type oldConfig struct {
@@ -282,6 +287,7 @@ func main() {
 	flag.BoolVar(&opt.skipRecords, "skip-records", false, "skip records import")
 	flag.BoolVar(&opt.failOnGeneratedUsernames, "fail-on-generated-usernames", false, "fail members whose usernames must be auto-generated")
 	flag.BoolVar(&opt.forceOverwrite, "force-overwrite", false, "overwrite existing group settings and study weeks")
+	flag.BoolVar(&opt.preferSharedAssets, "prefer-shared-assets", false, "reuse matching shared assets from other groups before creating legacy asset records")
 	flag.Parse()
 
 	if err := run(opt); err != nil {
@@ -320,6 +326,7 @@ func run(opt options) error {
 		Group: groupReport{Code: opt.groupCode, Name: opt.groupName, WouldSave: opt.dryRun},
 		Details: map[string]any{
 			"generated_usernames": map[string]string{},
+			"shared_assets":       map[string]string{},
 		},
 	}
 	state := migrationState{
@@ -546,11 +553,14 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 					continue
 				}
 				report.Assets.Parsed++
-				assetID, created, err := ensureAsset(ctx, tx, groupID, link.Ref, link.Category, now)
+				assetID, created, reusedShared, err := ensureAsset(ctx, tx, groupID, link.Ref, link.Category, now, opt.preferSharedAssets)
 				if err != nil {
 					report.Assets.Failed++
 					report.Failures = append(report.Failures, failure{Scope: "asset", Key: link.Ref.URL, Message: err.Error()})
 					continue
+				}
+				if reusedShared {
+					report.Details["shared_assets"].(map[string]string)[link.Ref.URL] = fmt.Sprintf("asset:%d", assetID)
 				}
 				if created {
 					report.Assets.Created++
@@ -804,19 +814,28 @@ func ensureTask(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, task pl
 	return newID, true, err
 }
 
-func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRef, category, now string) (uint64, bool, error) {
+func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRef, category, now string, preferShared bool) (uint64, bool, bool, error) {
 	storagePath := strings.TrimSpace(ref.URL)
 	if storagePath == "" {
-		return 0, false, errors.New("empty asset url")
+		return 0, false, false, errors.New("empty asset url")
 	}
 	var id uint64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM assets WHERE group_id=? AND storage_path=? LIMIT 1", groupID, storagePath).Scan(&id)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, "UPDATE assets SET title=?, category=?, updated_at=? WHERE id=?", firstNonEmpty(ref.Title, assetBaseName(storagePath)), category, now, id)
-		return id, false, err
+		return id, false, false, err
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, false, err
+		return 0, false, false, err
+	}
+	if preferShared {
+		assetID, ok, err := importMatchingSharedAsset(ctx, tx, groupID, ref, category, now)
+		if err != nil {
+			return 0, false, false, err
+		}
+		if ok {
+			return assetID, false, true, nil
+		}
 	}
 	original := assetBaseName(storagePath)
 	res, err := tx.ExecContext(ctx, `INSERT INTO assets
@@ -824,10 +843,160 @@ func ensureAsset(ctx context.Context, tx *sql.Tx, groupID uint64, ref oldAssetRe
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		groupID, category, firstNonEmpty(ref.Title, original), original, storagePath, mimeFromPath(storagePath), 0, "", "group", 0, now, now)
 	if err != nil {
-		return 0, false, err
+		return 0, false, false, err
 	}
 	newID, err := insertedID(res)
-	return newID, true, err
+	return newID, true, false, err
+}
+
+func importMatchingSharedAsset(ctx context.Context, tx *sql.Tx, targetGroupID uint64, ref oldAssetRef, category, now string) (uint64, bool, error) {
+	original := assetBaseName(strings.TrimSpace(ref.URL))
+	title := firstNonEmpty(ref.Title, strings.TrimSuffix(original, filepath.Ext(original)))
+	categories := sharedCategoryCandidates(category)
+	categoryConditions := make([]string, 0, len(categories))
+	args := []any{assetKindOwned, sharePermImport, shareStatusOn, targetGroupID, targetGroupID}
+	for _, candidate := range categories {
+		categoryConditions = append(categoryConditions, "a.category=?")
+		args = append(args, candidate)
+	}
+	args = append(args, original, title, original)
+	var source struct {
+		id             uint64
+		groupID        uint64
+		category       string
+		title          string
+		originalName   string
+		storagePath    string
+		mimeType       string
+		fileSize       uint64
+		checksumSHA256 string
+	}
+	query := fmt.Sprintf(`
+		SELECT a.id,a.group_id,a.category,a.title,a.original_name,a.storage_path,a.mime_type,a.file_size,a.checksum_sha256
+		FROM asset_share_grants g
+		JOIN assets a ON a.id=g.asset_id AND a.group_id=g.owner_group_id
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id AND b.asset_kind=? AND b.deleted_at IS NULL
+		WHERE g.permission=? AND g.status=? AND a.group_id<>?
+		  AND (g.consumer_group_id IS NULL OR g.consumer_group_id=?)
+		  AND (%s)
+		  AND (a.original_name=? OR a.title=?)
+		ORDER BY CASE WHEN a.original_name=? THEN 0 ELSE 1 END,a.id
+		LIMIT 1`, strings.Join(categoryConditions, " OR "))
+	err := tx.QueryRowContext(ctx, query, args...).Scan(
+		&source.id,
+		&source.groupID,
+		&source.category,
+		&source.title,
+		&source.originalName,
+		&source.storagePath,
+		&source.mimeType,
+		&source.fileSize,
+		&source.checksumSHA256,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	assetID, err := importSharedAsset(ctx, tx, targetGroupID, source.id, source.groupID, source.category, source.title, source.originalName, source.storagePath, source.mimeType, source.fileSize, source.checksumSHA256, now)
+	if err != nil {
+		return 0, false, err
+	}
+	return assetID, true, nil
+}
+
+func sharedCategoryCandidates(category string) []string {
+	switch strings.TrimSpace(strings.ToLower(category)) {
+	case "share", "ppt", "handout":
+		return []string{"handout", "share", "ppt"}
+	case "pdf", "passage":
+		return []string{"passage", "pdf"}
+	default:
+		return []string{strings.TrimSpace(strings.ToLower(category))}
+	}
+}
+
+func importSharedAsset(
+	ctx context.Context,
+	tx *sql.Tx,
+	targetGroupID uint64,
+	sourceAssetID uint64,
+	sourceGroupID uint64,
+	category string,
+	title string,
+	originalName string,
+	storagePath string,
+	mimeType string,
+	fileSize uint64,
+	checksumSHA256 string,
+	now string,
+) (uint64, error) {
+	var importedAssetID uint64
+	var existing sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT asset_id FROM asset_bindings WHERE group_id=? AND source_asset_id=? FOR UPDATE`, targetGroupID, sourceAssetID).Scan(&existing)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	if existing.Valid && existing.Int64 > 0 {
+		importedAssetID = uint64(existing.Int64)
+		if _, err := tx.ExecContext(ctx, `UPDATE asset_bindings
+			SET imported_at=COALESCE(imported_at,?),deleted_at=NULL,updated_at=?
+			WHERE asset_id=? AND group_id=?`, now, now, importedAssetID, targetGroupID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE assets
+			SET category=?,title=?,original_name=?,storage_path=?,mime_type=?,file_size=?,checksum_sha256=?,updated_at=?
+			WHERE id=? AND group_id=?`,
+			category, title, originalName, storagePath, mimeType, fileSize, checksumSHA256, now, importedAssetID, targetGroupID); err != nil {
+			return 0, err
+		}
+	} else {
+		res, err := tx.ExecContext(ctx, `INSERT INTO assets
+			(group_id,category,title,original_name,storage_path,mime_type,file_size,checksum_sha256,visibility,created_by,created_at,updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			targetGroupID, category, title, originalName, storagePath, mimeType, fileSize, checksumSHA256, "imported", 0, now, now)
+		if err != nil {
+			return 0, err
+		}
+		importedAssetID, err = insertedID(res)
+		if err != nil {
+			return 0, err
+		}
+		resourceKey, err := randomResourceKey()
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_bindings
+			(asset_id,group_id,resource_key,asset_kind,source_asset_id,imported_at,deleted_at,created_at,updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?)`,
+			importedAssetID, targetGroupID, resourceKey, assetKindImport, sourceAssetID, now, nil, now, now); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_dependencies
+		(consumer_group_id,consumer_asset_id,provider_group_id,provider_asset_id,dependency_type,status,created_at,updated_at)
+		VALUES (?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE status=VALUES(status),updated_at=VALUES(updated_at)`,
+		targetGroupID, importedAssetID, sourceGroupID, sourceAssetID, sharePermImport, shareStatusOn, now, now); err != nil {
+		return 0, err
+	}
+	detail := fmt.Sprintf(`{"migration":true,"source":"%s"}`, sourceMigration)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_import_events
+		(target_group_id,imported_asset_id,source_asset_id,event_type,actor_user_id,detail,created_at)
+		VALUES (?,?,?,?,?,?,?)`,
+		targetGroupID, importedAssetID, sourceAssetID, assetKindImport, 0, detail, now); err != nil {
+		return 0, err
+	}
+	return importedAssetID, nil
+}
+
+func randomResourceKey() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value[:]), nil
 }
 
 func ensureTaskAsset(ctx context.Context, tx *sql.Tx, groupID, taskID, assetID uint64, usageType, now string) (bool, error) {

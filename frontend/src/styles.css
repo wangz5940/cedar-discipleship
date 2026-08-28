@@ -2248,10 +2248,6 @@ textarea:focus {
   min-width: 0;
 }
 
-.mobile-title-logout {
-  display: none;
-}
-
 .toolbar-card {
   padding: 16px 24px;
   border-radius: var(--radius-md);
@@ -3850,6 +3846,9 @@ textarea::placeholder {
 
 .app-shell {
   grid-template-columns: 248px minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--canvas);
 }
 
@@ -3858,6 +3857,8 @@ textarea::placeholder {
 }
 
 .sidebar {
+  height: 100dvh;
+  overflow-y: auto;
   padding: 20px 14px;
   border-right: 1px solid var(--line);
   background: #fafbf8;
@@ -3974,6 +3975,9 @@ textarea::placeholder {
 
 .main-panel {
   width: min(var(--content-max), 100%);
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
   padding: 28px 32px 48px;
 }
 
@@ -5605,6 +5609,9 @@ textarea::placeholder {
   .app-shell,
   .app-shell.sidebar-collapsed {
     display: block;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
   }
 
   .sidebar {
@@ -5612,6 +5619,9 @@ textarea::placeholder {
   }
 
   .main-panel {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
     padding: 20px 16px calc(84px + env(safe-area-inset-bottom, 0px));
   }
 
@@ -5626,15 +5636,6 @@ textarea::placeholder {
     justify-content: space-between;
     gap: 12px;
     padding: 0 2px 6px;
-  }
-
-  .mobile-title-logout {
-    display: inline-flex;
-    flex: 0 0 auto;
-    min-height: 38px;
-    padding: 7px 10px;
-    border-radius: 8px;
-    color: #8b5326;
   }
 
   .page-title-card h1 {
@@ -5737,6 +5738,15 @@ textarea::placeholder {
     color: var(--muted);
     font-size: 12px;
     box-shadow: none;
+  }
+
+  .mobile-tabs .mobile-tab-logout {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: #8b5326;
   }
 
   .mobile-tabs button.active {

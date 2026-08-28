@@ -22,6 +22,8 @@ var ErrGroupDefaultPasswordMissing = errors.New("group_default_password_missing"
 var ErrUserCreateFailed = errors.New("user_create_failed")
 var ErrMemberAddFailed = errors.New("member_add_failed")
 var ErrInvalidRole = errors.New("invalid_role")
+var ErrGroupNameRequired = errors.New("group_name_required")
+var ErrGroupNotFound = errors.New("group_not_found")
 
 type Service struct {
 	repo Repository
@@ -105,8 +107,21 @@ func (s *Service) AllGroups(ctx context.Context) ([]Group, error) {
 	return s.repo.ListAllGroups(ctx)
 }
 
-func (s *Service) CreateGroup(ctx context.Context, code, name, description, passwordHash string, actorID uint64, at time.Time) (uint64, error) {
-	return s.repo.CreateGroup(ctx, code, name, description, passwordHash, actorID, at)
+func (s *Service) CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time) (uint64, error) {
+	if strings.TrimSpace(name) == "" {
+		return 0, ErrGroupNameRequired
+	}
+	return s.repo.CreateGroup(ctx, name, passwordHash, actorID, at)
+}
+
+func (s *Service) UpdateGroup(ctx context.Context, id uint64, name string, at time.Time) error {
+	if id == 0 {
+		return ErrGroupNotFound
+	}
+	if strings.TrimSpace(name) == "" {
+		return ErrGroupNameRequired
+	}
+	return s.repo.UpdateGroup(ctx, id, name, at)
 }
 
 func (s *Service) ListUsers(ctx context.Context, limit int) ([]UserListItemVO, error) {
@@ -122,9 +137,16 @@ func (s *Service) ListUsers(ctx context.Context, limit int) ([]UserListItemVO, e
 }
 
 func (s *Service) CreateMember(ctx context.Context, groupID, actorID uint64, input CreateMemberInput) (uint64, error) {
-	input.Username = normalizeUsername(firstNonEmpty(input.Username, input.NamePinyin, input.DisplayName))
-	if input.CreateUser && (input.Username == "" || strings.TrimSpace(input.DisplayName) == "") {
+	input.DisplayName = strings.TrimSpace(input.DisplayName)
+	if input.CreateUser && input.DisplayName == "" {
 		return 0, ErrUsernameDisplayNameRequired
+	}
+	if input.CreateUser {
+		input.NamePinyin = firstNonEmpty(input.NamePinyin, memberNamePinyin(input.DisplayName))
+		input.Username = normalizeUsername(firstNonEmpty(input.Username, input.NamePinyin))
+		if input.Username == "" {
+			return 0, ErrUsernameDisplayNameRequired
+		}
 	}
 	if !input.CreateUser && input.UserID == 0 {
 		return 0, ErrUserIDRequired

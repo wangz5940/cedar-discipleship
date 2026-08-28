@@ -28,7 +28,12 @@ import {
   shouldUseNativePDFViewer,
   weeklyTitleFromContent,
 } from './runtime/content';
-import { mergeResourceAssets, resourceSelectionValue } from './runtime/resources';
+import {
+  mergeResourceAssets,
+  normalizeResourceCategory,
+  resourceCategoryLabel,
+  resourceSelectionValue,
+} from './runtime/resources';
 
 export { enabledFlag, extractPdfPageRange };
 
@@ -699,12 +704,13 @@ function normalizeResourceSeriesKey(value) {
 
 function classifyViewerResource(item) {
   const type = String(item?.type || inferResourceType(item?.url || item?.original_name || item?.title || '')).toLowerCase();
-  const category = String(item?.category || '').toLowerCase();
+  const category = normalizeResourceCategory(item?.category);
   const text = `${item?.title || ''} ${item?.original_name || ''} ${category}`.toLowerCase();
   if (type === 'video') return 'video';
   if (category === 'mentor' || text.includes('mentor') || text.includes('导读') || text.includes('内容概要') || text.includes('圣经纵览的目的与价值')) return 'mentor';
   if (['handout', 'share', 'ppt'].includes(category)) return 'handout';
-  if (['book', 'passage'].includes(category)) return 'passage';
+  if (category === 'book') return 'book';
+  if (category === 'passage') return 'passage';
   if (text.includes('讲义') || text.includes('ppt') || text.includes('handout')) return 'handout';
   if (type === 'pdf') return 'passage';
   return '';
@@ -749,7 +755,7 @@ function buildMountedSeriesLinks(title) {
   const baseTitle = String(title || '').trim().replace(/^\[B311\]/i, '');
   if (!baseTitle) return [];
   return state.assets
-    .filter((item) => ['mentor', 'passage', 'handout'].includes(classifyViewerResource(item)))
+    .filter((item) => ['mentor', 'book', 'passage', 'handout'].includes(classifyViewerResource(item)))
     .filter((item) => matchViewerResourceToTitle(item, baseTitle))
     .map((item) => viewerResourceLink(item, baseTitle))
     .filter((item) => item.url);
@@ -778,9 +784,10 @@ function buildVideoViewerSections(target) {
   });
   const sections = [
     { key: 'mentor', label: 'Mentor 导读', actionLabel: '查看' },
-    { key: 'passage', label: '读物 PDF', actionLabel: '查看' },
-    { key: 'handout', label: '讲义 PDF', actionLabel: '查看' },
-    { key: 'video', label: '视频资源', actionLabel: '观看' },
+    { key: 'book', label: resourceCategoryLabel('book'), actionLabel: '查看' },
+    { key: 'passage', label: resourceCategoryLabel('passage'), actionLabel: '查看' },
+    { key: 'handout', label: resourceCategoryLabel('handout'), actionLabel: '查看' },
+    { key: 'video', label: resourceCategoryLabel('video'), actionLabel: '观看' },
   ];
   return sections.map((section) => ({
     ...section,

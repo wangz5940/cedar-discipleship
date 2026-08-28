@@ -11,6 +11,7 @@ deploy/docker-compose.separated.yml
 ```text
 scripts/deploy-oneclick.sh
 scripts/migrate-group.sh
+scripts/migrate-legacy-project.sh
 docs/deploy-new-environment.md
 docs/migrate-other-groups.md
 ```
@@ -357,50 +358,37 @@ ORDER BY PARTITION_ORDINAL_POSITION;
 
 ## 旧 JSON 数据迁移
 
-迁移工具路径：
+旧独立项目一站式迁移入口：
 
 ```text
-backend/cmd/migrate-json
+scripts/migrate-legacy-project.sh
 ```
 
-先执行 dry-run，只解析 `config.json` 和 `data/records.json`，不写数据库：
+先执行 dry-run，只解析旧项目数据，不写数据库、不复制文件：
 
 ```bash
-cd /Users/bytedance/program/agp/backend
+cd /Users/bytedance/program/agp
 
-go run ./cmd/migrate-json \
-  --group-code agape-a \
-  --group-name "AGAPE A组" \
-  --config ../config.json \
-  --records ../data/records.json \
-  --default-password "Abc12345" \
-  --report-dir ../data/migration-reports \
-  --dry-run=true
+SOURCE_PROJECT_DIR=/volume1/docker/zw1-checkin \
+GROUP_CODE=zw1 \
+GROUP_NAME="ZW1小组" \
+GROUP_DEFAULT_PASSWORD='Abc12345' \
+EXECUTE_IMPORT=false \
+./scripts/migrate-legacy-project.sh
 ```
 
-确认报告后执行真实导入：
+确认报告后执行正式导入：
 
 ```bash
-cd /Users/bytedance/program/agp/backend
-
-go run ./cmd/migrate-json \
-  --dsn "agp:agp@tcp(127.0.0.1:3307)/agp?parseTime=true&multiStatements=false&charset=utf8mb4,utf8" \
-  --group-code agape-a \
-  --group-name "AGAPE A组" \
-  --config ../config.json \
-  --records ../data/records.json \
-  --default-password "Abc12345" \
-  --report-dir ../data/migration-reports \
-  --dry-run=false
+SOURCE_PROJECT_DIR=/volume1/docker/zw1-checkin \
+GROUP_CODE=zw1 \
+GROUP_NAME="ZW1小组" \
+GROUP_DEFAULT_PASSWORD='Abc12345' \
+EXECUTE_IMPORT=true \
+./scripts/migrate-legacy-project.sh
 ```
 
-如果在 Docker Compose 网络内执行，DSN 中 MySQL 地址应使用服务名：
-
-```text
-agp:agp@tcp(mysql:3306)/agp?parseTime=true&multiStatements=false&charset=utf8mb4,utf8
-```
-
-迁移器会优先使用内置用户名映射；未命中时会自动生成用户名，并把结果写到迁移报告里的 `generated_usernames`。
+正式导入会写入新学习小组、成员、周任务、任务资源绑定和打卡记录，并迁移本组独有资料文件。其他小组已共享的同名同类资源会优先复用。
 
 迁移报告会输出到：
 
@@ -412,6 +400,7 @@ data/migration-reports/
 
 - `config.json` 导入 `study_groups`、`group_settings`、`users`、`group_members`、`user_group_roles`、`study_weeks`、`study_tasks`、`assets`、`task_assets`。
 - `records.json` 导入 `checkin_records`。
+- 成员账号由系统按中文姓名生成拼音。
 - `daily=done` -> `daily_devotion`。
 - `book=done` -> `weekly_book`。
 - `video=done` -> `weekly_video`。
