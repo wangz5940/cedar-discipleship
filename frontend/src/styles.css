@@ -1149,12 +1149,43 @@ input:focus, select:focus, textarea:focus {
 }
 
 .stats-mini-cards {
-  margin-top: -2px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(280px, 1.35fr);
+  gap: 12px;
+  margin-top: -4px;
+  align-items: stretch;
+}
+
+.stats-mini-cards .compact-stat {
+  min-height: 112px;
+  justify-content: center;
+  gap: 9px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.76));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.055);
+}
+
+.stats-mini-cards .compact-stat strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(25px, 2.8vw, 38px);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-mini-cards .stat-title,
+.stats-mini-cards .stat-note {
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .active-rule-card {
   align-content: start;
   gap: 8px;
+  justify-content: start;
 }
 
 .active-rule-editor {
@@ -1265,6 +1296,26 @@ input:focus, select:focus, textarea:focus {
   align-items: end;
   gap: 13px;
   padding: 12px 6px 0;
+}
+
+.home-stats-section {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vue-checkin-workbench-host,
+.vue-checkin-workbench-host > .grid {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.home-stats-section .bar-chart-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .bar-item {
@@ -4153,6 +4204,38 @@ textarea::placeholder {
   font-weight: 620;
 }
 
+.stats-mini-cards {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(280px, 1.35fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.stats-mini-cards .compact-stat {
+  min-height: 112px;
+  justify-content: center;
+  gap: 9px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.76));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.055);
+}
+
+.stats-mini-cards .compact-stat strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(25px, 2.8vw, 38px);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-mini-cards .stat-title,
+.stats-mini-cards .stat-note {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .task-board {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
@@ -5699,12 +5782,30 @@ textarea::placeholder {
 
   .dashboard-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
-  .dashboard-strip .compact-stat,
+  .dashboard-strip .compact-stat {
+    min-height: 78px;
+    padding: 10px 8px;
+    gap: 3px;
+    text-align: center;
+  }
+
   .stats-mini-cards .compact-stat {
     min-height: 82px;
     padding: 12px;
+  }
+
+  .dashboard-strip .compact-stat strong {
+    font-size: clamp(20px, 6.5vw, 28px);
+    line-height: 1;
+  }
+
+  .dashboard-strip .stat-title,
+  .dashboard-strip .stat-note {
+    font-size: 11px;
+    line-height: 1.15;
   }
 
   .task-board {
@@ -6970,6 +7071,18 @@ button.ministry-join-button {
   input[type="date"],
   input[type="datetime-local"] {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .grid.cols-4.dashboard-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .grid.cols-4.dashboard-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -313,22 +313,22 @@ async function exportRankingChart() {
       </section>
 
       <div class="grid cols-4 dashboard-strip">
-        <div class="card stat compact-stat">
+        <div class="card stat compact-stat dashboard-support-stat">
           <span class="stat-title">小组完成率</span>
           <strong>{{ overallPercent }}%</strong>
           <span class="stat-note">{{ doneSlots }}/{{ totalSlots }}</span>
         </div>
-        <div class="card stat compact-stat">
+        <div class="card stat compact-stat dashboard-support-stat">
           <span class="stat-title">今日成员</span>
           <strong>{{ memberCount }}</strong>
           <span class="stat-note">当前小组</span>
         </div>
-        <div class="card stat compact-stat">
+        <div class="card stat compact-stat dashboard-support-stat">
           <span class="stat-title">已完成项</span>
           <strong>{{ doneSlots }}</strong>
           <span class="stat-note">全组任务</span>
         </div>
-        <div class="card stat compact-stat">
+        <div class="card stat compact-stat dashboard-support-stat">
           <span class="stat-title">我的任务</span>
           <strong>{{ completed }}/{{ taskCount }}</strong>
           <span class="stat-note">{{ completed === taskCount ? '全部完成' : '继续完成' }}</span>
@@ -344,7 +344,6 @@ async function exportRankingChart() {
             <div v-for="card in progressCards" :key="`${card.task.type}:${card.task.part || ''}:${card.title}`" class="task-progress-card">
               <div class="task-progress-head">
                 <span>{{ card.icon }}</span>
-                <b>{{ card.title }}</b>
               </div>
               <div class="progress-track">
                 <span :style="{ width: `${card.percent}%` }"></span>
@@ -411,9 +410,6 @@ async function exportRankingChart() {
               <button type="button" :class="{ active: statsView === 'table' }" @click="statsView = 'table'">板块表格</button>
             </div>
             <span class="stats-tag active">分项总榜</span>
-            <span class="stats-tag">统计范围 {{ monthLabel }}</span>
-            <span class="stats-tag">活跃成员 {{ activeCount }}人</span>
-            <span class="stats-tag">灵修 / 书籍 / 视频 / 背大纲</span>
           </div>
         </div>
 
@@ -426,7 +422,6 @@ async function exportRankingChart() {
           <div class="card stat compact-stat">
             <span class="stat-title">统计范围</span>
             <strong>{{ monthLabel }}</strong>
-            <span class="stat-note">{{ rankingFrom }} 至 {{ rankingTo }}</span>
           </div>
           <div class="card stat compact-stat active-rule-card">
             <span class="stat-title">活跃成员</span>

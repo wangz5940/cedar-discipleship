@@ -47,6 +47,10 @@ const state = {
   todayHub: null,
   summary: null,
   monthlyRanking: null,
+  homeStatsEligible: false,
+  homeStatsLoading: false,
+  homeStatsCheckedGroupID: 0,
+  homeStatsCheckedAt: 0,
   statsFrom: monthStartString(),
   statsTo: todayString(),
   checkins: [],
@@ -147,6 +151,12 @@ function checkinSnapshot() {
     isFuture: isFutureSelected(),
     tasks,
     ownItems: ownCheckinsForSelectedDate(),
+    statsVisible: Boolean(state.homeStatsEligible),
+    statsLoading: Boolean(state.homeStatsLoading),
+    statsMonthLabel: state.monthlyRanking?.from && state.monthlyRanking?.to
+      ? formatDateRangeLabel(state.monthlyRanking.from, state.monthlyRanking.to)
+      : formatDateRangeLabel(state.statsFrom, state.statsTo),
+    statsRanking: state.homeStatsEligible ? monthlyRankingItems() : [],
   };
 }
 
@@ -244,6 +254,9 @@ const navItems = [
   ['resources', '资源', 'Library'],
   ['admin', '管理', 'Admin'],
 ];
+
+const homeStatsMinistryCode = 'discipleship-counting';
+const homeStatsEligibilityTTL = 60_000;
 
 export async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -349,12 +362,14 @@ export function toast(message) {
   }, 2600);
 }
 
-async function loadAll() {
+async function loadAll(options = {}) {
   if (!state.token) return;
   try {
     await loadSiteConfig();
-    const me = await api('/auth/me');
-    state.user = me.user;
+    if (!options.useExistingUser || !state.user) {
+      const me = await api('/auth/me');
+      state.user = me.user;
+    }
     if (state.tab === 'admin' && !canAdminAccess()) {
       state.tab = 'home';
     }
@@ -368,6 +383,10 @@ async function loadAll() {
       state.learningConfig = null;
       state.summary = {};
       state.monthlyRanking = null;
+      state.homeStatsEligible = false;
+      state.homeStatsLoading = false;
+      state.homeStatsCheckedGroupID = 0;
+      state.homeStatsCheckedAt = 0;
       state.members = [];
       state.checkins = [];
       state.weeks = [];
@@ -382,30 +401,43 @@ async function loadAll() {
       state.weekDraft = null;
       state.adminDataGroupID = 0;
     }
+    if (state.homeStatsCheckedGroupID && state.homeStatsCheckedGroupID !== state.user.current_group_id) {
+      state.homeStatsEligible = false;
+      state.homeStatsLoading = false;
+      state.homeStatsCheckedGroupID = 0;
+      state.homeStatsCheckedAt = 0;
+    }
     const selectedDate = state.selectedDate || todayString();
     const bootstrap = await api(`/app/bootstrap?date=${selectedDate}`);
+    state.bootstrap = bootstrap;
+    state.learningConfig = bootstrap.learning_config || null;
+    state.members = bootstrap.members || [];
+    render();
+
     const checkinFrom = bootstrap.current_week?.start || selectedDate;
     const checkinTo = bootstrap.current_week?.end || selectedDate;
     normalizeStatsRange();
-    const [summary, monthlyRanking, checkins, weeks, assets, todayHub, library] = await Promise.all([
-      api(`/dashboard/summary?from=${selectedDate}&to=${selectedDate}`),
-      api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`),
+    const [checkins, weeks, assets, todayHub, library, monthlyRanking] = await Promise.all([
       api(`/checkins?from=${checkinFrom}&to=${checkinTo}&page_size=1000`),
       api('/study-weeks'),
       api('/assets').catch(() => ({ assets: [] })),
       api(`/today?date=${selectedDate}`),
       api('/library').catch(() => ({ sections: [] })),
+      state.tab === 'dashboard'
+        ? api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`)
+        : Promise.resolve(state.monthlyRanking),
     ]);
-    state.bootstrap = bootstrap;
     state.todayHub = todayHub;
-    state.learningConfig = bootstrap.learning_config || null;
-    state.summary = summary.summary || {};
     state.monthlyRanking = monthlyRanking;
-    state.members = bootstrap.members || [];
     state.checkins = checkins.items || [];
     state.weeks = weeks.weeks || [];
     state.resourceLibrary = library.sections || [];
     state.assets = mergeResourceAssets(assets.assets || [], state.resourceLibrary);
+    render();
+    refreshHomeStats().catch((error) => {
+      state.homeStatsLoading = false;
+      toast(error.message);
+    });
   } catch (error) {
     if (String(error.message).includes('unauthorized')) {
       logout();
@@ -450,8 +482,10 @@ export async function login(username, password) {
     body: JSON.stringify({ username, password }),
   });
   state.token = data.token;
+  state.user = data.user;
   localStorage.setItem('agp_token', state.token);
-  await loadAll();
+  render();
+  await loadAll({ useExistingUser: true });
   render();
 }
 
@@ -462,10 +496,14 @@ export function setTab(tab) {
     return;
   }
   const enteringAdmin = tab === 'admin' && state.tab !== 'admin';
+  const enteringDashboard = tab === 'dashboard' && state.tab !== 'dashboard';
   state.tab = tab;
   if (enteringAdmin && ['learning', 'library'].includes(state.adminSection)) {
     state.weekDraft = null;
     loadAdminData(true);
+  }
+  if (enteringDashboard && state.token && state.user?.current_group_id) {
+    loadMonthlyRanking().then(render).catch((error) => toast(error.message));
   }
   render();
 }
@@ -575,6 +613,32 @@ export async function saveActiveMemberRule(rule) {
 async function loadMonthlyRanking() {
   normalizeStatsRange();
   state.monthlyRanking = await api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`);
+}
+
+async function refreshHomeStats() {
+  if (!state.token || !state.user?.current_group_id) return;
+  const groupID = Number(state.user.current_group_id || 0);
+  const now = Date.now();
+  const fresh = state.homeStatsCheckedGroupID === groupID && now - state.homeStatsCheckedAt < homeStatsEligibilityTTL;
+  if (fresh && (!state.homeStatsEligible || state.monthlyRanking?.items?.length)) return;
+
+  state.homeStatsLoading = true;
+  render();
+  try {
+    const result = await api('/ministry-groups');
+    const groups = Array.isArray(result.groups) ? result.groups : [];
+    state.homeStatsEligible = groups.some((group) => (
+      group.code === homeStatsMinistryCode && group.joined === true
+    ));
+    state.homeStatsCheckedGroupID = groupID;
+    state.homeStatsCheckedAt = Date.now();
+    if (state.homeStatsEligible) {
+      await loadMonthlyRanking();
+    }
+  } finally {
+    state.homeStatsLoading = false;
+    render();
+  }
 }
 
 export async function openTaskContent(task, link = null) {
@@ -2064,6 +2128,11 @@ export function logout() {
   state.user = null;
   state.bootstrap = null;
   state.todayHub = null;
+  state.monthlyRanking = null;
+  state.homeStatsEligible = false;
+  state.homeStatsLoading = false;
+  state.homeStatsCheckedGroupID = 0;
+  state.homeStatsCheckedAt = 0;
   state.weekDraft = null;
   render();
 }

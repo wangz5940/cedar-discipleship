@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
   Activity,
@@ -60,6 +60,13 @@ const progressBody = ref('');
 const progressAssets = ref([]);
 const uploading = ref(false);
 const uploadInput = ref(null);
+const workspaceGroupID = ref(0);
+const workspaceLoadedAt = ref(0);
+const detailCache = new Map();
+let workspaceLoadPromise = null;
+let workspaceWarmTimer = 0;
+
+const workspaceCacheTTL = 60_000;
 
 const visible = computed(() => authenticated.value && currentGroupID.value > 0 && tab.value === 'groups');
 const joinedGroups = computed(() => groups.value.filter((group) => group.joined));
@@ -82,7 +89,19 @@ watch(
   [visible, currentGroupID],
   async ([isVisible]) => {
     if (!isVisible) return;
-    await loadWorkspace();
+    await ensureWorkspace();
+  },
+  { immediate: true },
+);
+
+watch(
+  [authenticated, currentGroupID],
+  ([isAuthenticated, groupID]) => {
+    window.clearTimeout(workspaceWarmTimer);
+    if (!isAuthenticated || !groupID) return;
+    workspaceWarmTimer = window.setTimeout(() => {
+      ensureWorkspace(0, { background: true }).catch(() => undefined);
+    }, 200);
   },
   { immediate: true },
 );
@@ -91,8 +110,39 @@ watch(showRecycleBin, (isVisible) => {
   if (!isVisible && activeView.value === 'trash') activeView.value = 'members';
 });
 
+onBeforeUnmount(() => {
+  window.clearTimeout(workspaceWarmTimer);
+});
+
+async function ensureWorkspace(preferredGroupID = selectedGroupID.value, options = {}) {
+  const groupID = Number(currentGroupID.value || 0);
+  const fresh = workspaceGroupID.value === groupID && Date.now() - workspaceLoadedAt.value < workspaceCacheTTL;
+  if (fresh && groups.value.length) {
+    const nextID = Number(preferredGroupID || selectedGroupID.value || joinedGroups.value[0]?.id || groups.value[0]?.id || 0);
+    if (nextID && (!detail.value || Number(detail.value.group?.id || 0) !== nextID)) {
+      await selectGroup(nextID, { ...options, preferCache: true });
+    }
+    return;
+  }
+  if (!workspaceLoadPromise) {
+    workspaceLoadPromise = loadWorkspace(preferredGroupID, options)
+      .finally(() => {
+        workspaceLoadPromise = null;
+      });
+  }
+  await workspaceLoadPromise;
+}
+
 async function loadWorkspace(preferredGroupID = selectedGroupID.value, options = {}) {
-  loading.value = true;
+  const groupID = Number(currentGroupID.value || 0);
+  if (workspaceGroupID.value && workspaceGroupID.value !== groupID) {
+    groups.value = [];
+    detail.value = null;
+    detailCache.clear();
+  }
+  workspaceGroupID.value = groupID;
+  const hasCachedShell = groups.value.length > 0;
+  loading.value = !options.background && !hasCachedShell;
   try {
     const [groupResult, notificationResult, requestResult] = await Promise.all([
       api('/ministry-groups'),
@@ -107,9 +157,10 @@ async function loadWorkspace(preferredGroupID = selectedGroupID.value, options =
     const nextID = selectedStillExists
       ? Number(preferredGroupID)
       : Number(joinedGroups.value[0]?.id || groups.value[0]?.id || 0);
-    if (nextID) await selectGroup(nextID, { preserveView: Boolean(options.preserveView) });
+    workspaceLoadedAt.value = Date.now();
+    if (nextID) await selectGroup(nextID, { preserveView: Boolean(options.preserveView), background: Boolean(options.background), preferCache: true });
   } catch (error) {
-    showToast(error.message);
+    if (!options.background) showToast(error.message);
   } finally {
     loading.value = false;
   }
@@ -122,12 +173,18 @@ async function selectGroup(groupID, options = {}) {
     expandedFeedItems.value = new Set();
     selectedAttachmentKeys.value = new Set();
   }
-  detailLoading.value = true;
+  const cached = detailCache.get(Number(groupID));
+  if (cached && (options.preferCache || Date.now() - Number(cached.loadedAt || 0) < workspaceCacheTTL)) {
+    detail.value = cached.detail;
+  }
+  detailLoading.value = !options.background && !detail.value;
   try {
-    detail.value = await api(`/ministry-groups/${groupID}`);
+    const nextDetail = await api(`/ministry-groups/${groupID}`);
+    detail.value = nextDetail;
+    detailCache.set(Number(groupID), { detail: nextDetail, loadedAt: Date.now() });
   } catch (error) {
-    detail.value = null;
-    showToast(error.message);
+    if (!detail.value) detail.value = null;
+    if (!options.background) showToast(error.message);
   } finally {
     detailLoading.value = false;
   }
