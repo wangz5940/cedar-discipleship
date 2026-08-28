@@ -1149,7 +1149,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .stats-mini-cards {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(280px, 1.35fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.25fr);
   gap: 12px;
   margin-top: -4px;
   align-items: stretch;
@@ -1231,6 +1231,12 @@ input:focus, select:focus, textarea:focus {
   background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.72));
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(18px);
+}
+
+.bar-chart-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 6px 0 -6px;
 }
 
 .bar-chart-meta {
@@ -4205,7 +4211,7 @@ textarea::placeholder {
 }
 
 .stats-mini-cards {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(280px, 1.35fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.25fr);
   gap: 12px;
   align-items: stretch;
 }

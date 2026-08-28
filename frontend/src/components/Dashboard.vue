@@ -5,7 +5,6 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from '@lucide/vue';
 import { useDashboardStore } from '../stores/dashboard';
 import {
   openMemberCalendar,
-  resetStatsRangeToMonth,
   saveActiveMemberRule,
   setSelectedDate,
   setStatsDateRange,
@@ -388,7 +387,6 @@ async function exportRankingChart() {
             <h2>香柏木数据统计中心</h2>
           </div>
           <div class="stats-center-tags">
-            <button class="secondary" type="button" @click="exportRankingChart">导出柱状图 PNG</button>
             <div class="stats-range-controls" aria-label="统计时间范围">
               <input
                 type="date"
@@ -403,7 +401,6 @@ async function exportRankingChart() {
                 :max="statsMaxDate"
                 @change="setStatsDateRange('to', $event.target.value)"
               />
-              <button class="ghost" type="button" @click="resetStatsRangeToMonth">本月至今</button>
             </div>
             <div class="segmented-control" aria-label="统计展示方式">
               <button type="button" :class="{ active: statsView === 'chart' }" @click="statsView = 'chart'">柱状图</button>
@@ -413,15 +410,11 @@ async function exportRankingChart() {
           </div>
         </div>
 
-        <div class="grid cols-3 stats-mini-cards">
+        <div class="grid cols-2 stats-mini-cards">
           <div class="card stat compact-stat">
             <span class="stat-title">{{ activeScopeLabel }}榜首</span>
             <strong>{{ activeLeaderName }}</strong>
             <span class="stat-note">{{ activeLeaderNote }}</span>
-          </div>
-          <div class="card stat compact-stat">
-            <span class="stat-title">统计范围</span>
-            <strong>{{ monthLabel }}</strong>
           </div>
           <div class="card stat compact-stat active-rule-card">
             <span class="stat-title">活跃成员</span>
@@ -460,6 +453,10 @@ async function exportRankingChart() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div v-if="statsView === 'chart'" class="bar-chart-toolbar">
+          <button class="secondary" type="button" @click="exportRankingChart">导出柱状图 PNG</button>
         </div>
 
         <div v-if="statsView === 'chart'" class="bar-chart-card">
