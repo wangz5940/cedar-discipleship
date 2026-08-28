@@ -128,7 +128,11 @@ func (a *app) groupLearningConfig(ctx context.Context, groupID uint64) (map[stri
 }
 
 func (a *app) upsertGroupLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
-	return a.learning.SaveLearningConfig(ctx, groupID, settings)
+	if err := a.learning.SaveLearningConfig(ctx, groupID, settings); err != nil {
+		return err
+	}
+	a.refreshTodayContent(groupID)
+	return nil
 }
 
 func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLeaders bool, actorID uint64, r *http.Request) (int64, error) {

@@ -64,6 +64,16 @@ type TodayProgress struct {
 	Percent   int `json:"percent"`
 }
 
+type TodayContent struct {
+	Date        string           `json:"date"`
+	Title       string           `json:"title"`
+	CurrentWeek map[string]any   `json:"current_week,omitempty"`
+	WeekTasks   []map[string]any `json:"week_tasks,omitempty"`
+	Settings    map[string]any   `json:"settings"`
+	RecordFrom  string           `json:"record_from"`
+	RecordTo    string           `json:"record_to"`
+}
+
 type TodayRecord struct {
 	ID          uint64  `json:"id"`
 	UserID      uint64  `json:"user_id"`

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -177,6 +178,18 @@ func TestResourceSharingAdminRoutesRequireGroupAdmin(t *testing.T) {
 			path:    "/api/admin/resource-batch/imports",
 			handler: a.handleBatchResourceImport,
 		},
+		{
+			name:    "today cache metrics",
+			method:  http.MethodGet,
+			path:    "/api/admin/today-cache/metrics",
+			handler: a.handleTodayCacheMetrics,
+		},
+		{
+			name:    "clear today cache",
+			method:  http.MethodDelete,
+			path:    "/api/admin/today-cache",
+			handler: a.handleClearTodayCache,
+		},
 	}
 
 	for _, tt := range tests {
@@ -296,6 +309,61 @@ func TestAssetPlaybackSignatureIsScoped(t *testing.T) {
 	if a.verifyAssetPlayback(16, 1, expiresAt+1, signature) {
 		t.Fatal("signature accepted for a different expiration")
 	}
+
+	fallbackSignature := a.signAssetPlaybackSource(16, 1, expiresAt, "original")
+	if !a.verifyAssetPlaybackSource(16, 1, expiresAt, "original", fallbackSignature) {
+		t.Fatal("valid original playback signature was rejected")
+	}
+	if a.verifyAssetPlaybackSource(16, 1, expiresAt, "optimized", fallbackSignature) {
+		t.Fatal("original playback signature accepted for a different source")
+	}
+}
+
+func TestAssetPlaybackReturnsOriginalFallbackURL(t *testing.T) {
+	t.Parallel()
+
+	sourcePath := filepath.Join(t.TempDir(), "lesson.mp4")
+	if err := os.WriteFile(sourcePath, []byte("video"), 0o600); err != nil {
+		t.Fatalf("write source video: %v", err)
+	}
+	if err := os.WriteFile(sourcePath+assetPlaybackSuffix, []byte("optimized"), 0o600); err != nil {
+		t.Fatalf("write playback derivative: %v", err)
+	}
+	service := assetdomain.NewService(
+		&downloadAssetRepo{asset: assetdomain.Asset{
+			ID:           16,
+			GroupID:      1,
+			OriginalName: "lesson.mp4",
+			StoragePath:  "team-agp-resources/objects/test/lesson.mp4",
+			MimeType:     "video/mp4",
+		}},
+		&downloadAssetStorage{path: sourcePath},
+		"",
+	)
+	a := &app{assets: service, secret: []byte("test-playback-secret")}
+	request := httptest.NewRequest(http.MethodGet, "/api/assets/16/playback", nil)
+	request.SetPathValue("id", "16")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID:             1,
+		CurrentGroupID: 1,
+	}))
+	recorder := httptest.NewRecorder()
+
+	a.handleAssetPlayback(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	var response struct {
+		URL         string `json:"url"`
+		FallbackURL string `json:"fallback_url"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.URL == "" || !strings.Contains(response.FallbackURL, "source=original") {
+		t.Fatalf("playback response = %+v, want optimized and original URLs", response)
+	}
 }
 
 func TestPlaybackAssetFilePrefersGeneratedDerivative(t *testing.T) {
@@ -320,6 +388,52 @@ func TestPlaybackAssetFilePrefersGeneratedDerivative(t *testing.T) {
 	}
 	if got := playbackAssetFile(file); got.AbsolutePath != derivativePath {
 		t.Fatalf("path with derivative = %q, want %q", got.AbsolutePath, derivativePath)
+	}
+}
+
+func TestStreamAssetOriginalFallbackBypassesDerivative(t *testing.T) {
+	t.Parallel()
+
+	sourcePath := filepath.Join(t.TempDir(), "lesson.mp4")
+	if err := os.WriteFile(sourcePath, []byte("source"), 0o600); err != nil {
+		t.Fatalf("write source video: %v", err)
+	}
+	if err := os.WriteFile(sourcePath+assetPlaybackSuffix, []byte("derivative"), 0o600); err != nil {
+		t.Fatalf("write playback derivative: %v", err)
+	}
+	service := assetdomain.NewService(
+		&downloadAssetRepo{asset: assetdomain.Asset{
+			ID:           16,
+			GroupID:      1,
+			OriginalName: "lesson.mp4",
+			StoragePath:  "team-agp-resources/objects/test/lesson.mp4",
+			MimeType:     "video/mp4",
+		}},
+		&downloadAssetStorage{path: sourcePath},
+		"",
+	)
+	a := &app{assets: service, secret: []byte("test-playback-secret")}
+	expiresAt := time.Now().Add(time.Hour).Unix()
+	signature := a.signAssetPlaybackSource(16, 1, expiresAt, "original")
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf(
+			"/api/assets/16/stream?group_id=1&expires=%d&source=original&signature=%s",
+			expiresAt,
+			signature,
+		),
+		nil,
+	)
+	request.SetPathValue("id", "16")
+	recorder := httptest.NewRecorder()
+
+	a.handleStreamAsset(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Body.String(); got != "source" {
+		t.Fatalf("body = %q, want original source", got)
 	}
 }
 

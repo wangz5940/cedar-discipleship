@@ -1,12 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -79,22 +79,45 @@ func (a *app) handleAssetPlayback(w http.ResponseWriter, r *http.Request) {
 		expiresAt,
 		signature,
 	)
+	response := map[string]any{
+		"url":        playbackURL,
+		"expires_at": expiresAt,
+	}
+	if playbackAssetFile(file).AbsolutePath != file.AbsolutePath {
+		fallbackSignature := a.signAssetPlaybackSource(id, groupID, expiresAt, "original")
+		response["fallback_url"] = fmt.Sprintf(
+			"/api/assets/%d/stream?group_id=%d&expires=%d&source=original&signature=%s",
+			id,
+			groupID,
+			expiresAt,
+			fallbackSignature,
+		)
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"url": playbackURL, "expires_at": expiresAt})
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	groupID, _ := strconv.ParseUint(r.URL.Query().Get("group_id"), 10, 64)
 	expiresAt, _ := strconv.ParseInt(r.URL.Query().Get("expires"), 10, 64)
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
 	signature := strings.TrimSpace(r.URL.Query().Get("signature"))
-	if id == 0 || groupID == 0 || expiresAt < time.Now().Unix() || !a.verifyAssetPlayback(id, groupID, expiresAt, signature) {
+	validSignature := source == "" && a.verifyAssetPlayback(id, groupID, expiresAt, signature)
+	if source == "original" {
+		validSignature = a.verifyAssetPlaybackSource(id, groupID, expiresAt, source, signature)
+	}
+	if id == 0 || groupID == 0 || expiresAt < time.Now().Unix() || !validSignature {
 		writeError(w, http.StatusForbidden, "invalid_playback_url")
 		return
 	}
 	file, err := a.assets.DownloadFile(r.Context(), groupID, id)
 	if err != nil || !isVideoAsset(file) {
 		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	if source == "original" {
+		serveAssetFile(w, r, file)
 		return
 	}
 	serveAssetFile(w, r, playbackAssetFile(file))
@@ -128,6 +151,21 @@ func (a *app) verifyAssetPlayback(assetID, groupID uint64, expiresAt int64, sign
 		return false
 	}
 	expected, err := base64.RawURLEncoding.DecodeString(a.signAssetPlayback(assetID, groupID, expiresAt))
+	return err == nil && hmac.Equal(expected, got)
+}
+
+func (a *app) signAssetPlaybackSource(assetID, groupID uint64, expiresAt int64, source string) string {
+	mac := hmac.New(sha256.New, a.secret)
+	_, _ = fmt.Fprintf(mac, "%d:%d:%d:%s", assetID, groupID, expiresAt, source)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *app) verifyAssetPlaybackSource(assetID, groupID uint64, expiresAt int64, source, signature string) bool {
+	got, err := base64.RawURLEncoding.DecodeString(signature)
+	if err != nil {
+		return false
+	}
+	expected, err := base64.RawURLEncoding.DecodeString(a.signAssetPlaybackSource(assetID, groupID, expiresAt, source))
 	return err == nil && hmac.Equal(expected, got)
 }
 
@@ -182,7 +220,7 @@ func (a *app) handleDownloadAssetRange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "asset_not_pdf")
 		return
 	}
-	if err := servePDFRange(w, file.AbsolutePath, file.OriginalName, pages); err != nil {
+	if err := a.servePDFRange(w, r, groupID, id, file, pages); err != nil {
 		writeError(w, http.StatusInternalServerError, "pdf_range_failed")
 	}
 }
@@ -223,33 +261,80 @@ func normalizePageRange(input string) (string, error) {
 	return fmt.Sprintf("%d-%d", start, end), nil
 }
 
-func servePDFRange(w http.ResponseWriter, srcPath, original, pages string) error {
-	tmp, err := os.CreateTemp("", "agp-pdf-range-*.pdf")
+func (a *app) servePDFRange(
+	w http.ResponseWriter,
+	r *http.Request,
+	groupID uint64,
+	assetID uint64,
+	file *assetdomain.DownloadFile,
+	pages string,
+) error {
+	info, err := os.Stat(file.AbsolutePath)
 	if err != nil {
 		return err
+	}
+	key := pdfRangeCacheKey{
+		groupID:       groupID,
+		assetID:       assetID,
+		pages:         pages,
+		sourceSize:    info.Size(),
+		sourceModUnix: info.ModTime().UnixNano(),
+	}
+	if a.pdfRangeCache != nil {
+		if payload, ok := a.pdfRangeCache.Get(key); ok {
+			w.Header().Set("X-AGP-PDF-Cache", "HIT")
+			servePDFRangeBytes(w, r, file.OriginalName, pages, info.ModTime(), payload)
+			return nil
+		}
+	}
+
+	payload, err := trimPDFRange(file.AbsolutePath, pages)
+	if err != nil {
+		return err
+	}
+	if a.pdfRangeCache != nil {
+		a.pdfRangeCache.Put(key, payload)
+	}
+	w.Header().Set("X-AGP-PDF-Cache", "MISS")
+	servePDFRangeBytes(w, r, file.OriginalName, pages, info.ModTime(), payload)
+	return nil
+}
+
+func trimPDFRange(srcPath, pages string) ([]byte, error) {
+	tmp, err := os.CreateTemp("", "agp-pdf-range-*.pdf")
+	if err != nil {
+		return nil, err
 	}
 	tmpName := tmp.Name()
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return nil, err
 	}
 	defer os.Remove(tmpName)
 	if err := pdfapi.TrimFile(srcPath, tmpName, []string{pages}, nil); err != nil {
-		return err
+		return nil, err
 	}
-	// #nosec G304 -- tmpName is returned by os.CreateTemp in this function.
-	file, err := os.Open(tmpName)
+	payload, err := os.ReadFile(tmpName)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer file.Close()
-	if info, statErr := file.Stat(); statErr == nil {
-		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-	}
+	return payload, nil
+}
+
+func servePDFRangeBytes(
+	w http.ResponseWriter,
+	r *http.Request,
+	original string,
+	pages string,
+	modTime time.Time,
+	payload []byte,
+) {
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(original)))
-	_, err = io.Copy(w, file)
-	return err
+	w.Header().Set("Cache-Control", "private, max-age=86400, immutable")
+	checksum := sha256.Sum256(payload)
+	w.Header().Set("ETag", fmt.Sprintf(`"agp-pdf-%x-%s"`, checksum[:8], pages))
+	http.ServeContent(w, r, original, modTime, bytes.NewReader(payload))
 }
 
 func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {

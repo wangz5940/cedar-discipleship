@@ -871,6 +871,7 @@ export async function openContentTarget(target) {
       type: 'video',
       title,
       url: '',
+      fallbackURL: '',
       sourceURL: sourceAPIPath,
       downloadURL,
       downloadSource,
@@ -892,6 +893,7 @@ export async function openContentTarget(target) {
       const playback = await api(`/assets/${videoAssetMatch[1]}/playback`);
       if (state.viewer !== pendingViewer) return;
       pendingViewer.url = playback.url;
+      pendingViewer.fallbackURL = playback.fallback_url || '';
       syncViewerStore();
       render();
     } catch (error) {

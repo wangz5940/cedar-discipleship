@@ -13,6 +13,7 @@ import {
   sameViewerItem,
   toast,
 } from '../legacy-app';
+import { videoMediaErrorMessage } from '../runtime/content';
 
 const PdfViewer = defineAsyncComponent(() => import('./PdfViewer.vue'));
 const viewerStore = useContentViewerStore();
@@ -29,6 +30,9 @@ const videoLoadState = ref('idle');
 const videoLoadProgress = ref(0);
 const videoLoadError = ref('');
 const videoRetryKey = ref(0);
+const videoFallbackAttempted = ref(false);
+const videoSilentFallbackAttempted = ref(false);
+const videoMuted = ref(false);
 let videoLoadTimer = 0;
 
 watch(
@@ -128,6 +132,9 @@ function resetVideoLoading() {
   videoLoadState.value = 'idle';
   videoLoadProgress.value = 0;
   videoLoadError.value = '';
+  videoFallbackAttempted.value = false;
+  videoSilentFallbackAttempted.value = false;
+  videoMuted.value = false;
 }
 
 function handleVideoProgress(event) {
@@ -142,9 +149,50 @@ function handleVideoReady() {
   videoLoadProgress.value = 100;
 }
 
-function handleVideoError() {
+function handleVideoError(event) {
+  const code = Number(event?.target?.error?.code || 0);
+  if (code === 3 && !videoSilentFallbackAttempted.value && videoSource.value) {
+    videoSilentFallbackAttempted.value = true;
+    videoMuted.value = true;
+    videoLoadState.value = 'loading';
+    videoLoadProgress.value = 0;
+    videoLoadError.value = '';
+    const retryURL = videoSource.value;
+    videoRetryKey.value += 1;
+    videoSource.value = '';
+    nextTick(() => {
+      videoSource.value = retryURL;
+      nextTick(() => {
+        const media = videoElement.value;
+        if (!media) return;
+        media.muted = true;
+        media.load();
+        media.play?.().catch(() => {});
+      });
+    });
+    return;
+  }
+  const fallbackURL = viewer.value?.fallbackURL;
+  if (
+    !videoFallbackAttempted.value
+    && code === 4
+    && fallbackURL
+    && fallbackURL !== videoSource.value
+  ) {
+    videoFallbackAttempted.value = true;
+    videoLoadState.value = 'loading';
+    videoLoadProgress.value = 0;
+    videoLoadError.value = '';
+    videoRetryKey.value += 1;
+    videoSource.value = '';
+    nextTick(() => {
+      videoSource.value = fallbackURL;
+      videoElement.value?.load();
+    });
+    return;
+  }
   videoLoadState.value = 'error';
-  videoLoadError.value = '视频加载失败，请检查网络后重试';
+  videoLoadError.value = videoMediaErrorMessage(code);
 }
 
 function retryVideoLoad() {
@@ -374,6 +422,7 @@ function downloadCurrent() {
               class="viewer-video"
               :src="videoSource"
               controls
+              :muted="videoMuted"
               playsinline
               preload="metadata"
               @progress="handleVideoProgress"
@@ -382,6 +431,9 @@ function downloadCurrent() {
               @canplay="handleVideoReady"
               @error="handleVideoError"
             ></video>
+            <p v-if="videoMuted" class="muted viewer-note">
+              当前浏览器音频输出异常，已切换为静音播放；需要声音时可使用下载查看。
+            </p>
           </div>
           <div v-else-if="viewer.type === 'audio'" class="viewer-audio-shell">
             <audio class="viewer-audio" :src="viewer.url" controls></audio>

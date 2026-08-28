@@ -51,6 +51,9 @@ type app struct {
 	learning      *learningdomain.Service
 	ministry      *ministrydomain.Service
 	statistics    *statisticsdomain.Service
+	todayCache    *todayContentCache
+	pdfRangeCache *pdfRangeCache
+	cacheRefresh  chan uint64
 	users         *userdomain.Service
 }
 
@@ -132,9 +135,12 @@ func Run() error {
 			nil,
 			checkinSvc,
 		),
-		ministry:   ministrydomain.NewService(ministrydomain.NewMySQLRepository(db)),
-		statistics: statisticsdomain.NewService(statisticsdomain.NewMySQLRepository(db)),
-		users:      userdomain.NewService(userdomain.NewMySQLRepository(db)),
+		ministry:      ministrydomain.NewService(ministrydomain.NewMySQLRepository(db)),
+		statistics:    statisticsdomain.NewService(statisticsdomain.NewMySQLRepository(db)),
+		todayCache:    newTodayContentCache(defaultTodayCacheMaxEntries, defaultTodayCacheMaxBytes, loc),
+		pdfRangeCache: newPDFRangeCache(defaultPDFRangeCacheMaxEntries, defaultPDFRangeCacheMaxBytes),
+		cacheRefresh:  make(chan uint64, defaultTodayCacheMaxEntries),
+		users:         userdomain.NewService(userdomain.NewMySQLRepository(db)),
 	}
 	if err := a.runMigrations(); err != nil {
 		return err
@@ -145,6 +151,9 @@ func Run() error {
 	if err := a.bootstrapSuperAdmin(cfg); err != nil {
 		return err
 	}
+	cacheContext, stopCache := context.WithCancel(context.Background())
+	defer stopCache()
+	go a.runTodayCacheMaintenance(cacheContext)
 
 	mux := http.NewServeMux()
 	a.routes(mux)
@@ -286,6 +295,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/resource-dependencies/graph", a.auth(a.requireRole(roleGroupAdmin, a.handleResourceDependencyGraph)))
 	mux.HandleFunc("GET /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminLearningConfig)))
 	mux.HandleFunc("PUT /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminSaveLearningConfig)))
+	mux.HandleFunc("GET /api/admin/today-cache/metrics", a.auth(a.requireRole(roleGroupAdmin, a.handleTodayCacheMetrics)))
+	mux.HandleFunc("DELETE /api/admin/today-cache", a.auth(a.requireRole(roleGroupAdmin, a.handleClearTodayCache)))
 	mux.HandleFunc("GET /api/admin/exports/checkins-detail", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportCheckinsCSV)))
 	mux.HandleFunc("GET /api/admin/exports/daily-summary", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportDailySummaryCSV)))
 	mux.HandleFunc("GET /api/admin/exports/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportStudyWeeksExcel)))

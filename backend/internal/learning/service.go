@@ -103,11 +103,19 @@ func (s *Service) DeleteWeek(ctx context.Context, groupID, weekID uint64) error 
 }
 
 func (s *Service) TodayHub(ctx context.Context, groupID, userID uint64, date string, settings map[string]any, now time.Time) (TodayVO, error) {
+	content, err := s.TodayContent(ctx, groupID, date, settings, now)
+	if err != nil {
+		return TodayVO{}, err
+	}
+	return s.TodayHubFromContent(ctx, groupID, userID, content)
+}
+
+func (s *Service) TodayContent(ctx context.Context, groupID uint64, date string, settings map[string]any, now time.Time) (TodayContent, error) {
 	var week map[string]any
 	weekModel, err := s.repo.CurrentWeek(ctx, groupID, date)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return TodayVO{}, err
+			return TodayContent{}, err
 		}
 		week = nil
 	} else {
@@ -118,7 +126,7 @@ func (s *Service) TodayHub(ctx context.Context, groupID, userID uint64, date str
 	if weekID := mapUint64(week, "id"); weekID > 0 {
 		tasks, err := s.repo.ListTasks(ctx, groupID, weekID)
 		if err != nil {
-			return TodayVO{}, err
+			return TodayContent{}, err
 		}
 		weekTasks = TaskMaps(tasks)
 	}
@@ -127,12 +135,29 @@ func (s *Service) TodayHub(ctx context.Context, groupID, userID uint64, date str
 	if start, end := asString(week["start"]), asString(week["end"]); start != "" && end != "" {
 		from, to = start, end
 	}
-	records, err := s.repo.ListTodayRecords(ctx, groupID, userID, from, to)
+
+	title := "今日学习"
+	if date != now.Format("2006-01-02") {
+		title = "学习回顾"
+	}
+	return TodayContent{
+		Date:        date,
+		Title:       title,
+		CurrentWeek: week,
+		WeekTasks:   weekTasks,
+		Settings:    settings,
+		RecordFrom:  from,
+		RecordTo:    to,
+	}, nil
+}
+
+func (s *Service) TodayHubFromContent(ctx context.Context, groupID, userID uint64, content TodayContent) (TodayVO, error) {
+	records, err := s.repo.ListTodayRecords(ctx, groupID, userID, content.RecordFrom, content.RecordTo)
 	if err != nil {
 		return TodayVO{}, err
 	}
 
-	tasks := buildTodayTasks(date, week, weekTasks, settings, records)
+	tasks := buildTodayTasks(content.Date, content.CurrentWeek, content.WeekTasks, content.Settings, records)
 	completed := 0
 	for _, task := range tasks {
 		if task.Completed {
@@ -145,14 +170,10 @@ func (s *Service) TodayHub(ctx context.Context, groupID, userID uint64, date str
 		percent = int(math.Round(float64(completed) / float64(total) * 100))
 	}
 
-	title := "今日学习"
-	if date != now.Format("2006-01-02") {
-		title = "学习回顾"
-	}
 	return TodayVO{
-		Date:        date,
-		Title:       title,
-		CurrentWeek: week,
+		Date:        content.Date,
+		Title:       content.Title,
+		CurrentWeek: content.CurrentWeek,
 		Progress:    TodayProgress{Completed: completed, Total: total, Percent: percent},
 		Tasks:       tasks,
 		Records:     records,

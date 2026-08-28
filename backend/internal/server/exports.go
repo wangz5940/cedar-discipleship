@@ -360,6 +360,7 @@ func (a *app) handleAdminImportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "study_weeks_import_failed")
 		return
 	}
+	a.refreshTodayContent(groupID)
 	a.audit(groupID, u.ID, "import_study_weeks_excel", "study_weeks", 0, nil, map[string]any{"weeks": len(order)}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "weeks": len(order)})
 }
@@ -447,6 +448,7 @@ func (a *app) handleAdminImportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "backup_import_failed")
 		return
 	}
+	a.refreshTodayContent(groupID)
 	a.audit(groupID, u.ID, "import_local_backup", "study_groups", groupID, nil, map[string]any{
 		"members":   len(payload.Members),
 		"weeks":     len(payload.Weeks),

@@ -82,7 +82,8 @@ while IFS=$'\t' read -r asset_id storage_path || [ -n "${asset_id:-}" ]; do
   if compose exec -T backend sh -c '
     test -s "$1" &&
       ffprobe -v error "$1" >/dev/null 2>&1 &&
-      head -c 65536 "$1" | grep -aq sidx
+      head -c 4194304 "$1" | grep -aq moov &&
+      ! head -c 4194304 "$1" | grep -aq moof
   ' sh "$playback_path" </dev/null; then
     echo "跳过 asset_id=${asset_id}，播放衍生文件已存在"
     skipped=$((skipped + 1))
@@ -103,10 +104,11 @@ while IFS=$'\t' read -r asset_id storage_path || [ -n "${asset_id:-}" ]; do
     trap "rm -f \"$temp_path\"" EXIT
     ffmpeg -nostdin -hide_banner -loglevel error \
       -i "$source_path" -map 0 -c copy \
-      -movflags +frag_keyframe+empty_moov+default_base_moof+global_sidx \
+      -movflags +faststart \
       "$temp_path"
     ffprobe -v error "$temp_path" >/dev/null
-    head -c 65536 "$temp_path" | grep -aq sidx
+    head -c 4194304 "$temp_path" | grep -aq moov
+    ! head -c 4194304 "$temp_path" | grep -aq moof
     chmod 0640 "$temp_path"
     mv "$temp_path" "$playback_path"
     trap - EXIT

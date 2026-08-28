@@ -39,6 +39,19 @@ export type AttachmentPresentation = {
   type: 'pdf' | 'image' | 'video' | 'audio' | 'markdown' | 'download';
 };
 
+export function videoMediaErrorMessage(code: unknown): string {
+  switch (Number(code || 0)) {
+    case 2:
+      return '视频网络请求失败，请检查网络后重试';
+    case 3:
+      return '视频解码或音频输出失败，请刷新页面或更换浏览器重试';
+    case 4:
+      return '当前浏览器不支持此视频格式';
+    default:
+      return '视频加载失败，请重试';
+  }
+}
+
 export function classifyAttachment(input: { filename?: unknown; mimeType?: unknown }): AttachmentPresentation {
   const filename = String(input.filename || '').trim().toLowerCase();
   const mimeType = String(input.mimeType || '').trim().toLowerCase();

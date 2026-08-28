@@ -67,6 +67,7 @@ func (a *app) handleAdminDeleteStudyWeek(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "week_delete_failed")
 		return
 	}
+	a.refreshTodayContent(groupID)
 	a.audit(groupID, u.ID, "delete_study_week", "study_weeks", weekID, nil, nil, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -105,6 +106,7 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		return
 	}
 	id = savedID
+	a.refreshTodayContent(groupID)
 	a.audit(groupID, u.ID, "save_study_week", "study_weeks", id, nil, map[string]any{"title": req.Title}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
 }

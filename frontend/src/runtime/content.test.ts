@@ -11,6 +11,7 @@ import {
   sameOriginAPIPath,
   shouldRenderWeeklyTask,
   shouldUseNativePDFViewer,
+  videoMediaErrorMessage,
   weeklyTitleFromContent,
 } from './content';
 
@@ -46,6 +47,13 @@ describe('content runtime helpers', () => {
     expect(classifyAttachment({ filename: '服事安排.pptx' })).toEqual({ action: 'download', type: 'download' });
     expect(classifyAttachment({ filename: '成员清单.xlsx' })).toEqual({ action: 'download', type: 'download' });
     expect(classifyAttachment({ filename: '资料.unknown' })).toEqual({ action: 'download', type: 'download' });
+  });
+
+  it('describes media failures by browser error code', () => {
+    expect(videoMediaErrorMessage(2)).toContain('网络');
+    expect(videoMediaErrorMessage(3)).toContain('解码');
+    expect(videoMediaErrorMessage(4)).toContain('不支持');
+    expect(videoMediaErrorMessage(0)).toBe('视频加载失败，请重试');
   });
 
   it('keeps search matching and configuration merging deterministic', () => {
