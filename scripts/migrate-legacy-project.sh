@@ -77,6 +77,25 @@ AGP_DATA_DIR="${AGP_DATA_DIR:-$ROOT_DIR/data}"
 AGP_RESOURCE_ROOT="${AGP_RESOURCE_ROOT:-$AGP_DATA_DIR/resources}"
 RESOURCE_MIGRATION_DRY_RUN_ONLY="${RESOURCE_MIGRATION_DRY_RUN_ONLY:-false}"
 
+resolve_resource_root() {
+  local candidates=(
+    "$AGP_RESOURCE_ROOT"
+    "$AGP_DATA_DIR/resources"
+    "$ROOT_DIR/../cedar-discipleship-data/resources"
+    "$ROOT_DIR/../data/resources"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [ -d "$candidate" ]; then
+      AGP_RESOURCE_ROOT="$candidate"
+      return 0
+    fi
+  done
+  echo "资源目录不存在。请设置 AGP_RESOURCE_ROOT，例如:" >&2
+  echo "  AGP_RESOURCE_ROOT=/volume2/docker/cedar-discipleship-data/resources" >&2
+  exit 1
+}
+
 compose() {
   local args=()
   if [ -f "$ENV_FILE" ]; then
@@ -120,6 +139,8 @@ run_resource_file_migration() {
   compose run --rm -T --no-deps "${mount_args[@]}" backend "${args[@]}"
 }
 
+resolve_resource_root
+echo ">>> resource-root: ${AGP_RESOURCE_ROOT}"
 echo ">>> resource-file dry-run: ${GROUP_CODE}"
 run_resource_file_migration true
 
