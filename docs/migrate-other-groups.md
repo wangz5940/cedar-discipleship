@@ -25,6 +25,7 @@ zw1-checkin/
 - 周任务、任务资源绑定和历史打卡按小组隔离写入。
 - 资源迁移优先复用其他小组已共享的同名同类资源。
 - 未命中共享资源的本组独有文件复制到 `data/resources`。
+- NAS 独立数据目录通过 `.env` 的 `AGP_DATA_DIR` 或 `AGP_RESOURCE_ROOT` 定位。
 
 ## Dry Run
 
