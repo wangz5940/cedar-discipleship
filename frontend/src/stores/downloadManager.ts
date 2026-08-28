@@ -9,6 +9,7 @@ import {
   type DownloadResource,
   type DownloadResourceInput,
 } from '../runtime/downloads';
+import { csrfToken, getAccessToken, setAccessToken } from '../runtime/authSession';
 
 export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'failed';
 
@@ -223,6 +224,10 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
             signal: controller.signal,
           });
 
+          if (response.status === 401 && task.resource.url.startsWith('/api/') && attempt === 0) {
+            const refreshed = await refreshDownloadSession();
+            if (refreshed) continue;
+          }
           if (response.status === 416 && offset > 0 && attempt === 0) {
             await storage.clearChunks(taskID);
             offset = 0;
@@ -406,10 +411,22 @@ async function ensureStorageCapacity(requiredBytes: number): Promise<void> {
 }
 
 function currentAuthToken(): string {
+  return getAccessToken();
+}
+
+async function refreshDownloadSession(): Promise<boolean> {
   try {
-    return localStorage.getItem('agp_token') || '';
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken() },
+      credentials: 'same-origin',
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.token) return false;
+    setAccessToken(data.token);
+    return true;
   } catch {
-    return '';
+    return false;
   }
 }
 

@@ -27,7 +27,7 @@ import {
 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
-import { api, openContentTarget, toast as showToast } from '../legacy-app';
+import { api, fetchWithAuth, openContentTarget, toast as showToast } from '../legacy-app';
 import { classifyAttachment, markdownToSafeHTML } from '../runtime/content';
 import { downloadErrorMessage } from '../runtime/downloads';
 import CountingAttendance from './CountingAttendance.vue';
@@ -489,9 +489,8 @@ async function uploadAttachments() {
     for (const file of files) {
       const form = new FormData();
       form.append('file', file);
-      const response = await fetch(`/api/ministry-groups/${group.id}/attachments`, {
+      const response = await fetchWithAuth(`/api/ministry-groups/${group.id}/attachments`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('agp_token') || ''}` },
         body: form,
       });
       const data = await response.json().catch(() => ({}));

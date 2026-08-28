@@ -11,6 +11,7 @@ type Repository interface {
 	ListAllGroups(ctx context.Context) ([]Group, error)
 	CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time) (uint64, error)
 	UpdateGroup(ctx context.Context, id uint64, name string, at time.Time) error
+	DeleteGroup(ctx context.Context, id uint64, at time.Time) ([]string, error)
 	ListUsers(ctx context.Context, limit int) ([]UserListItem, error)
 	ListGroups(ctx context.Context, userID uint64, isSuperAdmin bool) ([]Group, error)
 	ListRoles(ctx context.Context, userID, groupID uint64) ([]string, error)

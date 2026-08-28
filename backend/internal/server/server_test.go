@@ -37,6 +37,64 @@ func TestSignTokenPermanentByDefault(t *testing.T) {
 	}
 }
 
+func TestParseRefreshTokenTTLRequiresPositiveDuration(t *testing.T) {
+	if _, err := parseRefreshTokenTTL("720h"); err != nil {
+		t.Fatalf("parseRefreshTokenTTL() error = %v", err)
+	}
+	if _, err := parseRefreshTokenTTL("0"); err == nil {
+		t.Fatal("parseRefreshTokenTTL accepted zero duration")
+	}
+}
+
+func TestAuthCookiesUseHttpOnlyRefreshAndReadableCSRF(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	recorder := httptest.NewRecorder()
+	expires := time.Now().Add(time.Hour)
+
+	setAuthCookies(recorder, request, "refresh-token", "csrf-token", expires)
+
+	cookies := recorder.Result().Cookies()
+	var refreshCookie, csrfCookie *http.Cookie
+	for _, cookie := range cookies {
+		switch cookie.Name {
+		case refreshCookieName:
+			refreshCookie = cookie
+		case csrfCookieName:
+			csrfCookie = cookie
+		}
+	}
+	if refreshCookie == nil || csrfCookie == nil {
+		t.Fatalf("expected refresh and csrf cookies, got %+v", cookies)
+	}
+	if !refreshCookie.HttpOnly || !refreshCookie.Secure || refreshCookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("refresh cookie security attrs = %+v", refreshCookie)
+	}
+	if csrfCookie.HttpOnly || !csrfCookie.Secure || csrfCookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("csrf cookie attrs = %+v", csrfCookie)
+	}
+}
+
+func TestRefreshCredentialsRequiresMatchingCSRF(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
+	request.AddCookie(&http.Cookie{Name: refreshCookieName, Value: "refresh-token"})
+	request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "csrf-token"})
+	request.Header.Set(csrfHeaderName, "csrf-token")
+
+	refreshToken, csrf, err := refreshCredentials(request)
+	if err != nil {
+		t.Fatalf("refreshCredentials() error = %v", err)
+	}
+	if refreshToken != "refresh-token" || csrf != "csrf-token" {
+		t.Fatalf("credentials = %q/%q, want refresh-token/csrf-token", refreshToken, csrf)
+	}
+
+	request.Header.Set(csrfHeaderName, "wrong")
+	if _, _, err := refreshCredentials(request); err == nil {
+		t.Fatal("refreshCredentials accepted mismatched csrf token")
+	}
+}
+
 func TestSignTokenAddsConfiguredExpiration(t *testing.T) {
 	a := &app{
 		secret:   []byte("test-secret"),

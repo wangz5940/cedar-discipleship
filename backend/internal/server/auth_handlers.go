@@ -51,7 +51,12 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.loginLimiter.success(remote, username)
-	token, err := a.signToken(tokenClaims{UserID: user.ID, CurrentGroupID: currentGroupID})
+	sessionID, err := a.issueRefreshSession(r.Context(), w, r, user.ID, currentGroupID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "session_failed")
+		return
+	}
+	token, err := a.signToken(tokenClaims{UserID: user.ID, CurrentGroupID: currentGroupID, SessionID: sessionID})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "token_failed")
 		return
@@ -65,13 +70,64 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": token,
-		"user": map[string]any{
-			"id": user.ID, "username": user.Username, "display_name": user.DisplayName,
-			"is_super_admin": user.IsSuperAdmin, "default_group_id": nullableUint64Value(user.DefaultGroupID),
-			"must_change_password": user.MustChangePassword,
-			"current_group_id":     currentGroupID, "study_groups": groups,
-		},
+		"user":  loginUserResponse(user, groups, currentGroupID),
 	})
+}
+
+func (a *app) handleRefreshSession(w http.ResponseWriter, r *http.Request) {
+	refreshToken, csrfToken, err := refreshCredentials(r)
+	if err != nil {
+		logAuthFailure(r, "refresh_credentials", err)
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	session, err := a.refreshSession(r.Context(), refreshToken, csrfToken)
+	if err != nil {
+		logAuthFailure(r, "refresh_session", err)
+		clearAuthCookies(w, r)
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	user, err := a.users.CurrentUser(r.Context(), session.UserID, session.CurrentGroupID)
+	if err != nil {
+		logAuthFailure(r, "refresh_current_user", err)
+		clearAuthCookies(w, r)
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	token, err := a.signToken(tokenClaims{UserID: user.ID, CurrentGroupID: user.CurrentGroupID, SessionID: session.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "token_failed")
+		return
+	}
+	setAuthCookies(w, r, refreshToken, csrfToken, session.ExpiresAt)
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
+}
+
+func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
+	refreshCookie, cookieErr := r.Cookie(refreshCookieName)
+	_, _, csrfErr := refreshCredentials(r)
+	if cookieErr == nil && csrfErr != nil {
+		writeError(w, http.StatusForbidden, "csrf_required")
+		return
+	}
+	if cookieErr == nil {
+		if err := a.revokeRefreshSession(r.Context(), refreshCookie.Value); err != nil {
+			writeError(w, http.StatusInternalServerError, "logout_failed")
+			return
+		}
+	}
+	clearAuthCookies(w, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func loginUserResponse(user *userdomain.User, groups []userdomain.Group, currentGroupID uint64) map[string]any {
+	return map[string]any{
+		"id": user.ID, "username": user.Username, "display_name": user.DisplayName,
+		"is_super_admin": user.IsSuperAdmin, "default_group_id": nullableUint64Value(user.DefaultGroupID),
+		"must_change_password": user.MustChangePassword,
+		"current_group_id":     currentGroupID, "study_groups": groups,
+	}
 }
 
 func (a *app) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -90,11 +146,13 @@ func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	token, err := a.signToken(tokenClaims{UserID: u.ID, CurrentGroupID: req.GroupID})
+	claims, _ := a.verifyToken(bearerToken(r))
+	token, err := a.signToken(tokenClaims{UserID: u.ID, CurrentGroupID: req.GroupID, SessionID: claims.SessionID})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "token_failed")
 		return
 	}
+	a.updateRefreshSessionGroup(r.Context(), r, req.GroupID)
 	writeJSON(w, http.StatusOK, map[string]any{"token": token})
 }
 

@@ -51,6 +51,7 @@ services:
       AGP_DSN: "${MYSQL_USER:-agp}:${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}@tcp(mysql:3306)/${MYSQL_DATABASE:-agp}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
       AGP_JWT_SECRET: "${AGP_JWT_SECRET:?AGP_JWT_SECRET must be set in .env}"
       AGP_TOKEN_TTL: "${AGP_TOKEN_TTL:-}"
+      AGP_REFRESH_TOKEN_TTL: "${AGP_REFRESH_TOKEN_TTL:-}"
       AGP_RESOURCE_ROOT: "/data/agp/resources"
       AGP_MIGRATIONS_DIR: "/app/migrations"
       AGP_LOG_FILE: "/var/log/cedar/backend.log"

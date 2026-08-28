@@ -80,7 +80,8 @@ append_env MYSQL_PASSWORD "$(rand_password 24)"
 append_env MYSQL_ROOT_PASSWORD "$(rand_password 32)"
 
 append_env AGP_JWT_SECRET "$(rand_hex 48)"
-append_env AGP_TOKEN_TTL ""
+append_env AGP_TOKEN_TTL "15m"
+append_env AGP_REFRESH_TOKEN_TTL "8760h"
 append_env AGP_RESOURCE_ROOT "$(env_value AGP_DATA_DIR)/resources"
 append_env BOOTSTRAP_SUPERADMIN_USERNAME admin
 append_env BOOTSTRAP_SUPERADMIN_PASSWORD "$(rand_password 20)"

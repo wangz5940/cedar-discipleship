@@ -40,9 +40,11 @@ const (
 type app struct {
 	db            *sql.DB
 	secret        []byte
+	resourceRoot  string
 	migrationsDir string
 	location      *time.Location
 	tokenTTL      time.Duration
+	refreshTTL    time.Duration
 	loginLimiter  *loginLimiter
 	audits        *auditdomain.Service
 	assets        *assetdomain.Service
@@ -67,6 +69,7 @@ type config struct {
 	BootstrapPassword    string
 	BootstrapDisplayName string
 	TokenTTL             string
+	RefreshTokenTTL      string
 }
 
 type ctxKey string
@@ -86,6 +89,7 @@ type group = userdomain.Group
 type tokenClaims struct {
 	UserID         uint64 `json:"uid"`
 	CurrentGroupID uint64 `json:"gid,omitempty"`
+	SessionID      uint64 `json:"sid,omitempty"`
 	ExpiresAt      int64  `json:"exp"`
 }
 
@@ -95,6 +99,10 @@ func Run() error {
 		return err
 	}
 	tokenTTL, err := parseTokenTTL(cfg.TokenTTL)
+	if err != nil {
+		return err
+	}
+	refreshTTL, err := parseRefreshTokenTTL(cfg.RefreshTokenTTL)
 	if err != nil {
 		return err
 	}
@@ -118,9 +126,11 @@ func Run() error {
 	a := &app{
 		db:            db,
 		secret:        []byte(cfg.JWTSecret),
+		resourceRoot:  cfg.ResourceRoot,
 		migrationsDir: cfg.MigrationsDir,
 		location:      loc,
 		tokenTTL:      tokenTTL,
+		refreshTTL:    refreshTTL,
 		loginLimiter:  newLoginLimiter(),
 		audits:        auditdomain.NewService(auditdomain.NewMySQLRepository(db)),
 		backups:       backupdomain.NewService(backupdomain.NewMySQLRepository(db)),
@@ -177,7 +187,8 @@ func loadConfig() config {
 		BootstrapUsername:    env("BOOTSTRAP_SUPERADMIN_USERNAME", "admin"),
 		BootstrapPassword:    env("BOOTSTRAP_SUPERADMIN_PASSWORD", ""),
 		BootstrapDisplayName: env("BOOTSTRAP_SUPERADMIN_DISPLAY_NAME", "超级管理员"),
-		TokenTTL:             env("AGP_TOKEN_TTL", ""),
+		TokenTTL:             env("AGP_TOKEN_TTL", "15m"),
+		RefreshTokenTTL:      env("AGP_REFRESH_TOKEN_TTL", "8760h"),
 	}
 }
 
@@ -189,6 +200,9 @@ func validateConfig(cfg config) error {
 		return errors.New("BOOTSTRAP_SUPERADMIN_PASSWORD must be at least 8 characters")
 	}
 	if _, err := parseTokenTTL(cfg.TokenTTL); err != nil {
+		return err
+	}
+	if _, err := parseRefreshTokenTTL(cfg.RefreshTokenTTL); err != nil {
 		return err
 	}
 	return nil
@@ -210,6 +224,21 @@ func parseTokenTTL(value string) (time.Duration, error) {
 	return ttl, nil
 }
 
+func parseRefreshTokenTTL(value string) (time.Duration, error) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		value = "8760h"
+	}
+	ttl, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid AGP_REFRESH_TOKEN_TTL %q: %w", value, err)
+	}
+	if ttl <= 0 {
+		return 0, errors.New("AGP_REFRESH_TOKEN_TTL must be positive")
+	}
+	return ttl, nil
+}
+
 func env(key, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
@@ -220,6 +249,8 @@ func env(key, fallback string) string {
 func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", a.handleHealth)
 	mux.HandleFunc("POST /api/auth/login", a.handleLogin)
+	mux.HandleFunc("POST /api/auth/refresh", a.handleRefreshSession)
+	mux.HandleFunc("POST /api/auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", a.auth(a.handleMe))
 	mux.HandleFunc("POST /api/auth/switch-group", a.auth(a.handleSwitchGroup))
 	mux.HandleFunc("POST /api/auth/default-group", a.auth(a.handleSetDefaultGroup))
@@ -314,6 +345,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/super-admin/groups", a.auth(a.requireSuper(a.handleSuperListGroups)))
 	mux.HandleFunc("POST /api/super-admin/groups", a.auth(a.requireSuper(a.handleSuperCreateGroup)))
 	mux.HandleFunc("PUT /api/super-admin/groups/{id}", a.auth(a.requireSuper(a.handleSuperUpdateGroup)))
+	mux.HandleFunc("DELETE /api/super-admin/groups/{id}", a.auth(a.requireSuper(a.handleSuperDeleteGroup)))
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/default-password", a.auth(a.requireSuper(a.handleSuperSetGroupDefaultPassword)))
 	mux.HandleFunc("GET /api/super-admin/users", a.auth(a.requireSuper(a.handleSuperListUsers)))
 	mux.HandleFunc("POST /api/super-admin/users", a.auth(a.requireSuper(a.handleSuperCreateUser)))

@@ -4,7 +4,7 @@
 >
 > 建议 GitHub 仓库名：`cedar-discipleship`
 
-这是一个采用纸感知识库风格的小组研修与打卡平台。对外英文名称为 `Cedar Discipleship`。它把学习计划、内容查看、打卡记录、统计看板和多小组管理收在同一个 Web 应用里，适合门训、课程共学、读书小组等需要“持续学习 + 过程记录”的场景。当前主版本已经升级为前后端分离架构：
+这是一个采用纸感知识库风格的小组研修与打卡平台。把学习计划、内容查看、打卡记录、统计看板和多小组管理收在同一个 Web 应用里，适合门训、课程共学、读书小组等需要“持续学习 + 过程记录”的场景。当前主版本已经升级为前后端分离架构：
 
 - 后端：Go
 - 数据库：MySQL 8.0
@@ -89,12 +89,6 @@ http://127.0.0.1:5114
 
 默认 MySQL 端口：
 
-```text
-127.0.0.1:3307
-```
-
-如果同一台机器上已经有其他服务占用端口或已有 `agp-*` 容器，可用独立前缀、端口和数据目录启动，避免冲突：
-
 ```bash
 ./scripts/init-deploy-env.sh
 
@@ -116,20 +110,6 @@ export AGP_TOKEN_TTL=''
 ```
 
 如果部署机器无法访问 `proxy.golang.org` 或 `registry.npmjs.org`，镜像构建会在依赖下载阶段超时。NAS 或受限网络环境里，先设置 Go 模块代理和 npm registry 再执行部署：
-
-```bash
-export GOPROXY='https://goproxy.cn,direct'
-export NPM_CONFIG_REGISTRY='https://registry.npmmirror.com'
-
-# 如果模块校验服务仍不可达，再临时关闭校验数据库
-# export GOSUMDB='off'
-```
-
-`.env` 中的 URL 不要带反引号。如果构建日志里出现 ``--registry="`https://...`"``，先修正：
-
-```bash
-sed -i 's|^NPM_CONFIG_REGISTRY=.*|NPM_CONFIG_REGISTRY=https://registry.npmmirror.com|' .env
-```
 
 这些变量会透传到 `backend`/`frontend` 镜像构建，以及迁移脚本内部启动的 `golang:1.25-bookworm` 容器。
 
@@ -238,84 +218,6 @@ MYSQL_PASSWORD=agp \
 
 如果现有 MySQL 数据卷里的应用账号密码与当前配置不一致，脚本会尝试读取正在运行的
 `agp-mysql` 容器环境变量作为兜底；也可显式提供 root 密码：
-
-```bash
-MYSQL_ROOT_PASSWORD=实际root密码 ./scripts/init-ministry-groups.sh
-```
-
-## 运行与运维
-
-常用命令：
-
-```bash
-# 启动
-docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build
-
-# 查看状态
-docker compose --env-file .env -f deploy/docker-compose.separated.yml ps
-
-# 查看日志
-docker compose --env-file .env -f deploy/docker-compose.separated.yml logs -f
-
-# 停止
-docker compose --env-file .env -f deploy/docker-compose.separated.yml down
-```
-
-运行日志会持续写入项目内的 `logs/` 目录，同时保留 Docker 控制台输出：
-
-- `logs/backend/backend.log`
-- `logs/frontend/access.log`
-- `logs/frontend/error.log`
-- `logs/mysql/error.log`
-
-这些文件通过宿主机目录挂载持久化，重建容器后不会丢失。生产环境应为
-`logs/` 配置日志轮转，避免长期运行后占满磁盘。
-其中 `backend/backend.log` 侧重用户操作和异常，用户操作包含账号、显示名、
-小组、动作、目标及来源 IP。成功的 GET、HEAD、OPTIONS 请求不记录，失败请求
-仍保留用于排障。
-
-MySQL 进入方式：
-
-```bash
-docker exec -it ${AGP_CONTAINER_PREFIX:-agp}-mysql mysql -uagp -pagp agp
-```
-
-数据库备份：
-
-```bash
-mkdir -p "${AGP_DATA_DIR:-data}/backups/mysql"
-docker exec ${AGP_CONTAINER_PREFIX:-agp}-mysql mysqldump -uagp -pagp agp > "${AGP_DATA_DIR:-data}/backups/mysql/agp-$(date +%F).sql"
-```
-
-## 资源目录
-
-- `data/resources/`：按学习小组隔离的资源目录，是资源文件唯一存储根。
-
-部署到新机器时，必须保留 `data/resources/` 并纳入备份。
-
-## 当前实现规则
-
-- 每个账号只有一个真实登录密码
-- 登录成功后后端签发 Token，前端会持久化到 `localStorage`
-- 未认证状态下不展示用户所属小组
-- 单小组用户不显示额外的小组切换入口
-- 小组默认密码只影响只属于该组的普通成员
-- 小组管理员和组长不能操作超级管理员、同级或自己
-- 打卡记录按小组隔离
-- 未来日期禁止打卡
-- PDF 读物通过后端裁页接口只暴露指定页范围
-- 对 `/range` 裁页 PDF，前端查看器会强制从第 1 页开始渲染，避免默认跳页
-
-  <br />
-
-## 迁移输入说明
-
-当前仓库保留的旧数据输入主要是迁移所需配置与记录文件，例如：
-
-- `config.json`
-- `data/records.json`
-
-它们仅用于迁移旧数据，不作为当前版本的运行入口。
 
 ## License
 

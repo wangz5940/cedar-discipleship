@@ -124,6 +124,13 @@ func (s *Service) UpdateGroup(ctx context.Context, id uint64, name string, at ti
 	return s.repo.UpdateGroup(ctx, id, name, at)
 }
 
+func (s *Service) DeleteGroup(ctx context.Context, id uint64, at time.Time) ([]string, error) {
+	if id == 0 {
+		return nil, ErrGroupNotFound
+	}
+	return s.repo.DeleteGroup(ctx, id, at)
+}
+
 func (s *Service) ListUsers(ctx context.Context, limit int) ([]UserListItemVO, error) {
 	items, err := s.repo.ListUsers(ctx, limit)
 	if err != nil {

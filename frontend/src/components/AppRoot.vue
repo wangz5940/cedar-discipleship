@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { ChevronDown, ChevronRight, Download, LogOut } from '@lucide/vue';
+import { ChevronDown, ChevronRight, Download, LogOut, Trash2 } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
@@ -240,11 +240,30 @@ async function updateCurrentGroup() {
   }
 }
 
+async function deleteCurrentGroup() {
+  const group = activeGroup.value;
+  if (!group?.id) return;
+  const input = window.prompt(`删除小组会清除「${group.name}」的成员、打卡、学习任务、专项小组和本组自有资源文件。请输入小组名称确认。`);
+  if (input !== group.name) {
+    showToast('小组名称不匹配，已取消删除');
+    return;
+  }
+  try {
+    await api(`/super-admin/groups/${group.id}`, { method: 'DELETE' });
+    showToast('小组已删除');
+    await reloadApp();
+  } catch (error) {
+    showToast(groupSaveErrorMessage(error.message));
+  }
+}
+
 function groupSaveErrorMessage(message) {
   return {
     group_name_required: '小组名称不能为空',
     group_name_exists: '小组名称已存在',
     group_not_found: '小组不存在',
+    group_delete_failed: '小组删除失败',
+    group_resource_delete_failed: '小组资源文件删除失败',
   }[message] || message;
 }
 
@@ -733,6 +752,10 @@ async function selectCalendarDate(day) {
                     <div class="form-stack">
                       <input v-model="groupEditName" placeholder="小组名称" />
                       <button type="button" @click="updateCurrentGroup">保存小组信息</button>
+                      <button class="danger" type="button" @click="deleteCurrentGroup">
+                        <Trash2 :size="16" />
+                        删除当前小组
+                      </button>
                     </div>
                   </div>
                   <div v-if="currentGroupID" class="card">

@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,12 @@ import (
 	userdomain "agp/backend/internal/user"
 )
 
+const (
+	refreshCookieName = "agp_refresh"
+	csrfCookieName    = "agp_csrf"
+	csrfHeaderName    = "X-CSRF-Token"
+)
+
 func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
@@ -34,6 +41,14 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 			logAuthFailure(r, "verify_token", err)
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
+		}
+		if claims.SessionID > 0 {
+			active, err := a.activeRefreshSession(r.Context(), claims.SessionID, claims.UserID)
+			if err != nil || !active {
+				logAuthFailure(r, "refresh_session_inactive", err)
+				writeError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
 		}
 		u, err := a.loadCurrentUser(r.Context(), claims.UserID, claims.CurrentGroupID)
 		if err != nil {
@@ -240,6 +255,199 @@ func (a *app) verifyToken(token string) (tokenClaims, error) {
 		return c, errors.New("expired")
 	}
 	return c, nil
+}
+
+type refreshSession struct {
+	ID             uint64
+	UserID         uint64
+	CurrentGroupID uint64
+	ExpiresAt      time.Time
+}
+
+func (a *app) issueRefreshSession(ctx context.Context, w http.ResponseWriter, r *http.Request, userID, currentGroupID uint64) (uint64, error) {
+	refreshToken, err := randomURLToken(32)
+	if err != nil {
+		return 0, err
+	}
+	csrfToken, err := randomURLToken(32)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(a.effectiveRefreshTTL())
+	res, err := a.db.ExecContext(ctx, `INSERT INTO refresh_sessions
+		(user_id,token_hash,csrf_hash,current_group_id,expires_at,created_at,updated_at)
+		VALUES (?,?,?,?,?,?,?)`,
+		userID, tokenHash(refreshToken), tokenHash(csrfToken), nullableUint64SQL(currentGroupID), expiresAt, now, now)
+	if err != nil {
+		return 0, err
+	}
+	sessionID, err := insertedID(res)
+	if err != nil {
+		return 0, err
+	}
+	setAuthCookies(w, r, refreshToken, csrfToken, expiresAt)
+	return sessionID, nil
+}
+
+func (a *app) refreshSession(ctx context.Context, token, csrf string) (refreshSession, error) {
+	var session refreshSession
+	now := time.Now().UTC()
+	err := a.db.QueryRowContext(ctx, `SELECT id,user_id,COALESCE(current_group_id,0),expires_at
+		FROM refresh_sessions
+		WHERE token_hash=? AND csrf_hash=? AND revoked_at IS NULL AND expires_at>?`,
+		tokenHash(token), tokenHash(csrf), now).Scan(&session.ID, &session.UserID, &session.CurrentGroupID, &session.ExpiresAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return session, errors.New("invalid_refresh_session")
+		}
+		return session, err
+	}
+	session.ExpiresAt = now.Add(a.effectiveRefreshTTL())
+	if _, err := a.db.ExecContext(ctx, `UPDATE refresh_sessions
+		SET expires_at=?,last_used_at=?,updated_at=?
+		WHERE token_hash=? AND revoked_at IS NULL`, session.ExpiresAt, now, now, tokenHash(token)); err != nil {
+		return session, err
+	}
+	return session, nil
+}
+
+func (a *app) activeRefreshSession(ctx context.Context, sessionID, userID uint64) (bool, error) {
+	var exists int
+	err := a.db.QueryRowContext(ctx, `SELECT 1
+		FROM refresh_sessions
+		WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?`,
+		sessionID, userID, time.Now().UTC()).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (a *app) revokeRefreshSession(ctx context.Context, token string) error {
+	if strings.TrimSpace(token) == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	_, err := a.db.ExecContext(ctx, `UPDATE refresh_sessions SET revoked_at=?,updated_at=? WHERE token_hash=? AND revoked_at IS NULL`, now, now, tokenHash(token))
+	return err
+}
+
+func (a *app) updateRefreshSessionGroup(ctx context.Context, r *http.Request, groupID uint64) {
+	cookie, err := r.Cookie(refreshCookieName)
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return
+	}
+	now := time.Now().UTC()
+	if _, err := a.db.ExecContext(ctx, `UPDATE refresh_sessions
+		SET current_group_id=?,updated_at=?
+		WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?`,
+		nullableUint64SQL(groupID), now, tokenHash(cookie.Value), now); err != nil {
+		slog.WarnContext(ctx, "refresh session group update failed", "error", err)
+	}
+}
+
+func refreshCredentials(r *http.Request) (string, string, error) {
+	refreshCookie, err := r.Cookie(refreshCookieName)
+	if err != nil || strings.TrimSpace(refreshCookie.Value) == "" {
+		return "", "", errors.New("refresh_cookie_missing")
+	}
+	csrfCookie, err := r.Cookie(csrfCookieName)
+	if err != nil || strings.TrimSpace(csrfCookie.Value) == "" {
+		return "", "", errors.New("csrf_cookie_missing")
+	}
+	csrfHeader := strings.TrimSpace(r.Header.Get(csrfHeaderName))
+	if csrfHeader == "" || !hmac.Equal([]byte(csrfHeader), []byte(csrfCookie.Value)) {
+		return "", "", errors.New("csrf_mismatch")
+	}
+	return refreshCookie.Value, csrfHeader, nil
+}
+
+func setAuthCookies(w http.ResponseWriter, r *http.Request, refreshToken, csrfToken string, expiresAt time.Time) {
+	secure := secureCookie(r)
+	maxAge := int(time.Until(expiresAt).Seconds())
+	if maxAge < 1 {
+		maxAge = 1
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    refreshToken,
+		Path:     "/api/auth",
+		Expires:  expiresAt,
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    csrfToken,
+		Path:     "/",
+		Expires:  expiresAt,
+		MaxAge:   maxAge,
+		HttpOnly: false,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func clearAuthCookies(w http.ResponseWriter, r *http.Request) {
+	secure := secureCookie(r)
+	expired := time.Unix(0, 0)
+	for _, cookie := range []http.Cookie{
+		{Name: refreshCookieName, Path: "/api/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode},
+		{Name: csrfCookieName, Path: "/", HttpOnly: false, Secure: secure, SameSite: http.SameSiteStrictMode},
+	} {
+		cookie.Value = ""
+		cookie.Expires = expired
+		cookie.MaxAge = -1
+		http.SetCookie(w, &cookie)
+	}
+}
+
+func secureCookie(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func (a *app) effectiveRefreshTTL() time.Duration {
+	if a.refreshTTL > 0 {
+		return a.refreshTTL
+	}
+	return 8760 * time.Hour
+}
+
+func randomURLToken(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func tokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func insertedID(result sql.Result) (uint64, error) {
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return uint64(id), nil
+}
+
+func nullableUint64SQL(id uint64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
 }
 
 func bearerToken(r *http.Request) string {

@@ -29,6 +29,13 @@ import {
   weeklyTitleFromContent,
 } from './runtime/content';
 import {
+  authHeaders as sessionAuthHeaders,
+  clearAccessToken,
+  csrfToken,
+  getAccessToken,
+  setAccessToken,
+} from './runtime/authSession';
+import {
   mergeResourceAssets,
   normalizeResourceCategory,
   resourceCategoryLabel,
@@ -38,7 +45,7 @@ import {
 export { enabledFlag, extractPdfPageRange };
 
 const state = {
-  token: localStorage.getItem('agp_token') || '',
+  token: '',
   user: null,
   tab: 'home',
   adminSection: 'learning',
@@ -262,21 +269,67 @@ const navItems = [
 
 const homeStatsMinistryCode = 'discipleship-counting';
 const homeStatsEligibilityTTL = 60_000;
+let refreshPromise = null;
 
 export async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
-  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const csrf = csrfToken();
+  if (csrf && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrf;
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  const res = await fetch(`/api${path}`, { ...options, headers, credentials: 'same-origin' });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== '/auth/refresh' && options.retryAuth !== false) {
+    const refreshed = await refreshSession();
+    if (refreshed) return api(path, { ...options, retryAuth: false });
+  }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
 
+async function refreshSession() {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const result = await api('/auth/refresh', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken() },
+        retryAuth: false,
+      });
+      state.token = result.token || '';
+      setAccessToken(state.token);
+      state.user = result.user || null;
+      return Boolean(state.token && state.user);
+    } catch {
+      state.token = '';
+      clearAccessToken();
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 function authHeaders(headers = {}) {
-  const next = { ...headers };
-  if (state.token) next.Authorization = `Bearer ${state.token}`;
+  const next = sessionAuthHeaders(headers);
+  const csrf = csrfToken();
+  if (csrf && !next['X-CSRF-Token']) next['X-CSRF-Token'] = csrf;
   return next;
+}
+
+export async function fetchWithAuth(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: authHeaders(options.headers || {}),
+    credentials: 'same-origin',
+  });
+  if (res.status === 401 && options.retryAuth !== false) {
+    const refreshed = await refreshSession();
+    if (refreshed) return fetchWithAuth(url, { ...options, retryAuth: false });
+  }
+  return res;
 }
 
 function parseDownloadName(res, fallbackName) {
@@ -299,7 +352,7 @@ function triggerDownload(blob, filename) {
 }
 
 export async function downloadAdminExport(path, fallbackName, successMessage = '文件已开始下载') {
-  const res = await fetch(`/api${path}`, { headers: authHeaders() });
+  const res = await fetchWithAuth(`/api${path}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `HTTP ${res.status}`);
@@ -317,9 +370,8 @@ export async function importStudyWeeksExcel(fileInput) {
   }
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch('/api/admin/imports/study-weeks', {
+  const res = await fetchWithAuth('/api/admin/imports/study-weeks', {
     method: 'POST',
-    headers: authHeaders(),
     body: formData,
   });
   const data = await res.json().catch(() => ({}));
@@ -368,7 +420,10 @@ export function toast(message) {
 }
 
 async function loadAll(options = {}) {
-  if (!state.token) return;
+  if (!state.token) {
+    const restored = await refreshSession();
+    if (!restored) return;
+  }
   try {
     await loadSiteConfig();
     if (!options.useExistingUser || !state.user) {
@@ -445,7 +500,7 @@ async function loadAll(options = {}) {
     });
   } catch (error) {
     if (String(error.message).includes('unauthorized')) {
-      logout();
+      logout({ remote: false });
       return;
     }
     toast(error.message);
@@ -472,7 +527,7 @@ export async function switchGroup(groupID) {
     body: JSON.stringify({ group_id: Number(groupID) }),
   });
   state.token = result.token;
-  localStorage.setItem('agp_token', state.token);
+  setAccessToken(state.token);
   await loadAll();
   render();
 }
@@ -488,7 +543,7 @@ export async function login(username, password) {
   });
   state.token = data.token;
   state.user = data.user;
-  localStorage.setItem('agp_token', state.token);
+  setAccessToken(state.token);
   render();
   await loadAll({ useExistingUser: true });
   render();
@@ -985,7 +1040,7 @@ export async function openContentTarget(target) {
       return;
     }
     try {
-      const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
+      const res = await fetchWithAuth(sourceAPIPath);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const blobType = inferResourceTypeFromMime(blob.type, type);
@@ -1004,7 +1059,7 @@ export async function openContentTarget(target) {
   }
   closeViewer();
   if (sourceAPIPath) {
-    const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
+    const res = await fetchWithAuth(sourceAPIPath);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (type === 'markdown') {
       const text = await res.text();
@@ -1102,7 +1157,7 @@ export async function openViewerItemInNewWindow(item, popup = null) {
       return;
     }
     if (sourceAPIPath) {
-      const res = await fetch(sourceAPIPath, { headers: { Authorization: `Bearer ${state.token}` } });
+      const res = await fetchWithAuth(sourceAPIPath);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const blobType = inferResourceTypeFromMime(blob.type, type);
@@ -2068,9 +2123,8 @@ export async function uploadLibraryFile(fileInput, category) {
   form.append('category', category);
   form.append('file', file);
   try {
-    const res = await fetch('/api/admin/assets/upload', {
+		const res = await fetchWithAuth('/api/admin/assets/upload', {
       method: 'POST',
-      headers: state.token ? { Authorization: `Bearer ${state.token}` } : {},
       body: form,
     });
     const data = await res.json().catch(() => ({}));
@@ -2129,8 +2183,15 @@ export async function removeMember(member) {
   }
 }
 
-export function logout() {
-  localStorage.removeItem('agp_token');
+export async function logout(options = {}) {
+  if (options.remote !== false) {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken() },
+      credentials: 'same-origin',
+    }).catch(() => {});
+  }
+  clearAccessToken();
   state.token = '';
   state.user = null;
   state.bootstrap = null;
@@ -2151,6 +2212,8 @@ function render() {
 }
 
 export function initializeApp() {
+  clearAccessToken();
+  localStorage.removeItem('agp_token');
   render();
   return loadAll().then(render);
 }

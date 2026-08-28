@@ -9,7 +9,7 @@ import {
   Save,
   X,
 } from '@lucide/vue';
-import { api, toast as showToast } from '../legacy-app';
+import { api, fetchWithAuth, toast as showToast } from '../legacy-app';
 
 const props = defineProps({
   groupId: {
@@ -141,9 +141,7 @@ async function toggleAttendance(member, date) {
 
 async function exportAttendance() {
   try {
-    const response = await fetch(`/api/ministry-groups/${props.groupId}/attendance/export?month=${month.value}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('agp_token') || ''}` },
-    });
+    const response = await fetchWithAuth(`/api/ministry-groups/${props.groupId}/attendance/export?month=${month.value}`);
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${response.status}`);

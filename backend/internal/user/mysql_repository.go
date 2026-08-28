@@ -91,6 +91,116 @@ func (r *MySQLRepository) UpdateGroup(ctx context.Context, id uint64, name strin
 	return nil
 }
 
+func (r *MySQLRepository) DeleteGroup(ctx context.Context, id uint64, at time.Time) ([]string, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var groupID uint64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE id=? FOR UPDATE`, id).Scan(&groupID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrGroupNotFound
+		}
+		return nil, err
+	}
+
+	resourcePaths, err := ownedResourcePathsTx(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	statements := []string{
+		`DELETE FROM ministry_attendance_records WHERE study_group_id=?`,
+		`DELETE FROM ministry_attendance_dates WHERE study_group_id=?`,
+		`DELETE FROM ministry_attendance_settings WHERE study_group_id=?`,
+		`DELETE FROM ministry_content_deletions WHERE study_group_id=?`,
+		`DELETE FROM ministry_share_pins WHERE study_group_id=?`,
+		`DELETE FROM ministry_progress_assets WHERE study_group_id=?`,
+		`DELETE FROM ministry_notifications WHERE study_group_id=?`,
+		`DELETE FROM ministry_group_requests WHERE study_group_id=?`,
+		`DELETE FROM ministry_group_members WHERE study_group_id=?`,
+		`DELETE FROM ministry_shares WHERE study_group_id=?`,
+		`DELETE FROM ministry_progress WHERE study_group_id=?`,
+		`DELETE FROM ministry_groups WHERE study_group_id=?`,
+		`DELETE FROM asset_import_events
+			WHERE target_group_id=?
+			   OR imported_asset_id IN (SELECT id FROM assets WHERE group_id=?)
+			   OR source_asset_id IN (SELECT id FROM assets WHERE group_id=?)`,
+		`DELETE FROM asset_dependencies WHERE consumer_group_id=? OR provider_group_id=?`,
+		`DELETE FROM asset_share_grants
+			WHERE owner_group_id=?
+			   OR consumer_group_id=?
+			   OR asset_id IN (SELECT id FROM assets WHERE group_id=?)`,
+		`DELETE FROM task_assets
+			WHERE group_id=?
+			   OR asset_id IN (SELECT id FROM assets WHERE group_id=?)`,
+		`DELETE FROM asset_bindings
+			WHERE group_id=?
+			   OR source_asset_id IN (SELECT id FROM assets WHERE group_id=?)`,
+		`DELETE FROM assets WHERE group_id=?`,
+		`DELETE FROM checkin_records WHERE group_id=?`,
+		`DELETE FROM recite_attempts WHERE group_id=?`,
+		`DELETE FROM feedbacks WHERE group_id=?`,
+		`DELETE FROM study_tasks WHERE group_id=?`,
+		`DELETE FROM study_weeks WHERE group_id=?`,
+		`DELETE FROM group_settings WHERE group_id=?`,
+		`DELETE FROM user_group_roles WHERE group_id=?`,
+		`DELETE FROM group_members WHERE group_id=?`,
+		`DELETE FROM login_logs WHERE group_id=?`,
+		`DELETE FROM audit_logs WHERE group_id=?`,
+		`UPDATE refresh_sessions SET current_group_id=NULL, updated_at=? WHERE current_group_id=?`,
+		`UPDATE users SET default_group_id=NULL, updated_at=? WHERE default_group_id=?`,
+		`DELETE FROM study_groups WHERE id=?`,
+	}
+	for _, query := range statements {
+		args := groupDeleteArgs(query, id, at)
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return resourcePaths, nil
+}
+
+func ownedResourcePathsTx(ctx context.Context, tx *sql.Tx, groupID uint64) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT a.storage_path
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id
+		WHERE a.group_id=? AND b.asset_kind='owned' AND a.storage_path LIKE 'team-%-resources/objects/%'`,
+		groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
+}
+
+func groupDeleteArgs(query string, groupID uint64, at time.Time) []any {
+	count := strings.Count(query, "?")
+	args := make([]any, 0, count)
+	for i := 0; i < count; i++ {
+		if strings.HasPrefix(query, "UPDATE ") && i == 0 {
+			args = append(args, at)
+			continue
+		}
+		args = append(args, groupID)
+	}
+	return args
+}
+
 func (r *MySQLRepository) ensureGroupNameUnique(ctx context.Context, ownID uint64, name string) error {
 	var id uint64
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE name=? AND id<>? LIMIT 1`, name, ownID).Scan(&id)

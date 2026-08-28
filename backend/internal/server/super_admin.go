@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
+	assetdomain "agp/backend/internal/asset"
 	userdomain "agp/backend/internal/user"
 )
 
@@ -70,6 +73,39 @@ func (a *app) handleSuperUpdateGroup(w http.ResponseWriter, r *http.Request) {
 		"name": req.Name,
 	}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleSuperDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	resourcePaths, err := a.users.DeleteGroup(r.Context(), groupID, time.Now().UTC())
+	if errors.Is(err, userdomain.ErrGroupNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "group_delete_failed")
+		return
+	}
+	if err := a.deleteOwnedResourceFiles(r.Context(), resourcePaths); err != nil {
+		writeError(w, http.StatusInternalServerError, "group_resource_delete_failed")
+		return
+	}
+	a.refreshTodayContent(groupID)
+	a.audit(0, u.ID, "delete_group", "study_groups", groupID, nil, map[string]any{
+		"resource_files": len(resourcePaths),
+	}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "resource_files": len(resourcePaths)})
+}
+
+func (a *app) deleteOwnedResourceFiles(ctx context.Context, paths []string) error {
+	storage := assetdomain.NewLocalStorage(a.resourceRoot)
+	for _, path := range paths {
+		if err := storage.Delete(ctx, path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *app) handleSuperSetGroupDefaultPassword(w http.ResponseWriter, r *http.Request) {
