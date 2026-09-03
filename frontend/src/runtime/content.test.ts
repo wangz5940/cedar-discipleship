@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyPdfPageRangeToTitle,
+  buildReaderPageURL,
   classifyAttachment,
   deepMerge,
   enabledFlag,
@@ -8,9 +9,9 @@ import {
   markdownToSafeHTML,
   normalizeSearchText,
   parsePdfPageRangeParts,
+  parseReaderPageRequest,
   sameOriginAPIPath,
   shouldRenderWeeklyTask,
-  shouldUseNativePDFViewer,
   videoMediaErrorMessage,
   weeklyTitleFromContent,
 } from './content';
@@ -31,13 +32,6 @@ describe('content runtime helpers', () => {
     expect(parsePdfPageRangeParts('第 9 页')).toEqual({ pageStart: '9', pageEnd: '9' });
     expect(applyPdfPageRangeToTitle('读物 3-4页', '8', '6')).toBe('读物 8-8页');
     expect(applyPdfPageRangeToTitle('读物 3-4页', '', '')).toBe('读物');
-  });
-
-  it('uses native PDF viewing only on Apple mobile devices', () => {
-    expect(shouldUseNativePDFViewer('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36')).toBe(false);
-    expect(shouldUseNativePDFViewer('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')).toBe(true);
-    expect(shouldUseNativePDFViewer('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', 5)).toBe(true);
-    expect(shouldUseNativePDFViewer('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false);
   });
 
   it('classifies attachments into previewable and download-only types', () => {
@@ -99,5 +93,32 @@ describe('content runtime helpers', () => {
     expect(sameOriginAPIPath('/api/assets/12/range?pages=10-11', 'http://localhost:5114')).toBe('/api/assets/12/range?pages=10-11');
     expect(sameOriginAPIPath('http://localhost:5114/api/assets/12/range?pages=10-11', 'http://localhost:5114')).toBe('/api/assets/12/range?pages=10-11');
     expect(sameOriginAPIPath('http://example.com/api/assets/12/range?pages=10-11', 'http://localhost:5114')).toBe('');
+  });
+
+  it('builds and parses protected PDF reader page URLs', () => {
+    const url = buildReaderPageURL({
+      sourceURL: '/api/assets/12/range?pages=10-11',
+      title: '门训读物',
+      pageRange: '10-11',
+    }, 'http://localhost:5114');
+    expect(url).toBe(
+      'http://localhost:5114/?reader_source=%2Fapi%2Fassets%2F12%2Frange%3Fpages%3D10-11&reader_title=%E9%97%A8%E8%AE%AD%E8%AF%BB%E7%89%A9&reader_pages=10-11',
+    );
+    expect(parseReaderPageRequest(new URL(url).search)).toEqual({
+      sourceURL: '/api/assets/12/range?pages=10-11',
+      title: '门训读物',
+      pageRange: '10-11',
+    });
+    expect(buildReaderPageURL({
+      sourceURL: 'https://example.com/book.pdf',
+      title: '外部文件',
+      pageRange: '',
+    }, 'http://localhost:5114')).toBe('');
+    expect(buildReaderPageURL({
+      sourceURL: '/api/assets/12/download',
+      title: '整本文件',
+      pageRange: '',
+    }, 'http://localhost:5114')).toBe('');
+    expect(parseReaderPageRequest('?reader_source=https://example.com/book.pdf')).toBeNull();
   });
 });

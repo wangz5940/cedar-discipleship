@@ -16,6 +16,7 @@ import {
 } from './runtime/date';
 import {
   applyPdfPageRangeToTitle,
+  buildReaderPageURL,
   deepMerge,
   enabledFlag,
   extractPdfPageRange,
@@ -25,7 +26,6 @@ import {
   parsePdfPageRangeParts,
   sameOriginAPIPath,
   shouldRenderWeeklyTask,
-  shouldUseNativePDFViewer,
   weeklyTitleFromContent,
 } from './runtime/content';
 import {
@@ -937,28 +937,6 @@ function buildViewerURL(url, type, pageRange = '', sourceURL = '') {
   return `${url}${separator}page=${encodeURIComponent(startPage)}&zoom=page-width`;
 }
 
-function preferStandalonePDFViewer(type) {
-  if (type !== 'pdf' || typeof window === 'undefined') return false;
-  return shouldUseNativePDFViewer(navigator.userAgent, navigator.maxTouchPoints);
-}
-
-function openPendingViewerWindow(title) {
-  if (typeof window === 'undefined') return null;
-  const popup = window.open('', '_blank');
-  if (!popup) return null;
-  try {
-    popup.document.title = title || 'Opening PDF';
-    popup.document.body.style.margin = '0';
-    popup.document.body.style.display = 'grid';
-    popup.document.body.style.placeItems = 'center';
-    popup.document.body.style.minHeight = '100vh';
-    popup.document.body.style.fontFamily = 'system-ui, sans-serif';
-    popup.document.body.style.color = '#334155';
-    popup.document.body.textContent = '正在打开 PDF...';
-  } catch {}
-  return popup;
-}
-
 function resolveContentSourceURL(target) {
   const originalURL = String(target.url || '').trim();
   const originalAPIPath = sameOriginAPIPath(originalURL, window.location.origin);
@@ -1024,35 +1002,6 @@ export async function openContentTarget(target) {
       render();
     } catch (error) {
       if (state.viewer === pendingViewer) closeViewer();
-      throw error;
-    }
-    return;
-  }
-  if (preferStandalonePDFViewer(type)) {
-    const popup = openPendingViewerWindow(title);
-    if (!sourceAPIPath) {
-      const finalURL = new URL(buildViewerURL(sourceURL, type, pageRange, sourceURL), window.location.origin).toString();
-      if (popup && !popup.closed) {
-        popup.location.replace(finalURL);
-      } else {
-        window.location.assign(finalURL);
-      }
-      return;
-    }
-    try {
-      const res = await fetchWithAuth(sourceAPIPath);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const blobType = inferResourceTypeFromMime(blob.type, type);
-      const objectURL = URL.createObjectURL(blob);
-      const finalURL = buildViewerURL(objectURL, blobType, pageRange, sourceURL);
-      if (popup && !popup.closed) {
-        popup.location.replace(finalURL);
-      } else {
-        window.location.assign(finalURL);
-      }
-    } catch (error) {
-      if (popup && !popup.closed) popup.close();
       throw error;
     }
     return;
@@ -1181,6 +1130,24 @@ export async function openViewerItemInNewWindow(item, popup = null) {
     if (popup && !popup.closed) popup.close();
     toast(`打开失败：${error.message}`);
   }
+}
+
+export function openCurrentViewerInNewPage(item) {
+  const sourceAPIPath = sameOriginAPIPath(
+    item?.sourceURL || item?.downloadURL || item?.url || '',
+    window.location.origin,
+  );
+  const pageRange = item?.pageRange || extractPdfPageRange(item?.title || '');
+  const readerURL = buildReaderPageURL({
+    sourceURL: sourceAPIPath,
+    title: item?.title || 'PDF 资料',
+    pageRange,
+  }, window.location.origin);
+  if (!readerURL) {
+    toast('当前书籍未配置阅读页码范围');
+    return;
+  }
+  window.open(readerURL, '_blank', 'noopener,noreferrer');
 }
 
 export async function toggleCheckin(task, member) {

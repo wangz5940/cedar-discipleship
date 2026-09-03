@@ -1,8 +1,8 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from '@lucide/vue';
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import pdfWorkerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import { RotateCcw, ZoomIn, ZoomOut } from '@lucide/vue';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.js';
+import pdfWorkerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.js?url';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerURL;
 
@@ -22,10 +22,9 @@ const props = defineProps({
 });
 
 const shell = ref(null);
-const canvas = ref(null);
+const pageCanvases = ref([]);
 const loading = ref(true);
 const error = ref('');
-const pageNumber = ref(1);
 const pageCount = ref(0);
 const zoom = ref(1);
 
@@ -34,42 +33,31 @@ let pdfDocument = null;
 let renderTask = null;
 let resizeObserver = null;
 let renderSequence = 0;
+let observedWidth = 0;
 
 function sourceWithoutFragment() {
   return props.src.split('#')[0];
 }
 
-function initialPageNumber() {
-  const fragment = props.src.split('#')[1] || '';
-  const page = Number(new URLSearchParams(fragment).get('page'));
-  return Number.isInteger(page) && page > 0 ? page : 1;
-}
-
 function documentSource() {
   if (props.data instanceof Uint8Array) {
-    return { data: props.data.slice() };
+    return { data: props.data.slice(), isEvalSupported: false };
   }
   if (props.data instanceof ArrayBuffer) {
-    return { data: props.data.slice(0) };
+    return { data: props.data.slice(0), isEvalSupported: false };
   }
-  return sourceWithoutFragment();
+  return { url: sourceWithoutFragment(), isEvalSupported: false };
 }
 
-async function renderPage() {
-  if (!pdfDocument || !canvas.value || !shell.value) return;
-  const sequence = ++renderSequence;
-  renderTask?.cancel();
-
+async function renderCanvas(pageNumberToRender, target, sequence) {
   try {
-    const page = await pdfDocument.getPage(pageNumber.value);
+    const page = await pdfDocument.getPage(pageNumberToRender);
     if (sequence !== renderSequence) return;
-
     const baseViewport = page.getViewport({ scale: 1 });
     const availableWidth = Math.max(280, shell.value.clientWidth - 24);
     const fitScale = Math.min(availableWidth / baseViewport.width, 1.5);
     const viewport = page.getViewport({ scale: fitScale * zoom.value });
     const outputScale = Math.min(window.devicePixelRatio || 1, 2);
-    const target = canvas.value;
     const context = target.getContext('2d', { alpha: false });
     if (!context) throw new Error('canvas_context_unavailable');
 
@@ -86,8 +74,20 @@ async function renderPage() {
     await renderTask.promise;
   } catch (renderError) {
     if (renderError?.name !== 'RenderingCancelledException') {
-      error.value = 'PDF 页面渲染失败，请尝试下载后查看。';
+      error.value = 'PDF 页面渲染失败，请重试或下载后查看。';
     }
+  }
+}
+
+async function renderDocument() {
+  if (!pdfDocument || !shell.value) return;
+  const sequence = ++renderSequence;
+  renderTask?.cancel();
+  await nextTick();
+  for (let index = 0; index < pageCount.value; index += 1) {
+    const target = pageCanvases.value[index];
+    if (!target || sequence !== renderSequence) return;
+    await renderCanvas(index + 1, target, sequence);
   }
 }
 
@@ -95,7 +95,6 @@ async function loadPDF() {
   loading.value = true;
   error.value = '';
   pageCount.value = 0;
-  pageNumber.value = initialPageNumber();
   renderTask?.cancel();
   await loadingTask?.destroy();
   loadingTask = null;
@@ -105,29 +104,27 @@ async function loadPDF() {
     loadingTask = getDocument(documentSource());
     pdfDocument = await loadingTask.promise;
     pageCount.value = pdfDocument.numPages;
-    pageNumber.value = Math.min(pageNumber.value, pageCount.value);
     await nextTick();
-    await renderPage();
+    await renderDocument();
   } catch {
-    error.value = 'PDF 加载失败，请尝试下载后查看。';
+    error.value = 'PDF 加载失败，请重试或下载后查看。';
   } finally {
     loading.value = false;
   }
 }
 
-function changePage(nextPage) {
-  if (!pageCount.value) return;
-  pageNumber.value = Math.min(pageCount.value, Math.max(1, Number(nextPage) || 1));
-  renderPage();
-}
-
 function changeZoom(delta) {
   zoom.value = Math.min(2, Math.max(0.75, Number((zoom.value + delta).toFixed(2))));
-  renderPage();
+  renderDocument();
 }
 
 onMounted(() => {
-  resizeObserver = new ResizeObserver(() => renderPage());
+  resizeObserver = new ResizeObserver((entries) => {
+    const width = Math.round(entries[0]?.contentRect?.width || 0);
+    if (!width || width === observedWidth) return;
+    observedWidth = width;
+    renderDocument();
+  });
   if (shell.value) resizeObserver.observe(shell.value);
   loadPDF();
 });
@@ -147,38 +144,8 @@ onBeforeUnmount(async () => {
 <template>
   <div ref="shell" class="pdf-viewer">
     <div class="pdf-viewer-toolbar">
-      <div class="pdf-viewer-pager">
-        <button
-          class="ghost icon-button"
-          type="button"
-          title="上一页"
-          aria-label="上一页"
-          :disabled="pageNumber <= 1"
-          @click="changePage(pageNumber - 1)"
-        >
-          <ChevronLeft :size="18" />
-        </button>
-        <label class="pdf-page-field">
-          <span class="sr-only">当前页</span>
-          <input
-            :value="pageNumber"
-            type="number"
-            min="1"
-            :max="pageCount || 1"
-            @change="changePage($event.target.value)"
-          />
-          <span>/ {{ pageCount || '-' }}</span>
-        </label>
-        <button
-          class="ghost icon-button"
-          type="button"
-          title="下一页"
-          aria-label="下一页"
-          :disabled="pageNumber >= pageCount"
-          @click="changePage(pageNumber + 1)"
-        >
-          <ChevronRight :size="18" />
-        </button>
+      <div class="pdf-viewer-page-count">
+        共 {{ pageCount || '-' }} 页
       </div>
       <div class="pdf-viewer-zoom">
         <button
@@ -206,13 +173,21 @@ onBeforeUnmount(async () => {
     </div>
     <div class="pdf-viewer-stage" :aria-busy="loading">
       <p v-if="loading" class="muted pdf-viewer-status">正在加载 PDF...</p>
-      <iframe
-        v-else-if="error"
-        class="pdf-viewer-native-frame"
-        :src="sourceWithoutFragment()"
-        :title="title"
-      ></iframe>
-      <canvas v-show="!loading && !error" ref="canvas" :aria-label="`${title}第 ${pageNumber} 页`"></canvas>
+      <div v-else-if="error" class="pdf-viewer-error">
+        <p>{{ error }}</p>
+        <button class="secondary icon-text-button" type="button" @click="loadPDF">
+          <RotateCcw :size="16" />
+          重试
+        </button>
+      </div>
+      <div v-if="pageCount && !error" class="pdf-viewer-pages">
+        <canvas
+          v-for="page in pageCount"
+          :key="page"
+          ref="pageCanvases"
+          :aria-label="`${title}第 ${page} 页`"
+        ></canvas>
+      </div>
     </div>
   </div>
 </template>

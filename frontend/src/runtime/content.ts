@@ -15,12 +15,6 @@ export function shouldRenderWeeklyTask(enabled: unknown, tasks: unknown): boolea
   return enabledFlag(enabled) && Array.isArray(tasks) && tasks.length > 0;
 }
 
-export function shouldUseNativePDFViewer(userAgent: unknown, maxTouchPoints = 0): boolean {
-  const normalizedUserAgent = String(userAgent || '');
-  return /iPhone|iPad|iPod/i.test(normalizedUserAgent)
-    || (/Macintosh/i.test(normalizedUserAgent) && maxTouchPoints > 1);
-}
-
 export function sameOriginAPIPath(value: unknown, origin = ''): string {
   const source = String(value || '').trim();
   if (source.startsWith('/api/')) return source;
@@ -32,6 +26,35 @@ export function sameOriginAPIPath(value: unknown, origin = ''): string {
   } catch {
     return '';
   }
+}
+
+export type ReaderPageRequest = {
+  sourceURL: string;
+  title: string;
+  pageRange: string;
+};
+
+export function buildReaderPageURL(input: ReaderPageRequest, origin = ''): string {
+  const sourceURL = sameOriginAPIPath(input.sourceURL, origin);
+  if (!/^\/api\/assets\/\d+\/range\?/.test(sourceURL)) return '';
+  if (!new URLSearchParams(sourceURL.split('?')[1] || '').get('pages')) return '';
+  const url = new URL('/', origin || 'http://localhost');
+  url.searchParams.set('reader_source', sourceURL);
+  url.searchParams.set('reader_title', String(input.title || 'PDF 资料').trim() || 'PDF 资料');
+  if (input.pageRange) url.searchParams.set('reader_pages', input.pageRange);
+  return origin ? url.toString() : `${url.pathname}${url.search}`;
+}
+
+export function parseReaderPageRequest(search: unknown): ReaderPageRequest | null {
+  const params = new URLSearchParams(String(search || ''));
+  const sourceURL = params.get('reader_source') || '';
+  if (!/^\/api\/assets\/\d+\/range\?/.test(sourceURL)) return null;
+  if (!new URLSearchParams(sourceURL.split('?')[1] || '').get('pages')) return null;
+  return {
+    sourceURL,
+    title: (params.get('reader_title') || 'PDF 资料').trim() || 'PDF 资料',
+    pageRange: params.get('reader_pages') || '',
+  };
 }
 
 export type AttachmentPresentation = {

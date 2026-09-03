@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Download, RotateCcw } from '@lucide/vue';
+import { Download, ExternalLink, RotateCcw, X } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
@@ -9,6 +9,7 @@ import {
   closeViewer,
   extractPdfPageRange,
   openContentTarget,
+  openCurrentViewerInNewPage,
   openViewerItemInNewWindow,
   sameViewerItem,
   toast,
@@ -49,14 +50,6 @@ const relatedSections = computed(() => {
 });
 
 const hasRelatedSidebar = computed(() => relatedSections.value.length > 0);
-const relatedItemCount = computed(() => relatedSections.value.reduce((total, section) => total + (section.items?.length || 0), 0));
-const viewerTypeLabel = computed(() => {
-  if (viewer.value?.type === 'video') return '视频资料';
-  if (viewer.value?.type === 'audio') return '音频资料';
-  if (viewer.value?.type === 'markdown') return '文字材料';
-  if (viewer.value?.type === 'image') return '图像资料';
-  return 'PDF 资料';
-});
 const activeSection = computed(() => {
   return relatedSections.value.find((section) => section.items?.some((item) => sameViewerItem(item, viewer.value))) || null;
 });
@@ -257,6 +250,11 @@ function openAdjacentItem(item) {
   openItem(item);
 }
 
+function openCurrentInNewPage() {
+  if (!viewer.value) return;
+  openCurrentViewerInNewPage(viewer.value);
+}
+
 function downloadCurrent() {
   const current = viewer.value;
   if (!current?.downloadURL) return;
@@ -280,15 +278,7 @@ function downloadCurrent() {
     <div class="viewer-modal" :class="{ 'viewer-modal-pdf': viewer.type === 'pdf' }">
       <div class="viewer-head">
         <div class="viewer-head-copy">
-          <div class="eyebrow">内容阅读</div>
           <h2>{{ viewer.title }}</h2>
-          <p v-if="viewer.pageRange" class="muted viewer-note">
-            当前阅读范围：{{ viewer.pageRange }}页
-          </p>
-          <div class="viewer-meta-chips">
-            <span class="pill">{{ viewerTypeLabel }}</span>
-            <span v-if="hasRelatedSidebar" class="pill">关联资料 {{ relatedItemCount }}</span>
-          </div>
         </div>
         <div class="viewer-actions">
           <div v-if="viewer.type === 'markdown'" class="reader-controls">
@@ -320,7 +310,7 @@ function downloadCurrent() {
             下一篇
           </button>
           <a
-            v-if="viewer.externalURL"
+            v-if="viewer.externalURL && viewer.type !== 'pdf'"
             class="secondary viewer-open-link"
             :href="viewer.externalURL"
             target="_blank"
@@ -329,6 +319,17 @@ function downloadCurrent() {
             新窗口打开
           </a>
           <button
+            v-if="viewer.type === 'pdf'"
+            class="secondary icon-text-button viewer-new-page-button"
+            type="button"
+            title="在新窗口打开当前书籍"
+            aria-label="在新窗口打开当前书籍"
+            @click="openCurrentInNewPage"
+          >
+            <ExternalLink :size="17" aria-hidden="true" />
+            新窗口
+          </button>
+          <button
             v-if="viewer.downloadURL"
             class="secondary icon-text-button"
             type="button"
@@ -336,8 +337,16 @@ function downloadCurrent() {
           >
             <Download :size="16" />下载
           </button>
-          <button class="ghost" type="button" @click="closeViewer">关闭</button>
         </div>
+        <button
+          class="ghost icon-button viewer-close-button"
+          type="button"
+          title="关闭阅读页"
+          aria-label="关闭阅读页"
+          @click="closeViewer"
+        >
+          <X :size="20" aria-hidden="true" />
+        </button>
       </div>
 
       <div
