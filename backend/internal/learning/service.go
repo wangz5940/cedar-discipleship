@@ -139,26 +139,19 @@ func (s *Service) TodayContent(ctx context.Context, groupID uint64, date string,
 		from, to = start, end
 	}
 
+	title := "今日学习"
+	if date != now.Format("2006-01-02") {
+		title = "学习回顾"
+	}
 	return TodayContent{
 		Date:        date,
-		Title:       todayContentTitle(date, now.Format("2006-01-02")),
+		Title:       title,
 		CurrentWeek: week,
 		WeekTasks:   weekTasks,
 		Settings:    settings,
 		RecordFrom:  from,
 		RecordTo:    to,
 	}, nil
-}
-
-func todayContentTitle(date, today string) string {
-	switch {
-	case date < today:
-		return "学习回顾"
-	case date > today:
-		return "学习预览"
-	default:
-		return "今日学习"
-	}
 }
 
 func (s *Service) TodayHubFromContent(ctx context.Context, groupID, userID uint64, content TodayContent) (TodayVO, error) {

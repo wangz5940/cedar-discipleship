@@ -38,10 +38,6 @@ export function currentMonthString(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function canSelectLearningDate(value: string, today: string, previewEnabled: boolean): boolean {
-  return Boolean(value) && (value <= today || previewEnabled);
-}
-
 export function formatMonthLabel(month: string): string {
   const [year, value] = String(month || currentMonthString()).split('-').map(Number);
   return `${year}年${value}月`;

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Eye } from '@lucide/vue';
+import { ChevronDown, ChevronUp, ChevronsUpDown } from '@lucide/vue';
 import { useDashboardStore } from '../stores/dashboard';
 import {
   openMemberCalendar,
@@ -11,7 +11,6 @@ import {
   shiftSelectedDate,
   toast as showToast,
   toggleCheckin,
-  toggleLearningPreview,
 } from '../legacy-app';
 
 const store = useDashboardStore();
@@ -20,8 +19,6 @@ const {
   selectedDate,
   maxDate,
   isToday,
-  isFuture,
-  previewEnabled,
   groupName,
   overallPercent,
   doneSlots,
@@ -183,7 +180,6 @@ async function updateActiveRule(rule) {
 }
 
 function memberTaskTitle(member, state) {
-  if (member.isSelf && isFuture.value) return `${state.title}：学习预览`;
   return member.isSelf ? `${state.title}：点击打卡或取消` : `${state.title}：${state.done ? '已完成' : '未完成'}`;
 }
 
@@ -295,25 +291,15 @@ async function exportRankingChart() {
           <h2>小组打卡情况与统计</h2>
         </div>
         <div class="today-date-cluster">
-          <button
-            class="secondary preview-toggle"
-            :class="{ active: previewEnabled }"
-            type="button"
-            :aria-pressed="previewEnabled"
-            @click="toggleLearningPreview"
-          >
-            <Eye :size="15" />
-            {{ previewEnabled ? '退出预览' : '学习预览' }}
-          </button>
           <div class="date-controls">
             <button class="secondary" type="button" title="前一天" @click="shiftSelectedDate(-1)">‹</button>
             <input
               type="date"
               :value="selectedDate"
-              :max="previewEnabled ? undefined : maxDate"
+              :max="maxDate"
               @change="setSelectedDate($event.target.value)"
             />
-            <button class="secondary" type="button" title="后一天" :disabled="!previewEnabled && isToday" @click="shiftSelectedDate(1)">›</button>
+            <button class="secondary" type="button" title="后一天" :disabled="isToday" @click="shiftSelectedDate(1)">›</button>
             <button v-if="!isToday" class="ghost" type="button" @click="setSelectedDate(maxDate)">回到今天</button>
           </div>
         </div>
@@ -379,11 +365,10 @@ async function exportRankingChart() {
                   v-for="item in member.taskStates"
                   :key="`${member.user_id}:${item.task.type}:${item.task.part || ''}:${item.title}`"
                   class="member-task-chip"
-                  :class="{ done: item.done, clickable: member.isSelf && !isFuture }"
+                  :class="{ done: item.done, clickable: member.isSelf }"
                   :title="memberTaskTitle(member, item)"
                   type="button"
-                  :disabled="member.isSelf && isFuture"
-                  @click="member.isSelf && !isFuture && toggleCheckin(item.taskForMember, member)"
+                  @click="member.isSelf && toggleCheckin(item.taskForMember, member)"
                 >
                   <span class="member-task-code">{{ item.shortLabel || item.icon }}</span>
                 </button>

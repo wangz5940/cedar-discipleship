@@ -5,29 +5,6 @@ import (
 	"testing"
 )
 
-func TestTodayContentTitleByDate(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		date  string
-		today string
-		want  string
-	}{
-		{name: "today", date: "2026-09-06", today: "2026-09-06", want: "今日学习"},
-		{name: "past", date: "2026-09-05", today: "2026-09-06", want: "学习回顾"},
-		{name: "future", date: "2026-09-07", today: "2026-09-06", want: "学习预览"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := todayContentTitle(tt.date, tt.today); got != tt.want {
-				t.Fatalf("todayContentTitle(%q, %q) = %q, want %q", tt.date, tt.today, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestMatchingTodayRecordWeeklyVideoMatchesSameTaskAcrossDates(t *testing.T) {
 	taskID := uint64(11)
 	weekID := uint64(7)

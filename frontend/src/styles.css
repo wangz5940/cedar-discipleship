@@ -8377,22 +8377,6 @@ button.ministry-join-button {
   gap: 7px;
 }
 
-.today-date-cluster .preview-toggle {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px 9px;
-  white-space: nowrap;
-}
-
-.today-date-cluster .preview-toggle.active {
-  border-color: var(--primary);
-  background: var(--primary-soft);
-  color: var(--primary-dark);
-}
-
 .today-date-cluster .date-controls {
   width: auto;
   grid-template-columns: 34px 132px 34px auto;
@@ -8444,10 +8428,6 @@ button.ministry-join-button {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;
-  }
-
-  .today-date-cluster .preview-toggle {
-    justify-self: start;
   }
 
   .today-date-cluster .date-controls {

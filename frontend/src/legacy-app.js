@@ -3,7 +3,6 @@ import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useDashboardStore } from './stores/dashboard';
 import { useAppStateStore } from './stores/appState';
 import {
-  canSelectLearningDate,
   currentCalendarWeekRange,
   currentMonthString,
   dayOffsetFrom,
@@ -60,7 +59,6 @@ const state = {
   adminSection: 'learning',
   sidebarCollapsed: true,
   selectedDate: todayString(),
-  learningPreviewEnabled: false,
   calendar: null,
   viewer: null,
   siteConfig: null,
@@ -167,12 +165,11 @@ function checkinSnapshot() {
     selectedDate: state.selectedDate,
     maxDate: todayString(),
     selectedDateLabel: selectedDateDisplay(),
-    title: state.todayHub?.title || (isFutureSelected() ? '学习预览' : (isTodaySelected() ? '今日学习' : '学习回顾')),
+    title: state.todayHub?.title || (isTodaySelected() ? '今日学习' : '学习回顾'),
     completed,
     total,
     isToday: isTodaySelected(),
     isFuture: isFutureSelected(),
-    previewEnabled: state.learningPreviewEnabled,
     tasks,
     ownItems: ownCheckinsForSelectedDate(),
     statsVisible: Boolean(state.homeStatsEligible),
@@ -250,8 +247,6 @@ function dashboardSnapshot() {
     selectedDate: state.selectedDate,
     maxDate: todayString(),
     isToday: isTodaySelected(),
-    isFuture: isFutureSelected(),
-    previewEnabled: state.learningPreviewEnabled,
     groupName: state.user?.study_groups?.find((item) => item.id === state.user?.current_group_id)?.name || '当前小组',
     overallPercent,
     doneSlots,
@@ -637,7 +632,7 @@ function ownCheckinsForSelectedDate() {
 
 export async function setSelectedDate(date) {
   if (!date) return;
-  if (!canSelectLearningDate(date, todayString(), state.learningPreviewEnabled)) {
+  if (date > todayString()) {
     toast('不能选择未来日期');
     state.selectedDate = todayString();
   } else {
@@ -647,15 +642,6 @@ export async function setSelectedDate(date) {
   state.dashboardCompletions = [];
   render();
   await loadAll();
-  render();
-}
-
-export async function toggleLearningPreview() {
-  state.learningPreviewEnabled = !state.learningPreviewEnabled;
-  if (!state.learningPreviewEnabled && isFutureSelected()) {
-    state.selectedDate = todayString();
-    await loadAll();
-  }
   render();
 }
 
@@ -2245,7 +2231,6 @@ export async function logout(options = {}) {
   state.user = null;
   state.bootstrap = null;
   state.todayHub = null;
-  state.learningPreviewEnabled = false;
   state.monthlyRanking = null;
   state.dashboardCompletions = [];
   state.homeStatsEligible = false;
