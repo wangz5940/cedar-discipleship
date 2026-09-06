@@ -26,6 +26,17 @@ func (s *Service) Summary(ctx context.Context, groupID uint64, from, to string) 
 	if err != nil {
 		return SummaryVO{}, err
 	}
+	if summary == nil {
+		summary = map[string]int{}
+	}
+	videoCounts, err := s.repo.MonthlyVideoCompletionCounts(ctx, groupID, from, to)
+	if err != nil {
+		return SummaryVO{}, err
+	}
+	summary["weekly_video"] = 0
+	for _, count := range videoCounts {
+		summary["weekly_video"] += count.Count
+	}
 	return SummaryVO{From: from, To: to, Summary: summary}, nil
 }
 
@@ -56,10 +67,15 @@ func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month, fro
 			},
 		}
 	}
-	counts, err := s.repo.MonthlyTaskCounts(ctx, groupID, from, to)
+	counts, err := s.repo.MonthlyNonVideoTaskCounts(ctx, groupID, from, to)
 	if err != nil {
 		return MonthlyRankingVO{}, err
 	}
+	videoCounts, err := s.repo.MonthlyVideoCompletionCounts(ctx, groupID, from, to)
+	if err != nil {
+		return MonthlyRankingVO{}, err
+	}
+	counts = append(counts, videoCounts...)
 	for _, count := range counts {
 		item, ok := byUser[count.UserID]
 		if !ok {

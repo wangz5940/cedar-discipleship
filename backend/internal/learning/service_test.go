@@ -1,6 +1,9 @@
 package learning
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestMatchingTodayRecordWeeklyVideoMatchesSameTaskAcrossDates(t *testing.T) {
 	taskID := uint64(11)
@@ -95,24 +98,129 @@ func TestBuildTodayTasksCarriesWeeklyVideoCompletionAcrossWeeksByAsset(t *testin
 
 func TestMatchingTodayRecordWeeklyVideoDoesNotMatchDifferentAsset(t *testing.T) {
 	previousTaskID := uint64(31)
+	for _, previousWeekID := range []uint64{7, 8} {
+		t.Run(fmt.Sprintf("record week %d", previousWeekID), func(t *testing.T) {
+			record := matchingTodayRecord(TodayTaskVO{
+				Type:   "weekly_video",
+				TaskID: 32,
+				WeekID: 8,
+				Assets: []map[string]any{{
+					"id": uint64(28),
+				}},
+			}, []TodayRecord{{
+				ID:          101,
+				TaskType:    "weekly_video",
+				TaskID:      &previousTaskID,
+				WeekID:      &previousWeekID,
+				LogicalDate: "2026-09-01",
+				AssetID:     27,
+			}}, "2026-09-06")
+			if record != nil {
+				t.Fatalf("matchingTodayRecord returned %+v for a different video asset", record)
+			}
+		})
+	}
+}
+
+func TestBuildGroupTaskCompletionsUsesSharedTaskSemantics(t *testing.T) {
+	previousVideoTaskID := uint64(31)
 	previousWeekID := uint64(7)
-	record := matchingTodayRecord(TodayTaskVO{
-		Type:   "weekly_video",
-		TaskID: 32,
-		WeekID: 8,
-		Assets: []map[string]any{{
-			"id": uint64(28),
+	currentVideoTaskID := uint64(32)
+	currentWeekID := uint64(8)
+	records := []TodayRecord{
+		{
+			ID:          101,
+			UserID:      2,
+			TaskType:    "weekly_video",
+			TaskID:      &previousVideoTaskID,
+			WeekID:      &previousWeekID,
+			LogicalDate: "2026-09-01",
+			AssetID:     27,
+		},
+		{
+			ID:          102,
+			UserID:      3,
+			TaskType:    "weekly_video",
+			TaskID:      &previousVideoTaskID,
+			WeekID:      &previousWeekID,
+			LogicalDate: "2026-09-01",
+			AssetID:     28,
+		},
+		{
+			ID:          103,
+			UserID:      3,
+			TaskType:    "daily_devotion",
+			LogicalDate: "2026-09-06",
+		},
+	}
+	items := buildGroupTaskCompletions(
+		"2026-09-06",
+		map[string]any{
+			"id":            currentWeekID,
+			"video_enabled": true,
+		},
+		[]map[string]any{{
+			"id":        currentVideoTaskID,
+			"task_type": "weekly_video",
+			"title":     "重复安排的视频",
+			"enabled":   true,
+			"assets": []map[string]any{{
+				"id": uint64(27),
+			}},
 		}},
-	}, []TodayRecord{{
-		ID:          101,
-		TaskType:    "weekly_video",
-		TaskID:      &previousTaskID,
-		WeekID:      &previousWeekID,
-		LogicalDate: "2026-09-01",
-		AssetID:     27,
-	}}, "2026-09-06")
-	if record != nil {
-		t.Fatalf("matchingTodayRecord returned %+v for a different video asset", record)
+		map[string]any{},
+		records,
+	)
+	if len(items) != 2 {
+		t.Fatalf("buildGroupTaskCompletions returned %d items, want 2", len(items))
+	}
+	video := items[0]
+	if video.UserID != 2 || video.TaskID != currentVideoTaskID || !video.Completed || !video.Inherited {
+		t.Fatalf("video completion = %+v", video)
+	}
+	if video.Record != nil {
+		t.Fatalf("inherited video record = %+v, want nil", video.Record)
+	}
+	daily := items[1]
+	if daily.UserID != 3 || daily.TaskType != "daily_devotion" || daily.Inherited {
+		t.Fatalf("daily completion = %+v", daily)
+	}
+	if daily.Record == nil || daily.Record.ID != 103 {
+		t.Fatalf("daily record = %+v, want record 103", daily.Record)
+	}
+}
+
+func TestBuildGroupTaskCompletionsKeepsCurrentVideoRecordEditable(t *testing.T) {
+	taskID := uint64(32)
+	weekID := uint64(8)
+	items := buildGroupTaskCompletions(
+		"2026-09-06",
+		map[string]any{
+			"id":            weekID,
+			"video_enabled": true,
+		},
+		[]map[string]any{{
+			"id":        taskID,
+			"task_type": "weekly_video",
+			"title":     "本周视频",
+			"enabled":   true,
+			"assets": []map[string]any{{
+				"id": uint64(27),
+			}},
+		}},
+		map[string]any{},
+		[]TodayRecord{{
+			ID:          104,
+			UserID:      2,
+			TaskType:    "weekly_video",
+			TaskID:      &taskID,
+			WeekID:      &weekID,
+			LogicalDate: "2026-09-06",
+			AssetID:     27,
+		}},
+	)
+	if len(items) != 1 || items[0].Record == nil || items[0].Record.ID != 104 || items[0].Inherited {
+		t.Fatalf("current video completion = %+v", items)
 	}
 }
 

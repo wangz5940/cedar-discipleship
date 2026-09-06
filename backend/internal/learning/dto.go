@@ -96,3 +96,20 @@ type TodayVO struct {
 	Tasks       []TodayTaskVO  `json:"tasks"`
 	Records     []TodayRecord  `json:"records"`
 }
+
+type TaskCompletionVO struct {
+	UserID    uint64       `json:"user_id"`
+	TaskKey   string       `json:"task_key"`
+	TaskID    uint64       `json:"task_id,omitempty"`
+	WeekID    uint64       `json:"week_id,omitempty"`
+	TaskType  string       `json:"task_type"`
+	Part      string       `json:"part,omitempty"`
+	Completed bool         `json:"completed"`
+	Inherited bool         `json:"inherited,omitempty"`
+	Record    *TodayRecord `json:"record,omitempty"`
+}
+
+type GroupTaskCompletionsVO struct {
+	Date  string             `json:"date"`
+	Items []TaskCompletionVO `json:"items"`
+}

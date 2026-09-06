@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCheckinWorkbenchStore } from '../stores/checkinWorkbench';
 import { openTaskContent, setSelectedDate, shiftSelectedDate, toggleCheckin } from '../legacy-app';
+import { taskIsCompleted } from '../runtime/checkins';
 
 const store = useCheckinWorkbenchStore();
 const {
@@ -41,16 +42,12 @@ const rankedStats = computed(() => [...statsRanking.value].sort((left, right) =>
 
 const statsMax = computed(() => Math.max(1, ...rankedStats.value.map(statsTotal)));
 
-function taskDone(task) {
-  return Boolean(task.completed || task.ownRecord);
-}
-
 function taskLocked(task) {
-  return Boolean(isFuture.value && !taskDone(task));
+  return Boolean(isFuture.value && !taskIsCompleted(task));
 }
 
 function taskStatusLabel(task) {
-  return taskDone(task) ? '已打卡' : '未完成';
+  return taskIsCompleted(task) ? '已打卡' : '未完成';
 }
 
 function statsTotal(item) {
@@ -215,10 +212,10 @@ async function exportStatsChart() {
           v-for="task in tasks"
           :key="`${task.type}:${task.part || ''}:${task.title}`"
           class="task-option"
-          :class="{ done: taskDone(task), pending: !taskDone(task) }"
+          :class="{ done: taskIsCompleted(task), pending: !taskIsCompleted(task) }"
         >
           <div class="task-head">
-            <span class="task-icon">{{ taskDone(task) ? '✓' : task.icon }}</span>
+            <span class="task-icon">{{ taskIsCompleted(task) ? '✓' : task.icon }}</span>
           </div>
 
           <button
@@ -248,10 +245,10 @@ async function exportStatsChart() {
           <div class="task-actions">
             <button
               class="task-state-badge task-status-action"
-              :class="{ done: taskDone(task), pending: !taskDone(task) }"
+              :class="{ done: taskIsCompleted(task), pending: !taskIsCompleted(task) }"
               type="button"
               :disabled="taskLocked(task)"
-              :aria-pressed="taskDone(task)"
+              :aria-pressed="taskIsCompleted(task)"
               @click="toggleCheckin(task)"
             >
               {{ taskStatusLabel(task) }}
@@ -263,7 +260,7 @@ async function exportStatsChart() {
       <section v-if="statsVisible" class="home-stats-section">
         <div class="bar-chart-card">
           <div class="bar-chart-meta">
-            <strong>{{ activeLegend?.label || '全部分项' }}统计</strong>
+            <strong>{{ activeLegend?.label || '全部分项' }}完成数</strong>
             <span v-if="statsMonthLabel" class="muted">{{ statsMonthLabel }}</span>
             <span v-if="statsLoading" class="muted">更新中</span>
             <button class="secondary" type="button" @click="exportStatsChart">导出柱状图 PNG</button>

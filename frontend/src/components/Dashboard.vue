@@ -383,7 +383,7 @@ async function exportRankingChart() {
       <section class="stats-center">
         <div class="stats-center-head">
           <div>
-            <div class="eyebrow">月度统计</div>
+            <div class="eyebrow">周期完成统计</div>
             <h2>香柏木数据统计中心</h2>
           </div>
           <div class="stats-center-tags">
@@ -406,7 +406,7 @@ async function exportRankingChart() {
               <button type="button" :class="{ active: statsView === 'chart' }" @click="statsView = 'chart'">柱状图</button>
               <button type="button" :class="{ active: statsView === 'table' }" @click="statsView = 'table'">板块表格</button>
             </div>
-            <span class="stats-tag active">分项总榜</span>
+            <span class="stats-tag active">分项完成榜</span>
           </div>
         </div>
 
@@ -461,7 +461,7 @@ async function exportRankingChart() {
 
         <div v-if="statsView === 'chart'" class="bar-chart-card">
           <div class="bar-chart-meta">
-            <strong>{{ activeScopeLabel }}统计</strong>
+            <strong>{{ activeScopeLabel }}完成数</strong>
             <div class="bar-legend">
               <button
                 class="legend-item legend-button"
@@ -525,7 +525,7 @@ async function exportRankingChart() {
           <section class="task-section-table period-matrix-table-card">
             <div class="task-section-table-head">
               <div>
-                <h3>周期完成矩阵</h3>
+                <h3>周期完成数</h3>
                 <p>{{ rankingFrom }} 至 {{ rankingTo }} · {{ periodRows.length }} 位成员</p>
               </div>
               <span class="missing-summary">0 次人数：{{ zeroCountSummary }}</span>

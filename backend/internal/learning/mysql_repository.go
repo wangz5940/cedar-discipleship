@@ -85,7 +85,14 @@ func (r *MySQLRepository) ListTasks(ctx context.Context, groupID, weekID uint64)
 	return tasks, rows.Err()
 }
 
-func (r *MySQLRepository) ListTodayRecords(ctx context.Context, groupID, userID uint64, from, to string) ([]TodayRecord, error) {
+func (r *MySQLRepository) ListCompletionRecords(ctx context.Context, groupID, userID uint64, from, to string) ([]TodayRecord, error) {
+	userFilter := ""
+	args := []any{groupID}
+	if userID > 0 {
+		userFilter = " AND c.user_id=?"
+		args = append(args, userID)
+	}
+	args = append(args, from, to, from, to)
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT c.id,c.user_id,c.task_id,c.week_id,c.logical_date,c.checkin_time,
 		       c.task_type,c.part,c.detail,c.note,
@@ -95,7 +102,7 @@ func (r *MySQLRepository) ListTodayRecords(ctx context.Context, groupID, userID 
 		         WHERE ta.group_id=c.group_id AND ta.task_id=c.task_id
 		       ),0) AS asset_id
 		FROM checkin_records c
-		WHERE c.group_id=? AND c.user_id=? AND c.deleted_at IS NULL
+		WHERE c.group_id=?`+userFilter+` AND c.deleted_at IS NULL
 		  AND (
 		    c.logical_date BETWEEN ? AND ?
 		    OR (
@@ -122,7 +129,7 @@ func (r *MySQLRepository) ListTodayRecords(ctx context.Context, groupID, userID 
 		    )
 		  )
 		ORDER BY c.logical_date DESC,c.id DESC`,
-		groupID, userID, from, to, from, to)
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -307,6 +314,15 @@ func UpsertLearningConfigTx(ctx context.Context, execer configExecer, groupID ui
 }
 
 func DeleteWeekTasksTx(ctx context.Context, tx *sql.Tx, groupID, weekID uint64) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE study_tasks st
+		SET st.week_id=NULL,st.enabled=0,st.updated_at=UTC_TIMESTAMP(3)
+		WHERE st.group_id=? AND st.week_id=?
+		  AND EXISTS (
+		    SELECT 1 FROM checkin_records c
+		    WHERE c.group_id=st.group_id AND c.task_id=st.id
+		  )`, groupID, weekID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE ta FROM task_assets ta
 		JOIN study_tasks st ON st.id=ta.task_id
 		WHERE st.group_id=? AND st.week_id=?`, groupID, weekID); err != nil {

@@ -41,6 +41,9 @@ import {
   resourceCategoryLabel,
   resourceSelectionValue,
 } from './runtime/resources';
+import {
+  buildTaskCompletionMatrix,
+} from './runtime/checkins';
 
 export { enabledFlag, extractPdfPageRange };
 
@@ -59,6 +62,7 @@ const state = {
   todayHub: null,
   summary: null,
   monthlyRanking: null,
+  dashboardCompletions: [],
   homeStatsEligible: false,
   homeStatsLoading: false,
   homeStatsCheckedGroupID: 0,
@@ -185,7 +189,8 @@ function dashboardSnapshot() {
   const totalSlots = Math.max(1, state.members.length * tasks.length);
   const doneSlots = matrix.doneSlots;
   const overallPercent = Math.round((doneSlots / totalSlots) * 100);
-  const completed = tasks.filter((task) => task.ownRecord).length;
+  const ownTaskStates = matrix.byUser.get(Number(state.user?.id || 0)) || [];
+  const completed = ownTaskStates.filter((item) => item.done).length;
   const rankingFrom = state.monthlyRanking?.from || state.statsFrom || monthStartString();
   const rankingTo = state.monthlyRanking?.to || state.statsTo || todayString();
   const monthLabel = formatDateRangeLabel(rankingFrom, rankingTo);
@@ -194,7 +199,7 @@ function dashboardSnapshot() {
   const activeMemberRule = normalizeActiveMemberRule(state.monthlyRanking?.active_rule);
   const activeCount = ranking.filter((item) => matchesActiveMemberRule(item, activeMemberRule)).length;
   const progressCards = tasks.map((task) => {
-    const count = [...matrix.byUser.values()].filter((states) => states.some((item) => item.task === task && item.record)).length;
+    const count = [...matrix.byUser.values()].filter((states) => states.some((item) => item.task === task && item.done)).length;
     return {
       task,
       icon: task.icon,
@@ -214,14 +219,20 @@ function dashboardSnapshot() {
       avatar: (member.member_name || member.display_name || '?').slice(0, 1),
       taskStates: tasks.map((task) => {
         const taskState = states.find((item) => item.task === task);
-        const done = Boolean(taskState?.record);
+        const done = Boolean(taskState?.done);
         return {
           task,
           icon: task.icon,
           shortLabel: String(task.icon || task.title || '').slice(0, 2),
           title: task.title,
           done,
-          taskForMember: member.user_id === taskState?.record?.user_id ? { ...task, ownRecord: taskState.record } : task,
+          taskForMember: isSelf
+            ? {
+              ...task,
+              completed: done,
+              ownRecord: taskState?.record || null,
+            }
+            : task,
         };
       }),
     };
@@ -269,7 +280,10 @@ const navItems = [
 
 const homeStatsMinistryCode = 'discipleship-counting';
 const homeStatsEligibilityTTL = 60_000;
+const dashboardRefreshInterval = 15_000;
 let refreshPromise = null;
+let dashboardRefreshPromise = null;
+let dashboardRefreshTimer = 0;
 
 export async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -443,6 +457,7 @@ async function loadAll(options = {}) {
       state.learningConfig = null;
       state.summary = {};
       state.monthlyRanking = null;
+      state.dashboardCompletions = [];
       state.homeStatsEligible = false;
       state.homeStatsLoading = false;
       state.homeStatsCheckedGroupID = 0;
@@ -477,17 +492,19 @@ async function loadAll(options = {}) {
     const checkinFrom = bootstrap.current_week?.start || selectedDate;
     const checkinTo = bootstrap.current_week?.end || selectedDate;
     normalizeStatsRange();
-    const [checkins, weeks, assets, todayHub, library, monthlyRanking] = await Promise.all([
+    const [checkins, weeks, assets, todayHub, taskCompletions, library, monthlyRanking] = await Promise.all([
       api(`/checkins?from=${checkinFrom}&to=${checkinTo}&page_size=1000`),
       api('/study-weeks'),
       api('/assets').catch(() => ({ assets: [] })),
       api(`/today?date=${selectedDate}`),
+      api(`/dashboard/task-completions?date=${selectedDate}`),
       api('/library').catch(() => ({ sections: [] })),
       state.tab === 'dashboard'
         ? api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`)
         : Promise.resolve(state.monthlyRanking),
     ]);
     state.todayHub = todayHub;
+    state.dashboardCompletions = taskCompletions.items || [];
     state.monthlyRanking = monthlyRanking;
     state.checkins = checkins.items || [];
     state.weeks = weeks.weeks || [];
@@ -563,7 +580,7 @@ export function setTab(tab) {
     loadAdminData(true);
   }
   if (enteringDashboard && state.token && state.user?.current_group_id) {
-    loadMonthlyRanking().then(render).catch((error) => toast(error.message));
+    refreshDashboardData().catch((error) => toast(error.message));
   }
   render();
 }
@@ -673,6 +690,36 @@ export async function saveActiveMemberRule(rule) {
 async function loadMonthlyRanking() {
   normalizeStatsRange();
   state.monthlyRanking = await api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`);
+}
+
+async function refreshDashboardData() {
+  if (!state.token || !state.user?.current_group_id || state.tab !== 'dashboard') return;
+  if (dashboardRefreshPromise) return dashboardRefreshPromise;
+
+  const selectedDate = state.selectedDate;
+  normalizeStatsRange();
+  const rankingFrom = state.statsFrom;
+  const rankingTo = state.statsTo;
+  dashboardRefreshPromise = Promise.all([
+    api(`/dashboard/task-completions?date=${selectedDate}`),
+    api(`/dashboard/monthly-ranking?from=${rankingFrom}&to=${rankingTo}`),
+  ]).then(([taskCompletions, monthlyRanking]) => {
+    if (state.selectedDate !== selectedDate || state.tab !== 'dashboard') return;
+    state.dashboardCompletions = taskCompletions.items || [];
+    state.monthlyRanking = monthlyRanking;
+    render();
+  }).finally(() => {
+    dashboardRefreshPromise = null;
+  });
+  return dashboardRefreshPromise;
+}
+
+function startDashboardRefresh() {
+  if (dashboardRefreshTimer) return;
+  dashboardRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState !== 'visible' || state.tab !== 'dashboard') return;
+    refreshDashboardData().catch((error) => toast(error.message));
+  }, dashboardRefreshInterval);
 }
 
 async function refreshHomeStats() {
@@ -1609,18 +1656,7 @@ function checkinMatchesTask(item, task) {
 }
 
 function buildCheckinMatrix(tasks) {
-  const byUser = new Map();
-  let doneSlots = 0;
-  for (const member of sortedMembers()) {
-    const records = state.checkins.filter((item) => item.user_id === member.user_id);
-    const taskStates = tasks.map((task) => {
-      const record = records.find((item) => checkinMatchesTask(item, task));
-      if (record) doneSlots += 1;
-      return { task, record };
-    });
-    byUser.set(member.user_id, taskStates);
-  }
-  return { byUser, doneSlots };
+  return buildTaskCompletionMatrix(sortedMembers(), tasks, state.dashboardCompletions);
 }
 
 function monthlyRankingItems() {
@@ -2168,6 +2204,7 @@ export async function logout(options = {}) {
   state.bootstrap = null;
   state.todayHub = null;
   state.monthlyRanking = null;
+  state.dashboardCompletions = [];
   state.homeStatsEligible = false;
   state.homeStatsLoading = false;
   state.homeStatsCheckedGroupID = 0;
@@ -2185,11 +2222,16 @@ function render() {
 export function initializeApp() {
   clearAccessToken();
   localStorage.removeItem('agp_token');
+  startDashboardRefresh();
   render();
   return loadAll().then(render);
 }
 
 export function disposeApp() {
+  if (dashboardRefreshTimer) {
+    window.clearInterval(dashboardRefreshTimer);
+    dashboardRefreshTimer = 0;
+  }
   state.calendar = null;
   state.viewer = null;
   syncViewerStore();

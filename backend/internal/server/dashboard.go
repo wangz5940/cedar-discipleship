@@ -27,6 +27,28 @@ func (a *app) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, summary)
 }
 
+func (a *app) handleDashboardTaskCompletions(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
+	}
+	date := queryDate(r, "date", time.Now().In(a.location))
+	now := time.Now().In(a.location)
+	content, cacheStatus, err := a.todayContent(r.Context(), groupID, date, now)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "task_completions_failed")
+		return
+	}
+	completions, err := a.learning.GroupTaskCompletionsFromContent(r.Context(), groupID, content)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "task_completions_failed")
+		return
+	}
+	w.Header().Set("X-AGP-Today-Cache", cacheStatus)
+	writeJSON(w, http.StatusOK, completions)
+}
+
 func (a *app) handleDashboardMonthlyRanking(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)

@@ -56,12 +56,83 @@ func (r *MySQLRepository) Members(ctx context.Context, groupID uint64) ([]Member
 	return members, rows.Err()
 }
 
-func (r *MySQLRepository) MonthlyTaskCounts(ctx context.Context, groupID uint64, from, to string) ([]TaskCount, error) {
+func (r *MySQLRepository) MonthlyNonVideoTaskCounts(ctx context.Context, groupID uint64, from, to string) ([]TaskCount, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT user_id,task_type,COUNT(*)
 		FROM checkin_records
 		WHERE group_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL
-		  AND task_type IN ('daily_devotion','weekly_book','weekly_video','weekly_outline')
+		  AND task_type IN ('daily_devotion','weekly_book','weekly_outline')
 		GROUP BY user_id,task_type`, groupID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var counts []TaskCount
+	for rows.Next() {
+		var count TaskCount
+		if err := rows.Scan(&count.UserID, &count.TaskType, &count.Count); err != nil {
+			return nil, err
+		}
+		counts = append(counts, count)
+	}
+	return counts, rows.Err()
+}
+
+func (r *MySQLRepository) MonthlyVideoCompletionCounts(ctx context.Context, groupID uint64, from, to string) ([]TaskCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT gm.user_id,'weekly_video',
+		       COUNT(DISTINCT COALESCE(
+		         CONCAT('asset:',current_asset.asset_id),
+		         CONCAT('task:',current_task.id)
+		       ))
+		FROM group_members gm
+		JOIN study_weeks current_week
+		  ON current_week.group_id=gm.group_id
+		 AND current_week.start_date<=?
+		 AND current_week.end_date>=?
+		JOIN study_tasks current_task
+		  ON current_task.group_id=current_week.group_id
+		 AND current_task.week_id=current_week.id
+		 AND current_task.task_type='weekly_video'
+		 AND current_task.enabled=1
+		LEFT JOIN (
+		  SELECT group_id,task_id,MIN(asset_id) AS asset_id
+		  FROM task_assets
+		  GROUP BY group_id,task_id
+		) current_asset
+		  ON current_asset.group_id=current_task.group_id
+		 AND current_asset.task_id=current_task.id
+		WHERE gm.group_id=? AND gm.status=1
+		  AND EXISTS (
+		    SELECT 1
+		    FROM checkin_records c
+		    WHERE c.group_id=gm.group_id
+		      AND c.user_id=gm.user_id
+		      AND c.task_type='weekly_video'
+		      AND c.deleted_at IS NULL
+		      AND (
+		        c.task_id=current_task.id
+		        OR (
+		          current_asset.asset_id IS NULL
+		          AND c.week_id=current_week.id
+		        )
+		        OR (
+		          current_asset.asset_id IS NOT NULL
+		          AND EXISTS (
+		            SELECT 1
+		            FROM task_assets checked_asset
+		            WHERE checked_asset.group_id=c.group_id
+		              AND checked_asset.task_id=c.task_id
+		              AND checked_asset.asset_id=current_asset.asset_id
+		          )
+		        )
+		      )
+		  )
+		GROUP BY gm.user_id`,
+		to,
+		from,
+		groupID,
+	)
 	if err != nil {
 		return nil, err
 	}

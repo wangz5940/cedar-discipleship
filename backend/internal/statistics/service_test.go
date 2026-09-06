@@ -7,24 +7,32 @@ import (
 )
 
 type serviceTestRepository struct {
-	members []Member
-	counts  []TaskCount
-	from    string
-	to      string
+	members     []Member
+	counts      []TaskCount
+	videoCounts []TaskCount
+	summary     map[string]int
+	from        string
+	to          string
 }
 
 func (r *serviceTestRepository) DailySummary(context.Context, uint64, string, string) (map[string]int, error) {
-	return nil, nil
+	return r.summary, nil
 }
 
 func (r *serviceTestRepository) Members(context.Context, uint64) ([]Member, error) {
 	return r.members, nil
 }
 
-func (r *serviceTestRepository) MonthlyTaskCounts(_ context.Context, _ uint64, from, to string) ([]TaskCount, error) {
+func (r *serviceTestRepository) MonthlyNonVideoTaskCounts(_ context.Context, _ uint64, from, to string) ([]TaskCount, error) {
 	r.from = from
 	r.to = to
 	return r.counts, nil
+}
+
+func (r *serviceTestRepository) MonthlyVideoCompletionCounts(_ context.Context, _ uint64, from, to string) ([]TaskCount, error) {
+	r.from = from
+	r.to = to
+	return r.videoCounts, nil
 }
 
 func (r *serviceTestRepository) MemberCalendar(context.Context, uint64, uint64, string, string) ([]CalendarItem, error) {
@@ -80,5 +88,60 @@ func TestMonthlyRankingRejectsInvalidDateRange(t *testing.T) {
 	)
 	if err != ErrInvalidDateRange {
 		t.Fatalf("MonthlyRanking() error = %v, want %v", err, ErrInvalidDateRange)
+	}
+}
+
+func TestSummaryUsesVideoCompletionCounts(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(&serviceTestRepository{
+		summary: map[string]int{
+			"daily_devotion": 4,
+			"weekly_video":   0,
+		},
+		videoCounts: []TaskCount{
+			{UserID: 2, TaskType: "weekly_video", Count: 1},
+			{UserID: 3, TaskType: "weekly_video", Count: 2},
+		},
+	})
+
+	result, err := service.Summary(context.Background(), 1, "2026-09-01", "2026-09-06")
+	if err != nil {
+		t.Fatalf("Summary() error = %v", err)
+	}
+	if got := result.Summary["weekly_video"]; got != 3 {
+		t.Fatalf("weekly video summary = %d, want 3", got)
+	}
+	if got := result.Summary["daily_devotion"]; got != 4 {
+		t.Fatalf("daily devotion summary = %d, want 4", got)
+	}
+}
+
+func TestMonthlyRankingIncludesUniqueVideoResourceCompletions(t *testing.T) {
+	t.Parallel()
+
+	repo := &serviceTestRepository{
+		members:     []Member{{MemberID: 1, UserID: 2, Username: "user", MemberName: "成员"}},
+		counts:      []TaskCount{{UserID: 2, TaskType: "daily_devotion", Count: 3}},
+		videoCounts: []TaskCount{{UserID: 2, TaskType: "weekly_video", Count: 1}},
+	}
+	service := NewService(repo)
+
+	result, err := service.MonthlyRanking(
+		context.Background(),
+		1,
+		"",
+		"2026-09-01",
+		"2026-09-06",
+		time.FixedZone("CST", 8*60*60),
+	)
+	if err != nil {
+		t.Fatalf("MonthlyRanking() error = %v", err)
+	}
+	if got := result.Items[0].Counts["weekly_video"]; got != 1 {
+		t.Fatalf("weekly video count = %d, want 1", got)
+	}
+	if got := result.Items[0].Total; got != 4 {
+		t.Fatalf("total = %d, want 4", got)
 	}
 }

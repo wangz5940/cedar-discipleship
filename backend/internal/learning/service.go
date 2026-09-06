@@ -152,7 +152,7 @@ func (s *Service) TodayContent(ctx context.Context, groupID uint64, date string,
 }
 
 func (s *Service) TodayHubFromContent(ctx context.Context, groupID, userID uint64, content TodayContent) (TodayVO, error) {
-	records, err := s.repo.ListTodayRecords(ctx, groupID, userID, content.RecordFrom, content.RecordTo)
+	records, err := s.repo.ListCompletionRecords(ctx, groupID, userID, content.RecordFrom, content.RecordTo)
 	if err != nil {
 		return TodayVO{}, err
 	}
@@ -177,6 +177,27 @@ func (s *Service) TodayHubFromContent(ctx context.Context, groupID, userID uint6
 		Progress:    TodayProgress{Completed: completed, Total: total, Percent: percent},
 		Tasks:       tasks,
 		Records:     records,
+	}, nil
+}
+
+func (s *Service) GroupTaskCompletionsFromContent(
+	ctx context.Context,
+	groupID uint64,
+	content TodayContent,
+) (GroupTaskCompletionsVO, error) {
+	records, err := s.repo.ListCompletionRecords(ctx, groupID, 0, content.RecordFrom, content.RecordTo)
+	if err != nil {
+		return GroupTaskCompletionsVO{}, err
+	}
+	return GroupTaskCompletionsVO{
+		Date: content.Date,
+		Items: buildGroupTaskCompletions(
+			content.Date,
+			content.CurrentWeek,
+			content.WeekTasks,
+			content.Settings,
+			records,
+		),
 	}, nil
 }
 
@@ -519,10 +540,10 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
 				return record
 			}
-			if task.WeekID > 0 && record.WeekID != nil && *record.WeekID == task.WeekID {
+			if record.AssetID > 0 && todayTaskHasAsset(task, record.AssetID) {
 				return record
 			}
-			if record.AssetID > 0 && todayTaskHasAsset(task, record.AssetID) {
+			if !todayTaskHasAssets(task) && task.WeekID > 0 && record.WeekID != nil && *record.WeekID == task.WeekID {
 				return record
 			}
 			continue
@@ -564,6 +585,10 @@ func todayTaskHasAsset(task TodayTaskVO, assetID uint64) bool {
 	return false
 }
 
+func todayTaskHasAssets(task TodayTaskVO) bool {
+	return len(task.Assets) > 0
+}
+
 func isCarriedWeeklyVideoRecord(task TodayTaskVO, record TodayRecord) bool {
 	if task.Type != "weekly_video" || record.AssetID == 0 || !todayTaskHasAsset(task, record.AssetID) {
 		return false
@@ -571,7 +596,52 @@ func isCarriedWeeklyVideoRecord(task TodayTaskVO, record TodayRecord) bool {
 	if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
 		return false
 	}
-	return task.WeekID == 0 || record.WeekID == nil || *record.WeekID != task.WeekID
+	return true
+}
+
+func buildGroupTaskCompletions(
+	date string,
+	week map[string]any,
+	rawTasks []map[string]any,
+	settings map[string]any,
+	records []TodayRecord,
+) []TaskCompletionVO {
+	tasks := buildTodayTasks(date, week, rawTasks, settings, nil)
+	recordsByUser := make(map[uint64][]TodayRecord)
+	userOrder := make([]uint64, 0)
+	for _, record := range records {
+		if _, exists := recordsByUser[record.UserID]; !exists {
+			userOrder = append(userOrder, record.UserID)
+		}
+		recordsByUser[record.UserID] = append(recordsByUser[record.UserID], record)
+	}
+
+	items := make([]TaskCompletionVO, 0)
+	for _, userID := range userOrder {
+		userRecords := recordsByUser[userID]
+		for _, task := range tasks {
+			record := matchingTodayRecord(task, userRecords, date)
+			if record == nil {
+				continue
+			}
+			inherited := isCarriedWeeklyVideoRecord(task, *record)
+			item := TaskCompletionVO{
+				UserID:    userID,
+				TaskKey:   task.ID,
+				TaskID:    task.TaskID,
+				WeekID:    task.WeekID,
+				TaskType:  task.Type,
+				Part:      task.Part,
+				Completed: true,
+				Inherited: inherited,
+			}
+			if !inherited {
+				item.Record = record
+			}
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 func weekVO(week Week, readings, videos []TaskBinding, outline TaskBinding) WeekVO {
