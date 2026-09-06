@@ -201,7 +201,14 @@ func (r *MySQLRepository) ExistingTaskTitle(ctx context.Context, groupID, weekID
 	return strings.TrimSpace(title.String), nil
 }
 
-func (r *MySQLRepository) SaveWeek(ctx context.Context, groupID, weekID uint64, input WeekInput, tasks []TaskDraft, now time.Time) (uint64, error) {
+func (r *MySQLRepository) SaveWeek(
+	ctx context.Context,
+	groupID, weekID uint64,
+	input WeekInput,
+	tasks []TaskDraft,
+	force bool,
+	now time.Time,
+) (uint64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -222,6 +229,18 @@ func (r *MySQLRepository) SaveWeek(ctx context.Context, groupID, weekID uint64, 
 		}
 		if err != nil {
 			return 0, err
+		}
+		if !force {
+			var checkinID uint64
+			err = tx.QueryRowContext(ctx, `SELECT id FROM checkin_records
+				WHERE group_id=? AND week_id=? AND deleted_at IS NULL
+				LIMIT 1 FOR UPDATE`, groupID, weekID).Scan(&checkinID)
+			if err == nil {
+				return 0, ErrWeekHasCheckins
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return 0, err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE study_weeks SET start_date=?,end_date=?,title=?,verse_ref=?,recite_text=?,book_enabled=?,video_enabled=?,verse_enabled=?,outline_enabled=?,updated_at=? WHERE id=? AND group_id=?`,
 			input.StartDate, input.EndDate, input.Title, input.VerseRef, input.ReciteText, input.BookEnabled, input.VideoEnabled, input.VerseEnabled, input.OutlineEnabled, now, id, groupID); err != nil {

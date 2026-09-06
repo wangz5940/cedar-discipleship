@@ -13,7 +13,10 @@ import (
 	"agp/backend/internal/progress"
 )
 
-var ErrWeekNotFound = errors.New("week_not_found")
+var (
+	ErrWeekNotFound    = errors.New("week_not_found")
+	ErrWeekHasCheckins = errors.New("week_has_checkins")
+)
 
 type Service struct {
 	repo     Repository
@@ -84,7 +87,7 @@ func (s *Service) WeekTasks(ctx context.Context, groupID, weekID uint64) ([]map[
 	return TaskMaps(tasks), nil
 }
 
-func (s *Service) SaveWeek(ctx context.Context, groupID, weekID uint64, input WeekInput, now time.Time) (uint64, error) {
+func (s *Service) SaveWeek(ctx context.Context, groupID, weekID uint64, input WeekInput, force bool, now time.Time) (uint64, error) {
 	existingVerseTitle := ""
 	if weekID > 0 {
 		title, err := s.repo.ExistingTaskTitle(ctx, groupID, weekID, "weekly_verse")
@@ -95,7 +98,7 @@ func (s *Service) SaveWeek(ctx context.Context, groupID, weekID uint64, input We
 	}
 	input.Title = WeekTitle(input)
 	tasks := BuildTaskDrafts(input, existingVerseTitle)
-	return s.repo.SaveWeek(ctx, groupID, weekID, input, tasks, now)
+	return s.repo.SaveWeek(ctx, groupID, weekID, input, tasks, force, now)
 }
 
 func (s *Service) DeleteWeek(ctx context.Context, groupID, weekID uint64) error {
@@ -136,19 +139,26 @@ func (s *Service) TodayContent(ctx context.Context, groupID uint64, date string,
 		from, to = start, end
 	}
 
-	title := "今日学习"
-	if date != now.Format("2006-01-02") {
-		title = "学习回顾"
-	}
 	return TodayContent{
 		Date:        date,
-		Title:       title,
+		Title:       todayContentTitle(date, now.Format("2006-01-02")),
 		CurrentWeek: week,
 		WeekTasks:   weekTasks,
 		Settings:    settings,
 		RecordFrom:  from,
 		RecordTo:    to,
 	}, nil
+}
+
+func todayContentTitle(date, today string) string {
+	switch {
+	case date < today:
+		return "学习回顾"
+	case date > today:
+		return "学习预览"
+	default:
+		return "今日学习"
+	}
 }
 
 func (s *Service) TodayHubFromContent(ctx context.Context, groupID, userID uint64, content TodayContent) (TodayVO, error) {

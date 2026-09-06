@@ -2674,13 +2674,6 @@ textarea:focus {
   line-height: 1.45;
 }
 
-.today-meta-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-
 .today-score {
   display: flex;
   flex-direction: column;
@@ -3297,11 +3290,6 @@ textarea:focus {
     -webkit-box-orient: vertical;
   }
 
-  .today-meta-pills {
-    gap: 6px;
-    margin-top: 2px;
-  }
-
   .date-controls {
     order: 3;
     grid-column: 1 / -1;
@@ -3493,11 +3481,6 @@ textarea:focus {
 
   .today-copy p {
     font-size: 12px;
-  }
-
-  .today-meta-pills .pill {
-    padding: 3px 8px;
-    font-size: 11px;
   }
 
   .date-controls {
@@ -4247,11 +4230,6 @@ textarea::placeholder {
 .today-copy p {
   font-size: 13px;
   line-height: 1.5;
-}
-
-.today-meta-pills {
-  gap: 6px;
-  margin-top: 4px;
 }
 
 .pill,
@@ -8374,5 +8352,111 @@ button.ministry-join-button {
 
   .ministry-trash-type {
     grid-column: 1 / -1;
+  }
+}
+
+.today-hero {
+  grid-template-columns: minmax(0, 1fr) auto 96px;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.today-copy {
+  gap: 3px;
+}
+
+.today-copy h2 {
+  font-size: 27px;
+}
+
+.today-date-cluster {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.today-date-cluster .preview-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.today-date-cluster .preview-toggle.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.today-date-cluster .date-controls {
+  width: auto;
+  grid-template-columns: 34px 132px 34px auto;
+  gap: 4px;
+  padding: 4px;
+}
+
+.today-date-cluster .date-controls button,
+.today-date-cluster .date-controls input {
+  min-height: 34px;
+}
+
+.today-date-cluster .date-controls button {
+  min-width: 34px;
+  padding-inline: 8px;
+}
+
+.today-score {
+  min-height: 72px;
+  padding: 8px;
+}
+
+.today-score strong {
+  font-size: 27px;
+}
+
+@media (max-width: 1100px) {
+  .today-hero {
+    grid-template-columns: minmax(0, 1fr) 88px;
+  }
+
+  .today-date-cluster {
+    grid-column: 1 / -1;
+    order: 3;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .today-hero {
+    padding: 12px;
+  }
+
+  .today-copy h2 {
+    font-size: 21px;
+  }
+
+  .today-date-cluster {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .today-date-cluster .preview-toggle {
+    justify-self: start;
+  }
+
+  .today-date-cluster .date-controls {
+    width: 100%;
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+  }
+
+  .today-score {
+    min-width: 76px;
+    min-height: 68px;
   }
 }

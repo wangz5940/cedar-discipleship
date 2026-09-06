@@ -3,6 +3,7 @@ import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useDashboardStore } from './stores/dashboard';
 import { useAppStateStore } from './stores/appState';
 import {
+  canSelectLearningDate,
   currentCalendarWeekRange,
   currentMonthString,
   dayOffsetFrom,
@@ -48,6 +49,7 @@ import {
   numberedSectionForDate,
   resolveEffectiveSchedule,
 } from './runtime/dailySchedule';
+import { saveWeekWithConfirmation } from './runtime/weekProtection';
 
 export { enabledFlag, extractPdfPageRange };
 
@@ -58,6 +60,7 @@ const state = {
   adminSection: 'learning',
   sidebarCollapsed: true,
   selectedDate: todayString(),
+  learningPreviewEnabled: false,
   calendar: null,
   viewer: null,
   siteConfig: null,
@@ -164,11 +167,12 @@ function checkinSnapshot() {
     selectedDate: state.selectedDate,
     maxDate: todayString(),
     selectedDateLabel: selectedDateDisplay(),
-    title: state.todayHub?.title || (isTodaySelected() ? '今日学习' : '学习回顾'),
+    title: state.todayHub?.title || (isFutureSelected() ? '学习预览' : (isTodaySelected() ? '今日学习' : '学习回顾')),
     completed,
     total,
     isToday: isTodaySelected(),
     isFuture: isFutureSelected(),
+    previewEnabled: state.learningPreviewEnabled,
     tasks,
     ownItems: ownCheckinsForSelectedDate(),
     statsVisible: Boolean(state.homeStatsEligible),
@@ -246,6 +250,8 @@ function dashboardSnapshot() {
     selectedDate: state.selectedDate,
     maxDate: todayString(),
     isToday: isTodaySelected(),
+    isFuture: isFutureSelected(),
+    previewEnabled: state.learningPreviewEnabled,
     groupName: state.user?.study_groups?.find((item) => item.id === state.user?.current_group_id)?.name || '当前小组',
     overallPercent,
     doneSlots,
@@ -302,7 +308,12 @@ export async function api(path, options = {}) {
     const refreshed = await refreshSession();
     if (refreshed) return api(path, { ...options, retryAuth: false });
   }
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(data.error || `HTTP ${res.status}`);
+    error.code = data.error || '';
+    error.status = res.status;
+    throw error;
+  }
   return data;
 }
 
@@ -626,13 +637,25 @@ function ownCheckinsForSelectedDate() {
 
 export async function setSelectedDate(date) {
   if (!date) return;
-  if (date > todayString()) {
+  if (!canSelectLearningDate(date, todayString(), state.learningPreviewEnabled)) {
     toast('不能选择未来日期');
     state.selectedDate = todayString();
   } else {
     state.selectedDate = date;
   }
+  state.todayHub = null;
+  state.dashboardCompletions = [];
+  render();
   await loadAll();
+  render();
+}
+
+export async function toggleLearningPreview() {
+  state.learningPreviewEnabled = !state.learningPreviewEnabled;
+  if (!state.learningPreviewEnabled && isFutureSelected()) {
+    state.selectedDate = todayString();
+    await loadAll();
+  }
   render();
 }
 
@@ -2101,7 +2124,14 @@ export async function saveWeekDraft() {
   try {
     const endpoint = draft.id ? `/admin/study-weeks/${draft.id}` : '/admin/study-weeks';
     const method = draft.id ? 'PUT' : 'POST';
-    const result = await api(endpoint, { method, body: JSON.stringify(payload) });
+    const result = await saveWeekWithConfirmation(
+      (force) => api(endpoint, {
+        method,
+        body: JSON.stringify(force ? { ...payload, force: true } : payload),
+      }),
+      () => window.confirm('当前周已有打卡记录。强制修改会替换学习任务，但会保留历史打卡记录。是否继续？'),
+    );
+    if (!result) return;
     toast('当前周任务已保存');
     await loadAll();
     const savedID = Number(result.id || draft.id || 0);
@@ -2215,6 +2245,7 @@ export async function logout(options = {}) {
   state.user = null;
   state.bootstrap = null;
   state.todayHub = null;
+  state.learningPreviewEnabled = false;
   state.monthlyRanking = null;
   state.dashboardCompletions = [];
   state.homeStatsEligible = false;

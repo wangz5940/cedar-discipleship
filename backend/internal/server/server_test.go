@@ -190,6 +190,26 @@ func TestWriteErrorSetsErrorCodeHeader(t *testing.T) {
 	}
 }
 
+func TestStudyWeekSaveRequestDecodesForce(t *testing.T) {
+	t.Parallel()
+
+	var request studyWeekSaveRequest
+	if err := json.Unmarshal([]byte(`{
+		"start_date":"2026-09-06",
+		"end_date":"2026-09-12",
+		"book_enabled":true,
+		"force":true
+	}`), &request); err != nil {
+		t.Fatalf("unmarshal study week request: %v", err)
+	}
+	if request.StartDate != "2026-09-06" || request.EndDate != "2026-09-12" {
+		t.Fatalf("decoded dates = %s..%s", request.StartDate, request.EndDate)
+	}
+	if !request.BookEnabled || !request.Force {
+		t.Fatalf("decoded request = %+v", request)
+	}
+}
+
 func TestResourceSharingAdminRoutesRequireGroupAdmin(t *testing.T) {
 	t.Parallel()
 

@@ -1,8 +1,15 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
+import { Eye } from '@lucide/vue';
 import { useCheckinWorkbenchStore } from '../stores/checkinWorkbench';
-import { openTaskContent, setSelectedDate, shiftSelectedDate, toggleCheckin } from '../legacy-app';
+import {
+  openTaskContent,
+  setSelectedDate,
+  shiftSelectedDate,
+  toggleCheckin,
+  toggleLearningPreview,
+} from '../legacy-app';
 import { taskIsCompleted } from '../runtime/checkins';
 
 const store = useCheckinWorkbenchStore();
@@ -16,6 +23,7 @@ const {
   total,
   isToday,
   isFuture,
+  previewEnabled,
   tasks,
   statsVisible,
   statsLoading,
@@ -42,8 +50,8 @@ const rankedStats = computed(() => [...statsRanking.value].sort((left, right) =>
 
 const statsMax = computed(() => Math.max(1, ...rankedStats.value.map(statsTotal)));
 
-function taskLocked(task) {
-  return Boolean(isFuture.value && !taskIsCompleted(task));
+function taskLocked() {
+  return Boolean(isFuture.value);
 }
 
 function taskStatusLabel(task) {
@@ -185,21 +193,29 @@ async function exportStatsChart() {
         <div class="today-copy">
           <div class="eyebrow">{{ selectedDateLabel }}</div>
           <h2>{{ title }}</h2>
-          <div class="today-meta-pills">
-            <span class="pill">{{ total }} 项学习</span>
-            <span class="pill">{{ isToday ? '今日视图' : '回顾视图' }}</span>
-          </div>
         </div>
-        <div class="date-controls">
-          <button class="secondary" type="button" @click="shiftSelectedDate(-1)">‹</button>
-          <input
-            type="date"
-            :value="selectedDate"
-            :max="maxDate"
-            @change="setSelectedDate($event.target.value)"
-          />
-          <button class="secondary" type="button" :disabled="isToday" @click="shiftSelectedDate(1)">›</button>
-          <button v-if="!isToday" class="ghost" type="button" @click="setSelectedDate(maxDate)">回到今天</button>
+        <div class="today-date-cluster">
+          <button
+            class="secondary preview-toggle"
+            :class="{ active: previewEnabled }"
+            type="button"
+            :aria-pressed="previewEnabled"
+            @click="toggleLearningPreview"
+          >
+            <Eye :size="15" />
+            {{ previewEnabled ? '退出预览' : '学习预览' }}
+          </button>
+          <div class="date-controls">
+            <button class="secondary" type="button" title="前一天" @click="shiftSelectedDate(-1)">‹</button>
+            <input
+              type="date"
+              :value="selectedDate"
+              :max="previewEnabled ? undefined : maxDate"
+              @change="setSelectedDate($event.target.value)"
+            />
+            <button class="secondary" type="button" title="后一天" :disabled="!previewEnabled && isToday" @click="shiftSelectedDate(1)">›</button>
+            <button v-if="!isToday" class="ghost" type="button" @click="setSelectedDate(maxDate)">回到今天</button>
+          </div>
         </div>
         <div class="today-score">
           <strong>{{ completed }}/{{ total }}</strong>
@@ -247,7 +263,7 @@ async function exportStatsChart() {
               class="task-state-badge task-status-action"
               :class="{ done: taskIsCompleted(task), pending: !taskIsCompleted(task) }"
               type="button"
-              :disabled="taskLocked(task)"
+              :disabled="taskLocked()"
               :aria-pressed="taskIsCompleted(task)"
               @click="toggleCheckin(task)"
             >

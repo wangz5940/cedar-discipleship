@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canSelectLearningDate,
   currentCalendarWeekRange,
   dayOffsetFrom,
   formatLocalDate,
@@ -32,5 +33,11 @@ describe('date runtime helpers', () => {
     expect(formatMonthLabel('2026-08')).toBe('2026年8月');
     expect(numberToChinese(21)).toBe('二十一');
     expect(toChineseMonthDay('2026-08-17')).toBe('八月十七号');
+  });
+
+  it('allows future dates only in learning preview mode', () => {
+    expect(canSelectLearningDate('2026-09-06', '2026-09-06', false)).toBe(true);
+    expect(canSelectLearningDate('2026-09-07', '2026-09-06', false)).toBe(false);
+    expect(canSelectLearningDate('2026-09-07', '2026-09-06', true)).toBe(true);
   });
 });

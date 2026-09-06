@@ -21,8 +21,21 @@ func (r *MySQLRepository) ValidateWeeklyTarget(
 	groupID, taskID, weekID uint64,
 	taskType, logicalDate string,
 ) error {
+	return validateWeeklyTarget(ctx, r.db, groupID, taskID, weekID, taskType, logicalDate)
+}
+
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func validateWeeklyTarget(
+	ctx context.Context,
+	queryer queryRower,
+	groupID, taskID, weekID uint64,
+	taskType, logicalDate string,
+) error {
 	var found int
-	return r.db.QueryRowContext(ctx, `
+	return queryer.QueryRowContext(ctx, `
 		SELECT 1
 		FROM study_tasks t
 		JOIN study_weeks w
@@ -120,7 +133,52 @@ func (r *MySQLRepository) FindExistingWeeklyTask(ctx context.Context, groupID, u
 
 func (r *MySQLRepository) Create(ctx context.Context, record *Record, actorID uint64) (uint64, error) {
 	now := nowSQL()
-	res, err := r.db.ExecContext(ctx, `INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
+	if !isWeeklyTaskType(record.TaskType) {
+		return createRecord(ctx, r.db, record, actorID, now)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var lockedWeekID uint64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM study_weeks
+		WHERE id=? AND group_id=? FOR SHARE`, record.WeekID, record.GroupID).Scan(&lockedWeekID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrInvalidWeeklyTarget
+		}
+		return 0, err
+	}
+	if err := validateWeeklyTarget(
+		ctx,
+		tx,
+		record.GroupID,
+		record.TaskID,
+		record.WeekID,
+		record.TaskType,
+		record.LogicalDate,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrInvalidWeeklyTarget
+		}
+		return 0, err
+	}
+	id, err := createRecord(ctx, tx, record, actorID, now)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+type recordExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func createRecord(ctx context.Context, execer recordExecer, record *Record, actorID uint64, now string) (uint64, error) {
+	res, err := execer.ExecContext(ctx, `INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		record.GroupID, record.UserID, nullableID(record.TaskID), nullableID(record.WeekID), record.LogicalDate, now, record.TaskType, "done", record.IsRetro, record.Detail, record.Note, truncate(record.Part, 64), "web", actorID, now, now)
 	if err != nil {
@@ -134,6 +192,15 @@ func (r *MySQLRepository) Create(ctx context.Context, record *Record, actorID ui
 		return 0, errors.New("invalid_insert_id")
 	}
 	return uint64(id), nil
+}
+
+func isWeeklyTaskType(taskType string) bool {
+	switch taskType {
+	case "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *MySQLRepository) DeleteOwn(ctx context.Context, groupID, userID, recordID uint64) error {

@@ -15,6 +15,11 @@ import (
 type weekTaskBinding = learningdomain.TaskBinding
 type studyWeekInput = learningdomain.WeekInput
 
+type studyWeekSaveRequest struct {
+	studyWeekInput
+	Force bool `json:"force"`
+}
+
 func (a *app) handleStudyWeeks(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)
@@ -78,7 +83,7 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 	if groupID == 0 {
 		return
 	}
-	var req studyWeekInput
+	var req studyWeekSaveRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -96,9 +101,20 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		writeError(w, http.StatusBadRequest, "invalid_week_dates")
 		return
 	}
-	savedID, err := a.learning.SaveWeek(r.Context(), groupID, id, req, time.Now().In(a.location))
+	savedID, err := a.learning.SaveWeek(
+		r.Context(),
+		groupID,
+		id,
+		req.studyWeekInput,
+		req.Force,
+		time.Now().In(a.location),
+	)
 	if errors.Is(err, learningdomain.ErrWeekNotFound) {
 		writeError(w, http.StatusNotFound, "week_not_found")
+		return
+	}
+	if errors.Is(err, learningdomain.ErrWeekHasCheckins) {
+		writeError(w, http.StatusConflict, "week_has_checkins")
 		return
 	}
 	if err != nil {
@@ -107,7 +123,10 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 	}
 	id = savedID
 	a.refreshTodayContent(groupID)
-	a.audit(groupID, u.ID, "save_study_week", "study_weeks", id, nil, map[string]any{"title": req.Title}, r)
+	a.audit(groupID, u.ID, "save_study_week", "study_weeks", id, nil, map[string]any{
+		"title": req.Title,
+		"force": req.Force,
+	}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
 }
 
