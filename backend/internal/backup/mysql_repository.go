@@ -345,7 +345,34 @@ func normalizeBackupSettings(settings map[string]any, resolve backupAssetResolve
 	case shouldDropBackupSettingPath(devotion["path"]):
 		delete(devotion, "path")
 	}
+	if err := normalizeBackupScheduleHistoryPaths(devotion, resolve); err != nil {
+		return nil, err
+	}
 	return normalized, nil
+}
+
+func normalizeBackupScheduleHistoryPaths(config map[string]any, resolve backupAssetResolveFunc) error {
+	history, ok := config["schedule_history"].([]any)
+	if !ok {
+		return nil
+	}
+	for _, item := range history {
+		version, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		path, found, err := normalizeBackupSettingAssetPath(version["path"], "markdown", resolve)
+		if err != nil {
+			return err
+		}
+		switch {
+		case found:
+			version["path"] = path
+		case shouldDropBackupSettingPath(version["path"]):
+			delete(version, "path")
+		}
+	}
+	return nil
 }
 
 func cloneBackupSettings(settings map[string]any) (map[string]any, error) {

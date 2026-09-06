@@ -206,6 +206,13 @@ func (s *Service) LearningConfig(ctx context.Context, groupID uint64) (map[strin
 }
 
 func (s *Service) SaveLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
+	existing, err := s.repo.LearningConfig(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if err := preserveDailyScheduleHistory(existing, settings); err != nil {
+		return err
+	}
 	return s.repo.SaveLearningConfig(ctx, groupID, settings)
 }
 

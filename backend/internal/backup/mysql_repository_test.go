@@ -117,6 +117,13 @@ func TestNormalizeBackupSettingsRemapsLegacyDailyPaths(t *testing.T) {
 				"devotion": map[string]any{
 					"path": "https://mouss.synology.me:7399/newtestament.md",
 					"type": "markdown",
+					"schedule_history": []any{
+						map[string]any{
+							"numbered_start_date": "2026-05-27",
+							"numbered_start":      float64(43),
+							"path":                "/old-devotion.md",
+						},
+					},
 				},
 			},
 		},
@@ -127,6 +134,9 @@ func TestNormalizeBackupSettingsRemapsLegacyDailyPaths(t *testing.T) {
 		}
 		if backupResourceFileName(value) == "newtestament.md" {
 			return 193, nil
+		}
+		if backupResourceFileName(value) == "old-devotion.md" {
+			return 194, nil
 		}
 		return 0, nil
 	}
@@ -148,6 +158,11 @@ func TestNormalizeBackupSettingsRemapsLegacyDailyPaths(t *testing.T) {
 	}
 	if devotion["path"] != "/api/assets/193/download" {
 		t.Fatalf("devotion path = %q, want asset download path", devotion["path"])
+	}
+	history := devotion["schedule_history"].([]any)
+	previous := history[0].(map[string]any)
+	if previous["path"] != "/api/assets/194/download" {
+		t.Fatalf("historical devotion path = %q, want remapped asset download path", previous["path"])
 	}
 	if original := settings["task_sections"].(map[string]any)["daily"].(map[string]any)["path"]; original != "/newtestament.md" {
 		t.Fatalf("original settings mutated: %q", original)

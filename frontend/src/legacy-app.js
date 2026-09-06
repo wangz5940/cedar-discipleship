@@ -44,6 +44,10 @@ import {
 import {
   buildTaskCompletionMatrix,
 } from './runtime/checkins';
+import {
+  numberedSectionForDate,
+  resolveEffectiveSchedule,
+} from './runtime/dailySchedule';
 
 export { enabledFlag, extractPdfPageRange };
 
@@ -1566,17 +1570,21 @@ function dailyTaskLabel() {
   return taskSectionsConfig().daily?.label || '每日灵修';
 }
 
+function dailyDevotionConfig(date = state.selectedDate) {
+  return resolveEffectiveSchedule(
+    taskSectionsConfig().daily?.devotion || {},
+    date,
+    ['numbered_start_date', 'start_date'],
+  );
+}
+
 function getDailyDevotionSectionNumber(date = state.selectedDate) {
-  const cfg = taskSectionsConfig().daily?.devotion || {};
-  const startDate = cfg.numbered_start_date || cfg.start_date || todayString();
-  const offset = Math.max(0, dayOffsetFrom(startDate, date));
-  const start = Math.max(1, Number(cfg.numbered_start || cfg.start_section || 1));
-  return start + offset;
+  return numberedSectionForDate(taskSectionsConfig().daily?.devotion || {}, date);
 }
 
 function getDailyDevotionPlan(date = state.selectedDate) {
   const daily = taskSectionsConfig().daily || {};
-  const cfg = daily.devotion || {};
+  const cfg = dailyDevotionConfig(date);
   if (cfg.enabled === false) return null;
   const title = toChineseMonthDay(date);
   const section = getDailyDevotionSectionNumber(date);
@@ -1612,7 +1620,11 @@ function resolveDailyScriptureChapter(cfg, dayOffset) {
 }
 
 function getDailyScripturePlan(date = state.selectedDate) {
-  const cfg = taskSectionsConfig().daily?.scripture || {};
+  const cfg = resolveEffectiveSchedule(
+    taskSectionsConfig().daily?.scripture || {},
+    date,
+    ['start_date'],
+  );
   if (cfg.enabled === false) return null;
   const startDate = cfg.start_date || todayString();
   const dayOffset = dayOffsetFrom(startDate, date);
