@@ -86,10 +86,43 @@ func (r *MySQLRepository) ListTasks(ctx context.Context, groupID, weekID uint64)
 }
 
 func (r *MySQLRepository) ListTodayRecords(ctx context.Context, groupID, userID uint64, from, to string) ([]TodayRecord, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,user_id,task_id,week_id,logical_date,checkin_time,task_type,part,detail,note
-		FROM checkin_records
-		WHERE group_id=? AND user_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL
-		ORDER BY logical_date DESC, id DESC`, groupID, userID, from, to)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT c.id,c.user_id,c.task_id,c.week_id,c.logical_date,c.checkin_time,
+		       c.task_type,c.part,c.detail,c.note,
+		       COALESCE((
+		         SELECT MIN(ta.asset_id)
+		         FROM task_assets ta
+		         WHERE ta.group_id=c.group_id AND ta.task_id=c.task_id
+		       ),0) AS asset_id
+		FROM checkin_records c
+		WHERE c.group_id=? AND c.user_id=? AND c.deleted_at IS NULL
+		  AND (
+		    c.logical_date BETWEEN ? AND ?
+		    OR (
+		      c.task_type='weekly_video'
+		      AND EXISTS (
+		        SELECT 1
+		        FROM task_assets checked_ta
+		        JOIN task_assets current_ta
+		          ON current_ta.group_id=checked_ta.group_id
+		         AND current_ta.asset_id=checked_ta.asset_id
+		        JOIN study_tasks current_task
+		          ON current_task.id=current_ta.task_id
+		         AND current_task.group_id=current_ta.group_id
+		         AND current_task.task_type='weekly_video'
+		         AND current_task.enabled=1
+		        JOIN study_weeks current_week
+		          ON current_week.id=current_task.week_id
+		         AND current_week.group_id=current_task.group_id
+		        WHERE checked_ta.group_id=c.group_id
+		          AND checked_ta.task_id=c.task_id
+		          AND current_week.start_date=?
+		          AND current_week.end_date=?
+		      )
+		    )
+		  )
+		ORDER BY c.logical_date DESC,c.id DESC`,
+		groupID, userID, from, to, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +134,19 @@ func (r *MySQLRepository) ListTodayRecords(ctx context.Context, groupID, userID 
 		var taskID, weekID sql.NullInt64
 		var logicalDate, checkinTime time.Time
 		var note sql.NullString
-		if err := rows.Scan(&record.ID, &record.UserID, &taskID, &weekID, &logicalDate, &checkinTime, &record.TaskType, &record.Part, &record.Detail, &note); err != nil {
+		if err := rows.Scan(
+			&record.ID,
+			&record.UserID,
+			&taskID,
+			&weekID,
+			&logicalDate,
+			&checkinTime,
+			&record.TaskType,
+			&record.Part,
+			&record.Detail,
+			&note,
+			&record.AssetID,
+		); err != nil {
 			return nil, err
 		}
 		record.TaskID = nullableUint64Ptr(taskID)

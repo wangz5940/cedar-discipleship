@@ -83,6 +83,30 @@ func (r *MySQLRepository) FindExistingWeeklyTask(ctx context.Context, groupID, u
 		if err == nil || !errors.Is(err, sql.ErrNoRows) {
 			return id, err
 		}
+		if taskType == "weekly_video" {
+			err = r.db.QueryRowContext(ctx, `
+				SELECT c.id
+				FROM checkin_records c
+				JOIN task_assets checked_ta
+				  ON checked_ta.group_id=c.group_id
+				 AND checked_ta.task_id=c.task_id
+				JOIN task_assets target_ta
+				  ON target_ta.group_id=checked_ta.group_id
+				 AND target_ta.asset_id=checked_ta.asset_id
+				WHERE c.group_id=? AND c.user_id=?
+				  AND c.task_type='weekly_video'
+				  AND c.deleted_at IS NULL
+				  AND target_ta.task_id=?
+				ORDER BY c.logical_date,c.id
+				LIMIT 1`,
+				groupID,
+				userID,
+				taskID,
+			).Scan(&id)
+			if err == nil || !errors.Is(err, sql.ErrNoRows) {
+				return id, err
+			}
+		}
 	}
 	if weekID == 0 {
 		return 0, sql.ErrNoRows

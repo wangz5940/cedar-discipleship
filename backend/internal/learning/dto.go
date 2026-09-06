@@ -79,6 +79,7 @@ type TodayRecord struct {
 	UserID      uint64  `json:"user_id"`
 	TaskID      *uint64 `json:"task_id,omitempty"`
 	WeekID      *uint64 `json:"week_id,omitempty"`
+	AssetID     uint64  `json:"-"`
 	LogicalDate string  `json:"logical_date"`
 	CheckinTime string  `json:"checkin_time"`
 	TaskType    string  `json:"task_type"`

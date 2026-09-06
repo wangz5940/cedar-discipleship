@@ -395,7 +395,9 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 		if record := matchingTodayRecord(tasks[index], records, date); record != nil {
 			tasks[index].Completed = true
 			tasks[index].Status = "done"
-			tasks[index].Record = record
+			if !isCarriedWeeklyVideoRecord(tasks[index], *record) {
+				tasks[index].Record = record
+			}
 		}
 	}
 	return tasks
@@ -513,7 +515,19 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			}
 			continue
 		}
-		if task.Type == "weekly_video" || task.Type == "weekly_verse" || task.Type == "weekly_outline" {
+		if task.Type == "weekly_video" {
+			if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
+				return record
+			}
+			if task.WeekID > 0 && record.WeekID != nil && *record.WeekID == task.WeekID {
+				return record
+			}
+			if record.AssetID > 0 && todayTaskHasAsset(task, record.AssetID) {
+				return record
+			}
+			continue
+		}
+		if task.Type == "weekly_verse" || task.Type == "weekly_outline" {
 			if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
 				return record
 			}
@@ -539,6 +553,25 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 		}
 	}
 	return nil
+}
+
+func todayTaskHasAsset(task TodayTaskVO, assetID uint64) bool {
+	for _, asset := range task.Assets {
+		if mapUint64(asset, "id") == assetID {
+			return true
+		}
+	}
+	return false
+}
+
+func isCarriedWeeklyVideoRecord(task TodayTaskVO, record TodayRecord) bool {
+	if task.Type != "weekly_video" || record.AssetID == 0 || !todayTaskHasAsset(task, record.AssetID) {
+		return false
+	}
+	if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
+		return false
+	}
+	return task.WeekID == 0 || record.WeekID == nil || *record.WeekID != task.WeekID
 }
 
 func weekVO(week Week, readings, videos []TaskBinding, outline TaskBinding) WeekVO {

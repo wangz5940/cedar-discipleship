@@ -47,6 +47,75 @@ func TestMatchingTodayRecordWeeklyVideoFallsBackToWeek(t *testing.T) {
 	}
 }
 
+func TestBuildTodayTasksCarriesWeeklyVideoCompletionAcrossWeeksByAsset(t *testing.T) {
+	previousTaskID := uint64(31)
+	previousWeekID := uint64(7)
+	tasks := buildTodayTasks(
+		"2026-09-06",
+		map[string]any{
+			"id":            uint64(8),
+			"video_enabled": true,
+		},
+		[]map[string]any{{
+			"id":        uint64(32),
+			"task_type": "weekly_video",
+			"title":     "重复安排的视频",
+			"enabled":   true,
+			"assets": []map[string]any{{
+				"id": uint64(27),
+			}},
+		}},
+		map[string]any{
+			"task_sections": map[string]any{
+				"daily": map[string]any{
+					"devotion":  map[string]any{"enabled": false},
+					"scripture": map[string]any{"enabled": false},
+				},
+			},
+		},
+		[]TodayRecord{{
+			ID:          101,
+			TaskType:    "weekly_video",
+			TaskID:      &previousTaskID,
+			WeekID:      &previousWeekID,
+			LogicalDate: "2026-09-01",
+			AssetID:     27,
+		}},
+	)
+	if len(tasks) != 1 {
+		t.Fatalf("buildTodayTasks returned %d tasks, want one video", len(tasks))
+	}
+	if !tasks[0].Completed {
+		t.Fatal("weekly video with the same asset should stay completed across weeks")
+	}
+	if tasks[0].Record != nil {
+		t.Fatalf("carried completion record = %+v, want nil to keep prior-week history immutable", tasks[0].Record)
+	}
+}
+
+func TestMatchingTodayRecordWeeklyVideoDoesNotMatchDifferentAsset(t *testing.T) {
+	previousTaskID := uint64(31)
+	previousWeekID := uint64(7)
+	record := matchingTodayRecord(TodayTaskVO{
+		Type:   "weekly_video",
+		TaskID: 32,
+		WeekID: 8,
+		Assets: []map[string]any{{
+			"id": uint64(28),
+		}},
+	}, []TodayRecord{{
+		ID:          101,
+		TaskType:    "weekly_video",
+		TaskID:      &previousTaskID,
+		WeekID:      &previousWeekID,
+		LogicalDate: "2026-09-01",
+		AssetID:     27,
+	}}, "2026-09-06")
+	if record != nil {
+		t.Fatalf("matchingTodayRecord returned %+v for a different video asset", record)
+	}
+}
+
 func TestBuildTodayTasksIncludesEnabledOutline(t *testing.T) {
 	t.Parallel()
 
