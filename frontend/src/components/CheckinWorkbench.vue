@@ -41,12 +41,16 @@ const rankedStats = computed(() => [...statsRanking.value].sort((left, right) =>
 
 const statsMax = computed(() => Math.max(1, ...rankedStats.value.map(statsTotal)));
 
+function taskDone(task) {
+  return Boolean(task.completed || task.ownRecord);
+}
+
 function taskLocked(task) {
-  return Boolean(isFuture.value && !task.ownRecord);
+  return Boolean(isFuture.value && !taskDone(task));
 }
 
 function taskStatusLabel(task) {
-  return task.ownRecord ? '已打卡' : '未完成';
+  return taskDone(task) ? '已打卡' : '未完成';
 }
 
 function statsTotal(item) {
@@ -211,10 +215,10 @@ async function exportStatsChart() {
           v-for="task in tasks"
           :key="`${task.type}:${task.part || ''}:${task.title}`"
           class="task-option"
-          :class="{ done: task.ownRecord, pending: !task.ownRecord }"
+          :class="{ done: taskDone(task), pending: !taskDone(task) }"
         >
           <div class="task-head">
-            <span class="task-icon">{{ task.ownRecord ? '✓' : task.icon }}</span>
+            <span class="task-icon">{{ taskDone(task) ? '✓' : task.icon }}</span>
           </div>
 
           <button
@@ -244,10 +248,10 @@ async function exportStatsChart() {
           <div class="task-actions">
             <button
               class="task-state-badge task-status-action"
-              :class="{ done: task.ownRecord, pending: !task.ownRecord }"
+              :class="{ done: taskDone(task), pending: !taskDone(task) }"
               type="button"
               :disabled="taskLocked(task)"
-              :aria-pressed="task.ownRecord"
+              :aria-pressed="taskDone(task)"
               @click="toggleCheckin(task)"
             >
               {{ taskStatusLabel(task) }}

@@ -1155,6 +1155,10 @@ export async function toggleCheckin(task, member) {
     toast('只能为自己的账号打卡');
     return;
   }
+  if (task.completed && !task.ownRecord) {
+    toast('该任务已完成');
+    return;
+  }
   if (!task.ownRecord && isFutureSelected()) {
     toast('禁止打卡未来日期内容');
     return;
