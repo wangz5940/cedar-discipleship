@@ -826,6 +826,14 @@ input:focus, select:focus, textarea:focus {
   flex-wrap: wrap;
   gap: 18px;
 }
+.admin-checkbox-row.notification-toggle-row {
+  flex-flow: row nowrap;
+  align-items: center;
+}
+.notification-toggle-row .admin-toggle {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .week-planner-card .admin-checkbox-row {
   display: flex;
   flex-flow: row wrap;

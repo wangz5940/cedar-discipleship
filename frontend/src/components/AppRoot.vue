@@ -828,7 +828,7 @@ async function selectCalendarDate(day) {
               <div class="grid admin-learning-stack">
                 <div class="card">
                   <h2>打卡通知</h2>
-                  <div class="admin-checkbox-row">
+                  <div class="admin-checkbox-row notification-toggle-row">
                     <label class="admin-toggle">
                       <input
                         type="checkbox"
