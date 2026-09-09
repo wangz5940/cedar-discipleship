@@ -12,9 +12,15 @@ import (
 )
 
 type fakeSource struct {
-	calls    int
-	snapshot Snapshot
-	err      error
+	calls     int
+	snapshot  Snapshot
+	err       error
+	disabled  bool
+	policyErr error
+}
+
+func (s *fakeSource) Enabled(context.Context, Event) (bool, error) {
+	return !s.disabled, s.policyErr
 }
 
 func (s *fakeSource) Snapshot(context.Context, Event) (Snapshot, error) {
@@ -219,5 +225,39 @@ func TestQueueRunStops(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("worker did not stop")
+	}
+}
+
+func TestQueueHonorsNotificationSwitch(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"disabled before send", "disabled during retry", "settings unavailable"} {
+		t.Run(name, func(t *testing.T) {
+			queue, source, sender, event, now := queueFixture(t)
+			if err := queue.Enqueue(event); err != nil {
+				t.Fatal(err)
+			}
+			wantSends := 0
+			if name == "disabled during retry" {
+				sender.err = &deliveryError{code: "http_503", retry: true}
+				queue.processNext(t.Context(), now)
+				sender.err = nil
+				wantSends = 1
+			}
+			source.disabled = true
+			if name == "settings unavailable" {
+				source.policyErr = errors.New("database unavailable")
+			}
+			queue.processNext(t.Context(), now.Add(time.Minute))
+			if len(sender.messages) != wantSends {
+				t.Fatal("notification was sent while disabled or settings unavailable")
+			}
+			if name == "settings unavailable" {
+				if stateFiles(t, queue, "pending") != 1 {
+					t.Fatal("settings failure should retry")
+				}
+			} else if stateFiles(t, queue, "completed") != 1 {
+				t.Fatal("disabled notification should be archived")
+			}
+		})
 	}
 }

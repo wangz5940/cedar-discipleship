@@ -168,3 +168,84 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckinSourceEnabled(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		event   Event
+		columns int
+		rows    [][]driver.Value
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "daily defaults enabled",
+			event: Event{
+				RecordID: 1, GroupID: 2, LogicalDate: "2026-09-09",
+			},
+			columns: 2,
+			rows:    [][]driver.Value{{"daily_devotion", nil}},
+			want:    true,
+		},
+		{
+			name: "daily disabled",
+			event: Event{
+				RecordID: 1, GroupID: 2, LogicalDate: "2026-09-09",
+			},
+			columns: 2,
+			rows: [][]driver.Value{{
+				"daily_devotion", `{"checkin_notifications":{"daily_enabled":false,"weekly_enabled":true}}`,
+			}},
+		},
+		{
+			name: "weekly disabled",
+			event: Event{
+				RecordID: 1, GroupID: 2, LogicalDate: "2026-09-09",
+			},
+			columns: 2,
+			rows: [][]driver.Value{{
+				"weekly_video", `{"checkin_notifications":{"daily_enabled":true,"weekly_enabled":false}}`,
+			}},
+		},
+		{
+			name:    "initial defaults enabled without settings row",
+			event:   Event{GroupID: 2, Initial: "weekly"},
+			columns: 1,
+			want:    true,
+		},
+		{
+			name: "invalid settings fail closed",
+			event: Event{
+				RecordID: 1, GroupID: 2, LogicalDate: "2026-09-09",
+			},
+			columns: 2,
+			rows:    [][]driver.Value{{"daily_devotion", `{"checkin_notifications":{"daily_enabled":"yes"}}`}},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fragments := []string{"group_id=?"}
+			args := []any{int64(2)}
+			if tt.event.Initial == "" {
+				fragments = append(fragments, "c.id=?", "c.logical_date=?", "c.source='web'")
+				args = append(args, int64(1), "2026-09-09")
+			} else {
+				fragments = append(fragments, "FROM group_settings")
+			}
+			connector := &sourceConnector{t: t, steps: []queryStep{{
+				contains: fragments,
+				args:     args,
+				columns:  tt.columns,
+				rows:     tt.rows,
+			}}}
+			db := sql.OpenDB(connector)
+			defer db.Close()
+			got, err := NewCheckinSource(db, time.UTC).Enabled(t.Context(), tt.event)
+			if got != tt.want || (err != nil) != tt.wantErr {
+				t.Fatalf("Enabled() = %v, %v; want %v, error=%v", got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}

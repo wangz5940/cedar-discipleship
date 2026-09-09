@@ -16,6 +16,8 @@ type initialSource struct {
 	events []Event
 }
 
+func (*initialSource) Enabled(context.Context, Event) (bool, error) { return true, nil }
+
 func (s *initialSource) Snapshot(_ context.Context, event Event) (Snapshot, error) {
 	s.events = append(s.events, event)
 	return Snapshot{

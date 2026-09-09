@@ -14,6 +14,7 @@ import (
 
 type SnapshotSource interface {
 	Snapshot(context.Context, Event) (Snapshot, error)
+	Enabled(context.Context, Event) (bool, error)
 }
 
 type TextSender interface {
@@ -170,8 +171,15 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		q.finish(ctx, path, item, start)
 		return
 	}
-	var err error
-	if len(item.Messages) == 0 {
+	enabled, err := q.source.Enabled(ctx, item.Event)
+	if err != nil {
+		err = &deliveryError{code: "notification_settings_read_failed", retry: true}
+	} else if !enabled {
+		item.Status, item.ErrorCode = "skipped", "notification_disabled"
+		q.finish(ctx, path, item, start)
+		return
+	}
+	if err == nil && len(item.Messages) == 0 {
 		var snapshot Snapshot
 		snapshot, err = q.source.Snapshot(ctx, item.Event)
 		if err == nil {

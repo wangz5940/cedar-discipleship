@@ -22,17 +22,21 @@ type Target struct {
 var tokenPattern = regexp.MustCompile(`^[0-9]+:[A-Za-z0-9_-]+$`)
 
 func ParseTargets(token, value string) (map[uint64]Target, error) {
+	value = strings.TrimSpace(value)
 	if token == "" && value == "" {
 		return nil, nil
 	}
 	if !tokenPattern.MatchString(token) {
 		return nil, errors.New("invalid AGP_POTATO_BOT_TOKEN")
 	}
+	if value == "" {
+		return nil, nil
+	}
 	var raw map[string]Target
 	decoder := json.NewDecoder(strings.NewReader(value))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&raw); err != nil || len(raw) == 0 {
-		return nil, errors.New("AGP_POTATO_GROUPS must be a nonempty group ID to chat mapping")
+	if err := decoder.Decode(&raw); err != nil || raw == nil {
+		return nil, errors.New("AGP_POTATO_GROUPS must be a group ID to chat mapping")
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return nil, errors.New("invalid AGP_POTATO_GROUPS JSON")

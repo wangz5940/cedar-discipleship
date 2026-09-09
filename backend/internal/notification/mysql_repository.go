@@ -19,6 +19,59 @@ func NewCheckinSource(db *sql.DB, location *time.Location) *CheckinSource {
 	return &CheckinSource{db: db, location: location}
 }
 
+// Enabled is rechecked before every delivery, including frozen-message retries.
+func (s *CheckinSource) Enabled(ctx context.Context, event Event) (bool, error) {
+	var raw sql.NullString
+	topic := event.Initial
+	var err error
+	if topic == "" {
+		var taskType string
+		err = s.db.QueryRowContext(ctx, `
+			SELECT c.task_type,s.settings FROM checkin_records c
+			LEFT JOIN group_settings s ON s.group_id=c.group_id
+			WHERE c.group_id=? AND c.id=? AND c.logical_date=?
+			  AND c.deleted_at IS NULL AND c.status='done' AND c.source='web'`,
+			event.GroupID, event.RecordID, event.LogicalDate).Scan(&taskType, &raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		switch taskType {
+		case "daily_devotion":
+			topic = "daily"
+		case "weekly_book", "weekly_video":
+			topic = "weekly"
+		}
+	} else {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT settings FROM group_settings WHERE group_id=?`, event.GroupID).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+		}
+	}
+	if err != nil {
+		return false, fmt.Errorf("load notification settings: %w", err)
+	}
+	if topic != "daily" && topic != "weekly" {
+		return false, nil
+	}
+	var settings struct {
+		Notifications struct {
+			Daily  *bool `json:"daily_enabled"`
+			Weekly *bool `json:"weekly_enabled"`
+		} `json:"checkin_notifications"`
+	}
+	if raw.Valid && strings.TrimSpace(raw.String) != "" {
+		if err := json.Unmarshal([]byte(raw.String), &settings); err != nil {
+			return false, fmt.Errorf("decode notification settings: %w", err)
+		}
+	}
+	enabled := settings.Notifications.Daily
+	if topic == "weekly" {
+		enabled = settings.Notifications.Weekly
+	}
+	return enabled == nil || *enabled, nil
+}
+
 func (s *CheckinSource) Snapshot(ctx context.Context, event Event) (Snapshot, error) {
 	if event.Initial != "" {
 		return s.initialSnapshot(ctx, event)

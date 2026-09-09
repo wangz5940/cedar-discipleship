@@ -101,6 +101,7 @@ const resourceSearchQuery = ref('');
 const resourceTypeFilter = ref('');
 const resourceDateFilter = ref('');
 const resourceStatusFilter = ref('all');
+const notificationSaving = ref(false);
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const canManageRoles = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))));
@@ -109,6 +110,7 @@ const settings = computed(() => learningConfig.value || {});
 const daily = computed(() => settings.value.task_sections?.daily || {});
 const devotion = computed(() => daily.value.devotion || {});
 const scripture = computed(() => daily.value.scripture || {});
+const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const bibleBooks = [
   ['创世记', 50], ['出埃及记', 40], ['利未记', 27], ['民数记', 36], ['申命记', 34],
   ['约书亚记', 24], ['士师记', 21], ['路得记', 4], ['撒母耳记上', 31], ['撒母耳记下', 24],
@@ -283,6 +285,15 @@ async function createMember() {
 
 function updateLearning(path, value) {
   updateLearningValue(path, value);
+}
+
+async function setCheckinNotification(key, enabled) {
+  const previous = checkinNotifications.value[key] !== false;
+  notificationSaving.value = true;
+  updateLearning(['checkin_notifications', key], enabled);
+  const saved = await saveLearningConfig('通知设置已保存');
+  if (!saved) updateLearning(['checkin_notifications', key], previous);
+  notificationSaving.value = false;
 }
 
 function updateScriptureBook(bookID) {
@@ -815,6 +826,29 @@ async function selectCalendarDate(day) {
             <section v-else-if="adminSection === 'learning'">
               <div class="section-title"><h2>学习内容管理</h2></div>
               <div class="grid admin-learning-stack">
+                <div class="card">
+                  <h2>打卡通知</h2>
+                  <div class="admin-checkbox-row">
+                    <label class="admin-toggle">
+                      <input
+                        type="checkbox"
+                        :checked="checkinNotifications.daily_enabled !== false"
+                        :disabled="!canEditLearning || notificationSaving"
+                        @change="setCheckinNotification('daily_enabled', $event.target.checked)"
+                      />
+                      <span>每日灵修通知</span>
+                    </label>
+                    <label class="admin-toggle">
+                      <input
+                        type="checkbox"
+                        :checked="checkinNotifications.weekly_enabled !== false"
+                        :disabled="!canEditLearning || notificationSaving"
+                        @change="setCheckinNotification('weekly_enabled', $event.target.checked)"
+                      />
+                      <span>周任务通知</span>
+                    </label>
+                  </div>
+                </div>
                 <div class="grid cols-2 admin-grid">
                   <div class="card">
                     <h2>每日学习配置</h2>
