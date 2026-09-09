@@ -55,11 +55,15 @@ services:
       AGP_RESOURCE_ROOT: "/data/agp/resources"
       AGP_MIGRATIONS_DIR: "/app/migrations"
       AGP_LOG_FILE: "/var/log/cedar/backend.log"
+      AGP_POTATO_BOT_TOKEN: "${AGP_POTATO_BOT_TOKEN:-}"
+      AGP_POTATO_GROUPS: "${AGP_POTATO_GROUPS:-}"
+      AGP_NOTIFICATION_DIR: "/data/agp/notifications"
       BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
       BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
     volumes:
       - ${AGP_RESOURCE_ROOT:-../data/resources}:/data/agp/resources
+      - ${AGP_DATA_DIR:-../data}/notifications:/data/agp/notifications
       - ${AGP_LOG_DIR:-../logs}/backend:/var/log/cedar
     logging:
       driver: json-file

@@ -17,6 +17,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	assetdomain "agp/backend/internal/asset"
@@ -25,6 +26,7 @@ import (
 	checkindomain "agp/backend/internal/checkin"
 	learningdomain "agp/backend/internal/learning"
 	ministrydomain "agp/backend/internal/ministry"
+	notificationdomain "agp/backend/internal/notification"
 	statisticsdomain "agp/backend/internal/statistics"
 	userdomain "agp/backend/internal/user"
 
@@ -57,6 +59,9 @@ type app struct {
 	pdfRangeCache *pdfRangeCache
 	cacheRefresh  chan uint64
 	users         *userdomain.Service
+	notifications interface {
+		Enqueue(notificationdomain.Event) error
+	}
 }
 
 type config struct {
@@ -70,6 +75,9 @@ type config struct {
 	BootstrapDisplayName string
 	TokenTTL             string
 	RefreshTokenTTL      string
+	PotatoBotToken       string
+	PotatoGroups         string
+	NotificationDir      string
 }
 
 type ctxKey string
@@ -161,6 +169,33 @@ func Run() error {
 	if err := a.bootstrapSuperAdmin(cfg); err != nil {
 		return err
 	}
+	targets, err := notificationdomain.ParseTargets(cfg.PotatoBotToken, cfg.PotatoGroups)
+	if err != nil {
+		return err
+	}
+	if len(targets) > 0 {
+		client, err := notificationdomain.NewPotatoClient(cfg.PotatoBotToken)
+		if err != nil {
+			return err
+		}
+		queue, err := notificationdomain.NewQueue(
+			cfg.NotificationDir, targets, notificationdomain.NewCheckinSource(db, loc), client,
+		)
+		if err != nil {
+			return err
+		}
+		if err := queue.EnqueueInitial(time.Now().UTC()); err != nil {
+			return fmt.Errorf("enqueue initial notification progress: %w", err)
+		}
+		a.notifications = queue
+		notificationContext, stopNotifications := context.WithCancel(context.Background())
+		var workers sync.WaitGroup
+		workers.Go(func() { queue.Run(notificationContext) })
+		defer func() {
+			stopNotifications()
+			workers.Wait()
+		}()
+	}
 	cacheContext, stopCache := context.WithCancel(context.Background())
 	defer stopCache()
 	go a.runTodayCacheMaintenance(cacheContext)
@@ -189,6 +224,9 @@ func loadConfig() config {
 		BootstrapDisplayName: env("BOOTSTRAP_SUPERADMIN_DISPLAY_NAME", "超级管理员"),
 		TokenTTL:             env("AGP_TOKEN_TTL", "15m"),
 		RefreshTokenTTL:      env("AGP_REFRESH_TOKEN_TTL", "8760h"),
+		PotatoBotToken:       env("AGP_POTATO_BOT_TOKEN", ""),
+		PotatoGroups:         env("AGP_POTATO_GROUPS", ""),
+		NotificationDir:      env("AGP_NOTIFICATION_DIR", "./data/notifications"),
 	}
 }
 
@@ -203,6 +241,9 @@ func validateConfig(cfg config) error {
 		return err
 	}
 	if _, err := parseRefreshTokenTTL(cfg.RefreshTokenTTL); err != nil {
+		return err
+	}
+	if _, err := notificationdomain.ParseTargets(cfg.PotatoBotToken, cfg.PotatoGroups); err != nil {
 		return err
 	}
 	return nil

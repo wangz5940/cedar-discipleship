@@ -2,12 +2,14 @@ package server
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	checkindomain "agp/backend/internal/checkin"
 	learningdomain "agp/backend/internal/learning"
+	notificationdomain "agp/backend/internal/notification"
 )
 
 func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +90,15 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	if existing {
 		writeJSON(w, http.StatusOK, map[string]any{"id": id})
 		return
+	}
+	if a.notifications != nil {
+		err := a.notifications.Enqueue(notificationdomain.Event{
+			RecordID: id, GroupID: groupID, LogicalDate: req.LogicalDate, OccurredAt: time.Now().UTC(),
+		})
+		if err != nil {
+			slog.ErrorContext(r.Context(), "checkin notification enqueue failed",
+				"record_id", id, "group_id", groupID, "error", err)
+		}
 	}
 	a.audit(groupID, u.ID, "create_checkin", "checkin_records", id, nil, map[string]any{
 		"logical_date": req.LogicalDate,

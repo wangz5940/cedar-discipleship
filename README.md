@@ -219,6 +219,67 @@ MYSQL_PASSWORD=agp \
 如果现有 MySQL 数据卷里的应用账号密码与当前配置不一致，脚本会尝试读取正在运行的
 `agp-mysql` 容器环境变量作为兜底；也可显式提供 root 密码：
 
+## 打卡群通知
+
+使用 Potato 机器人的 `sendTextMessage` 接口。将机器人加入目标群，并在部署环境 `.env` 中设置：
+
+```dotenv
+AGP_POTATO_BOT_TOKEN='机器人 Token'
+AGP_POTATO_GROUPS='{"1":{"chat_id":12345678,"chat_type":2},"2":{"chat_id":23456789,"chat_type":3}}'
+```
+
+映射键为网站学习小组 ID；`chat_id`、`chat_type` 使用机器人 `getGroups` 返回的群信息，普通群为 `2`，超级群为 `3`。两个变量均留空时关闭通知。Token 仅保存在服务端环境中。
+
+重新构建并启动后端：
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build --no-deps backend
+```
+
+通知规则：
+
+- 首次启用小组与群聊绑定时，自动分两条发送接入时的进展：每日灵修、本周任务。初始汇总不标 `【新】`；无人打卡时显示“暂无打卡记录”。
+- 初始汇总按小组、群 ID、群类型和消息类别分别持久化去重；重启不重发，变更到新群时向新群发送两条汇总。两条消息分别记录结果和重试进度。
+- 每日灵修汇总当天已打卡成员，周任务汇总本周书籍和视频；标题独占一行，每人一行。
+- 汇总包含机器人接入前的有效记录。例如接入前已有 3 人完成灵修，第 4 人打卡时显示全部 4 人。
+- 本周继续使用的同一视频资源，计入以前已完成该视频的成员。
+- 每条通知仅将触发该通知的最后一次打卡内容标记 `【新】`，首次打卡也标记；下一次打卡通知中，标记移至最新内容。同一成员的内容合并展示，按首次打卡顺序编号。
+- 书籍名称取学习任务 `book_name`，缺省时取任务标题，展示前两个 Unicode 字符；视频展示为 `视频`。
+- 使用北京时间；历史日期灵修、往周任务、撤销打卡和重复提交均不发送。本周内补打之前日期的周任务仍发送。
+- 每条消息对应一次新增打卡；超过 3500 字节优先在人员行之间分段，失败后从未完成的段继续。
+
+通知示例：
+
+```text
+每日灵修
+1 张三
+2 李四
+3 王五
+4 【新】赵六
+```
+
+```text
+本周任务
+1 张三 基督 史剧
+2 李四 史剧 【新】视频
+```
+
+待发、完成、失败记录分别保存在 `${AGP_DATA_DIR}/notifications/{pending,completed,failed}`，Compose 默认路径为 `data/notifications`。每个队列目录由一个后端实例使用；备份和清理时按服务数据管理，其中包含群内通知正文。完成、失败记录保留用于排查和去重，可按运维留存周期归档。直接运行 Go 后端时可通过 `AGP_NOTIFICATION_DIR` 设置队列路径，保持独立于公开资源目录。
+
+文件名含 `-initial-` 的初始汇总记录需保留在原队列目录，作为接入发送凭据；删除后再次启动会重新生成初始汇总。
+
+发送超时为 10 秒，队列每秒最多发送一段。网络错误、HTTP 429/5xx、Potato 1001/1007/4048 最多尝试 5 次，按 10/20/40/80 秒退避并遵守 `Retry-After`。永久错误进入 `failed`；超过当天或本周有效期的消息归档为 `skipped`。重试使用已保存的正文和【新】标记。
+
+查看发送日志：
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.separated.yml logs backend | grep 'checkin notification'
+```
+
+日志包含打卡 ID、小组 ID、尝试次数、分段进度、结果、耗时和错误分类，省略 Token 与正文。入队失败仍保留打卡成功结果，并记录 `enqueue failed`。MySQL 提交与文件入队之间存在进程崩溃丢通知的窗口；机器人接口未提供幂等键，发送成功但响应丢失时重试可能重复通知。
+
+上线验证：完成一次当天灵修和一次本周书籍／视频打卡，检查对应群消息及 `status=sent` 日志；再补录历史灵修和往周任务，确认没有群消息。
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](file:///Users/bytedance/program/agp/LICENSE).
