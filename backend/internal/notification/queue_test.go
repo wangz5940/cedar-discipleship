@@ -45,7 +45,7 @@ func queueFixture(t *testing.T) (*Queue, *fakeSource, *fakeSender, Event, time.T
 	now := time.Now()
 	source := &fakeSource{snapshot: Snapshot{Text: "1 张三 【新】视频", ExpiresAt: now.Add(time.Hour)}}
 	sender := &fakeSender{}
-	queue, err := NewQueue(t.TempDir(), map[uint64]Target{1: {ChatID: 99, ChatType: 2}}, source, sender)
+	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{1: {{ChatID: 99, ChatType: 2}}}, source, sender)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +98,31 @@ func TestQueuePersistsAndDeduplicates(t *testing.T) {
 	restarted.processNext(t.Context(), now.Add(time.Second))
 	if len(sender.messages) != 1 {
 		t.Fatal("completed event delivered twice")
+	}
+}
+
+func TestQueueSendsToEveryBoundChat(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	source := &fakeSource{snapshot: Snapshot{Text: "每日灵修\n1 张三", ExpiresAt: now.Add(time.Hour)}}
+	sender := &fakeSender{}
+	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{
+		1: {
+			{ChatID: 10, ChatType: 2},
+			{ChatID: 20, ChatType: 3},
+		},
+	}, source, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := Event{RecordID: 10, GroupID: 1, LogicalDate: "2026-09-09", OccurredAt: now}
+	if err := queue.Enqueue(event); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now)
+	queue.processNext(t.Context(), now.Add(time.Second))
+	if len(sender.targets) != 2 || sender.targets[0].ChatID != 10 || sender.targets[1].ChatID != 20 {
+		t.Fatalf("targets = %#v", sender.targets)
 	}
 }
 
@@ -171,7 +196,7 @@ func TestQueueSkipsIneligibleExpiredAndChangedTargets(t *testing.T) {
 				t.Fatal(err)
 			}
 			if name == "changed" {
-				queue.targets[1] = Target{ChatID: 100, ChatType: 3}
+				queue.SetTargets(map[uint64][]Target{1: {{ChatID: 100, ChatType: 3}}})
 			}
 			queue.processNext(t.Context(), now)
 			if len(sender.messages) != 0 || stateFiles(t, queue, "pending") != 0 {
@@ -259,5 +284,36 @@ func TestQueueHonorsNotificationSwitch(t *testing.T) {
 				t.Fatal("disabled notification should be archived")
 			}
 		})
+	}
+}
+
+func TestQueueRearmsInitialProgressWhenNotificationIsEnabled(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	source := &fakeSource{
+		disabled: true,
+		snapshot: Snapshot{Text: "每日灵修\n1 张三", ExpiresAt: now.Add(time.Hour)},
+	}
+	sender := &fakeSender{}
+	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{
+		1: {{ChatID: 99, ChatType: 3}},
+	}, source, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.EnqueueInitialBinding(1, Target{ChatID: 99, ChatType: 3}, now); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now)
+	if stateFiles(t, queue, "completed") != 1 {
+		t.Fatal("disabled initial progress was not archived")
+	}
+	source.disabled = false
+	if err := queue.WakeInitial(1, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now.Add(time.Minute))
+	if len(sender.messages) != 1 || sender.messages[0] != source.snapshot.Text {
+		t.Fatalf("messages = %#v", sender.messages)
 	}
 }

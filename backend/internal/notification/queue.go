@@ -23,7 +23,7 @@ type TextSender interface {
 
 type Queue struct {
 	dir     string
-	targets map[uint64]Target
+	targets map[uint64][]Target
 	source  SnapshotSource
 	sender  TextSender
 	mu      sync.Mutex
@@ -41,42 +41,111 @@ type job struct {
 	ErrorCode string    `json:"error_code,omitempty"`
 }
 
-func NewQueue(dir string, targets map[uint64]Target, source SnapshotSource, sender TextSender) (*Queue, error) {
+func NewQueue(dir string, targets map[uint64][]Target, source SnapshotSource, sender TextSender) (*Queue, error) {
 	for _, state := range []string{"pending", "completed", "failed"} {
 		if err := os.MkdirAll(filepath.Join(dir, state), 0o700); err != nil {
 			return nil, fmt.Errorf("create notification queue: %w", err)
 		}
 	}
-	copyTargets := make(map[uint64]Target, len(targets))
-	for id, target := range targets {
-		copyTargets[id] = target
-	}
-	return &Queue{dir: dir, targets: copyTargets, source: source, sender: sender}, nil
+	return &Queue{dir: dir, targets: cloneTargets(targets), source: source, sender: sender}, nil
 }
 
 func (q *Queue) Enqueue(event Event) error {
-	target, ok := q.targets[event.GroupID]
-	if !ok {
+	targets := q.targetsForGroup(event.GroupID)
+	if len(targets) == 0 {
 		return nil
 	}
 	if _, err := time.Parse("2006-01-02", event.LogicalDate); err != nil || event.RecordID == 0 || event.Initial != "" {
 		return errors.New("invalid notification event")
 	}
-	name := fmt.Sprintf("%020d-%020d-%s.json", event.RecordID, event.GroupID, event.LogicalDate)
-	return q.enqueue(name, event, target)
+	for _, target := range targets {
+		name := fmt.Sprintf("%020d-%020d-%020d-%d-%s.json",
+			event.RecordID, event.GroupID, target.ChatID, target.ChatType, event.LogicalDate)
+		if err := q.enqueue(name, event, target); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // EnqueueInitial persists one job per topic and binding, independent of restarts.
 func (q *Queue) EnqueueInitial(now time.Time) error {
-	for groupID, target := range q.targets {
-		for _, topic := range []string{"daily", "weekly"} {
-			name := fmt.Sprintf("%020d-initial-%020d-%d-%d-%s.json",
-				0, groupID, target.ChatID, target.ChatType, topic)
-			event := Event{GroupID: groupID, OccurredAt: now, Initial: topic}
-			if err := q.enqueue(name, event, target); err != nil {
+	for groupID, targets := range q.targetsSnapshot() {
+		for _, target := range targets {
+			if err := q.EnqueueInitialBinding(groupID, target, now); err != nil {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+func (q *Queue) EnqueueInitialBinding(groupID uint64, target Target, now time.Time) error {
+	for _, topic := range []string{"daily", "weekly"} {
+		name := fmt.Sprintf("%020d-initial-%020d-%d-%d-%s.json",
+			0, groupID, target.ChatID, target.ChatType, topic)
+		event := Event{GroupID: groupID, OccurredAt: now, Initial: topic}
+		if err := q.enqueue(name, event, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *Queue) SetTargets(targets map[uint64][]Target) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.targets = cloneTargets(targets)
+}
+
+func (q *Queue) WakeInitial(groupID uint64, now time.Time) error {
+	for _, target := range q.targetsForGroup(groupID) {
+		for _, topic := range []string{"daily", "weekly"} {
+			name := fmt.Sprintf("%020d-initial-%020d-%d-%d-%s.json",
+				0, groupID, target.ChatID, target.ChatType, topic)
+			if err := q.rearmDisabledInitial(name, now); err != nil {
+				return err
+			}
+		}
+		if err := q.EnqueueInitialBinding(groupID, target, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *Queue) rearmDisabledInitial(name string, now time.Time) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	completed := filepath.Join(q.dir, "completed", name)
+	data, err := os.ReadFile(completed)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read initial notification: %w", err)
+	}
+	var item job
+	if err := json.Unmarshal(data, &item); err != nil {
+		return fmt.Errorf("decode initial notification: %w", err)
+	}
+	if item.Event.Initial == "" || item.ErrorCode != "notification_disabled" {
+		return nil
+	}
+	item.Event.OccurredAt = now
+	item.Messages = nil
+	item.ExpiresAt = time.Time{}
+	item.NextPart = 0
+	item.Attempts = 0
+	item.NextTry = time.Time{}
+	item.Status = "pending"
+	item.ErrorCode = ""
+	pending := filepath.Join(q.dir, "pending", name)
+	if err := writeJob(pending, item); err != nil {
+		return err
+	}
+	if err := os.Remove(completed); err != nil {
+		return fmt.Errorf("remove completed initial notification: %w", err)
 	}
 	return nil
 }
@@ -164,8 +233,7 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		q.archive(ctx, path, item)
 		return
 	}
-	target, enabled := q.targets[item.Event.GroupID]
-	if !enabled || target != item.Target {
+	if !q.targetEnabled(item.Event.GroupID, item.Target) {
 		item.Status = "skipped"
 		item.ErrorCode = "target_changed"
 		q.finish(ctx, path, item, start)
@@ -239,6 +307,37 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		}
 	}
 	q.finish(ctx, path, item, start)
+}
+
+func (q *Queue) targetsForGroup(groupID uint64) []Target {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]Target(nil), q.targets[groupID]...)
+}
+
+func (q *Queue) targetsSnapshot() map[uint64][]Target {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return cloneTargets(q.targets)
+}
+
+func (q *Queue) targetEnabled(groupID uint64, target Target) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, current := range q.targets[groupID] {
+		if current == target {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneTargets(targets map[uint64][]Target) map[uint64][]Target {
+	cloned := make(map[uint64][]Target, len(targets))
+	for groupID, items := range targets {
+		cloned[groupID] = append([]Target(nil), items...)
+	}
+	return cloned
 }
 
 func (q *Queue) finish(ctx context.Context, path string, item *job, start time.Time) {

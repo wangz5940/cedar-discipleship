@@ -5184,6 +5184,65 @@ textarea::placeholder {
   color: var(--primary);
 }
 
+.bot-management-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bot-management {
+  padding: 0;
+  overflow: hidden;
+}
+
+.bot-chat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 20px;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bot-chat-row:last-child {
+  border-bottom: 0;
+}
+
+.bot-chat-main {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.bot-chat-main strong {
+  overflow-wrap: anywhere;
+}
+
+.bot-chat-icon {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  background: var(--surface-muted);
+}
+
+.bot-group-binding {
+  min-width: 0;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .admin-form-grid {
   gap: 13px;
 }
@@ -8424,6 +8483,12 @@ button.ministry-join-button {
 }
 
 @media (max-width: 640px) {
+  .bot-chat-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+  }
+
   .today-hero {
     padding: 12px;
   }

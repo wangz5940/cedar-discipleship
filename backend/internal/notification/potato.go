@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -42,12 +43,17 @@ func ParseTargets(token, value string) (map[uint64]Target, error) {
 		return nil, errors.New("invalid AGP_POTATO_GROUPS JSON")
 	}
 	targets := make(map[uint64]Target, len(raw))
+	chatIDs := make(map[int64]struct{}, len(raw))
 	for key, target := range raw {
 		id, err := strconv.ParseUint(key, 10, 64)
 		if err != nil || id == 0 || strconv.FormatUint(id, 10) != key ||
 			target.ChatID <= 0 || (target.ChatType != 2 && target.ChatType != 3) {
 			return nil, errors.New("AGP_POTATO_GROUPS requires positive IDs and group chat_type 2 or 3")
 		}
+		if _, exists := chatIDs[target.ChatID]; exists {
+			return nil, errors.New("AGP_POTATO_GROUPS assigns a chat more than once")
+		}
+		chatIDs[target.ChatID] = struct{}{}
 		targets[id] = target
 	}
 	return targets, nil
@@ -61,9 +67,16 @@ type deliveryError struct {
 
 func (e *deliveryError) Error() string { return e.code }
 
+type Chat struct {
+	ChatID   int64  `json:"chat_id"`
+	ChatType int    `json:"chat_type"`
+	Title    string `json:"title"`
+}
+
 type PotatoClient struct {
-	endpoint string
-	client   *http.Client
+	endpoint       string
+	groupsEndpoint string
+	client         *http.Client
 }
 
 func NewPotatoClient(token string) (*PotatoClient, error) {
@@ -71,7 +84,8 @@ func NewPotatoClient(token string) (*PotatoClient, error) {
 		return nil, errors.New("invalid AGP_POTATO_BOT_TOKEN")
 	}
 	return &PotatoClient{
-		endpoint: "https://api.rct2008.com:8443/" + token + "/sendTextMessage",
+		endpoint:       "https://api.rct2008.com:8443/" + token + "/sendTextMessage",
+		groupsEndpoint: "https://api.rct2008.com:8443/" + token + "/getGroups",
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -79,6 +93,69 @@ func NewPotatoClient(token string) (*PotatoClient, error) {
 			},
 		},
 	}, nil
+}
+
+func (c *PotatoClient) ListChats(ctx context.Context) ([]Chat, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.groupsEndpoint, nil)
+	if err != nil {
+		return nil, errors.New("create group list request")
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, errors.New("request group list")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("group list http_%d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024+1))
+	if err != nil || len(data) > 64*1024 {
+		return nil, errors.New("read group list response")
+	}
+	type group struct {
+		PeerID   int64  `json:"PeerID"`
+		PeerName string `json:"PeerName"`
+	}
+	var result struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			Groups      []group `json:"Groups"`
+			SuperGroups []group `json:"SuperGroups"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil || !result.OK {
+		return nil, errors.New("invalid group list response")
+	}
+	chats := make([]Chat, 0, len(result.Result.Groups)+len(result.Result.SuperGroups))
+	seen := make(map[int64]struct{})
+	appendGroups := func(groups []group, chatType int) error {
+		for _, item := range groups {
+			if item.PeerID <= 0 || strings.TrimSpace(item.PeerName) == "" {
+				return errors.New("invalid group list item")
+			}
+			if _, exists := seen[item.PeerID]; exists {
+				return errors.New("duplicate group list item")
+			}
+			seen[item.PeerID] = struct{}{}
+			chats = append(chats, Chat{
+				ChatID: item.PeerID, ChatType: chatType, Title: strings.TrimSpace(item.PeerName),
+			})
+		}
+		return nil
+	}
+	if err := appendGroups(result.Result.Groups, 2); err != nil {
+		return nil, err
+	}
+	if err := appendGroups(result.Result.SuperGroups, 3); err != nil {
+		return nil, err
+	}
+	sort.Slice(chats, func(i, j int) bool {
+		if chats[i].Title != chats[j].Title {
+			return chats[i].Title < chats[j].Title
+		}
+		return chats[i].ChatID < chats[j].ChatID
+	})
+	return chats, nil
 }
 
 func (c *PotatoClient) SendText(ctx context.Context, target Target, text string) error {

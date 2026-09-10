@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -39,6 +40,14 @@ func (a *app) handleAdminSaveLearningConfig(w http.ResponseWriter, r *http.Reque
 	if err := a.upsertGroupLearningConfig(r.Context(), groupID, settings); err != nil {
 		writeError(w, http.StatusInternalServerError, "learning_config_save_failed")
 		return
+	}
+	if notifier, ok := a.notifications.(interface {
+		WakeInitial(uint64, time.Time) error
+	}); ok {
+		if err := notifier.WakeInitial(groupID, time.Now().UTC()); err != nil {
+			slog.ErrorContext(r.Context(), "initial notification wake failed",
+				"group_id", groupID, "error", err)
+		}
 	}
 	a.audit(groupID, u.ID, "save_learning_config", "group_settings", groupID, nil, map[string]any{"keys": len(settings)}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "settings": settings})

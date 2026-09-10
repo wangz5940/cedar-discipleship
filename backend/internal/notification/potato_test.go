@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func TestParseTargets(t *testing.T) {
 		{"null mapping", "123:secret", `null`, false},
 		{"direct message forbidden", "123:secret", `{"1":{"chat_id":99,"chat_type":1}}`, false},
 		{"zero group", "123:secret", `{"0":{"chat_id":99,"chat_type":2}}`, false},
+		{"chat assigned twice", "123:secret", `{"1":{"chat_id":99,"chat_type":2},"2":{"chat_id":99,"chat_type":2}}`, false},
 		{"typo", "123:secret", `{"1":{"chat_id":99,"chat_type":2,"typo":1}}`, false},
 		{"token path injection", "123:secret/../elsewhere", `{"1":{"chat_id":99,"chat_type":2}}`, false},
 		{"trailing JSON", "123:secret", `{"1":{"chat_id":99,"chat_type":2}} {}`, false},
@@ -137,5 +139,39 @@ func TestPotatoRejectsRedirectsAndRedactsTransportError(t *testing.T) {
 	cancel()
 	if err := client.SendText(ctx, Target{}, "test"); err == nil || err.Error() != "transport_failed" {
 		t.Fatalf("transport err = %v", err)
+	}
+}
+
+func TestPotatoListChats(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/getGroups" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{
+			"ok":true,
+			"result":{
+				"Groups":[{"PeerID":10,"PeerName":"普通群"}],
+				"SuperGroups":[{"PeerID":20,"PeerName":"2026 bible study"}],
+				"Channels":[{"PeerID":30,"PeerName":"频道"}]
+			}
+		}`)
+	}))
+	defer server.Close()
+	client, err := NewPotatoClient("123:secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.groupsEndpoint = server.URL + "/getGroups"
+	chats, err := client.ListChats(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Chat{
+		{ChatID: 20, ChatType: 3, Title: "2026 bible study"},
+		{ChatID: 10, ChatType: 2, Title: "普通群"},
+	}
+	if !reflect.DeepEqual(chats, want) {
+		t.Fatalf("chats = %#v, want %#v", chats, want)
 	}
 }

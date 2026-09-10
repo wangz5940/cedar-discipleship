@@ -14,6 +14,7 @@ import {
   resourceCategoryLabel,
   resourceCategorySort,
 } from '../runtime/resources';
+import BotManagementAdmin from './BotManagementAdmin.vue';
 import MinistryCatalogAdmin from './MinistryCatalogAdmin.vue';
 import ResourceGovernance from './ResourceGovernance.vue';
 import {
@@ -734,6 +735,14 @@ async function selectCalendarDate(day) {
               <button :class="{ active: adminSection === 'learning' }" type="button" @click="selectAdmin('learning')">学习内容</button>
               <button :class="{ active: adminSection === 'members' }" type="button" @click="selectAdmin('members')">人员管理</button>
               <button
+                v-if="user?.is_super_admin"
+                :class="{ active: adminSection === 'bot' }"
+                type="button"
+                @click="selectAdmin('bot')"
+              >
+                机器人管理
+              </button>
+              <button
                 v-if="canManageMinistryCatalog"
                 :class="{ active: adminSection === 'ministry' }"
                 type="button"
@@ -745,7 +754,7 @@ async function selectCalendarDate(day) {
               <button :class="{ active: adminSection === 'data' }" type="button" @click="selectAdmin('data')">数据工具</button>
             </div>
 
-            <div v-if="adminLoading && !['members', 'ministry'].includes(adminSection)" class="empty">正在加载管理配置…</div>
+            <div v-if="adminLoading && !['members', 'ministry', 'bot'].includes(adminSection)" class="empty">正在加载管理配置…</div>
 
             <section v-else-if="adminSection === 'members'">
               <div class="section-title"><h2>成员与权限管理</h2></div>
@@ -822,6 +831,8 @@ async function selectCalendarDate(day) {
             </section>
 
             <MinistryCatalogAdmin v-else-if="adminSection === 'ministry' && canManageMinistryCatalog" />
+
+            <BotManagementAdmin v-else-if="adminSection === 'bot' && user?.is_super_admin" />
 
             <section v-else-if="adminSection === 'learning'">
               <div class="section-title"><h2>学习内容管理</h2></div>

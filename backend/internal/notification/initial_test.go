@@ -29,7 +29,7 @@ func (s *initialSource) Snapshot(_ context.Context, event Event) (Snapshot, erro
 func TestInitialQueueSendsTwoOnceAcrossRestarts(t *testing.T) {
 	t.Parallel()
 	source, sender := &initialSource{}, &fakeSender{}
-	targets := map[uint64]Target{1: {ChatID: 99, ChatType: 3}}
+	targets := map[uint64][]Target{1: {{ChatID: 99, ChatType: 3}}}
 	dir, now := t.TempDir(), time.Now()
 	q, err := NewQueue(dir, targets, source, sender)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestInitialQueueSendsTwoOnceAcrossRestarts(t *testing.T) {
 		}
 	}
 	newTarget := Target{ChatID: 100, ChatType: 3}
-	switched, err := NewQueue(dir, map[uint64]Target{1: newTarget}, source, sender)
+	switched, err := NewQueue(dir, map[uint64][]Target{1: {newTarget}}, source, sender)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestInitialQueueSendsTwoOnceAcrossRestarts(t *testing.T) {
 func TestInitialQueueRetriesOnlyFailedSummary(t *testing.T) {
 	t.Parallel()
 	source, sender := &initialSource{}, &fakeSender{}
-	targets := map[uint64]Target{1: {ChatID: 99, ChatType: 3}}
+	targets := map[uint64][]Target{1: {{ChatID: 99, ChatType: 3}}}
 	dir, now := t.TempDir(), time.Now()
 	q, err := NewQueue(dir, targets, source, sender)
 	if err != nil {

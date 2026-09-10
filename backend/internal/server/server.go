@@ -62,6 +62,11 @@ type app struct {
 	notifications interface {
 		Enqueue(notificationdomain.Event) error
 	}
+	botManager interface {
+		Chats(context.Context) ([]notificationdomain.Chat, error)
+		Bindings() []notificationdomain.Binding
+		Assign(context.Context, notificationdomain.Target, uint64, time.Time) error
+	}
 }
 
 type config struct {
@@ -173,24 +178,25 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	if len(targets) > 0 {
+	if cfg.PotatoBotToken != "" {
 		client, err := notificationdomain.NewPotatoClient(cfg.PotatoBotToken)
 		if err != nil {
 			return err
 		}
-		queue, err := notificationdomain.NewQueue(
+		manager, err := notificationdomain.NewManager(
 			cfg.NotificationDir, targets, notificationdomain.NewCheckinSource(db, loc), client,
 		)
 		if err != nil {
 			return err
 		}
-		if err := queue.EnqueueInitial(time.Now().UTC()); err != nil {
+		if err := manager.EnqueueInitial(time.Now().UTC()); err != nil {
 			return fmt.Errorf("enqueue initial notification progress: %w", err)
 		}
-		a.notifications = queue
+		a.notifications = manager
+		a.botManager = manager
 		notificationContext, stopNotifications := context.WithCancel(context.Background())
 		var workers sync.WaitGroup
-		workers.Go(func() { queue.Run(notificationContext) })
+		workers.Go(func() { manager.Run(notificationContext) })
 		defer func() {
 			stopNotifications()
 			workers.Wait()
@@ -395,6 +401,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/members", a.auth(a.requireSuper(a.handleSuperAddGroupMember)))
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/leaders", a.auth(a.requireSuper(a.handleSuperSetLeader)))
 	mux.HandleFunc("DELETE /api/super-admin/groups/{id}/leaders/{user_id}", a.auth(a.requireSuper(a.handleSuperUnsetLeader)))
+	mux.HandleFunc("GET /api/super-admin/bot-management", a.auth(a.requireSuper(a.handleBotManagement)))
+	mux.HandleFunc("PUT /api/super-admin/bot-bindings", a.auth(a.requireSuper(a.handleBotBinding)))
 }
 
 func withCommonHeaders(next http.Handler) http.Handler {

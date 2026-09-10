@@ -228,7 +228,7 @@ AGP_POTATO_BOT_TOKEN='机器人 Token'
 AGP_POTATO_GROUPS='{"1":{"chat_id":12345678,"chat_type":2},"2":{"chat_id":23456789,"chat_type":3}}'
 ```
 
-映射键为网站学习小组 ID；`chat_id`、`chat_type` 使用机器人 `getGroups` 返回的群信息，普通群为 `2`，超级群为 `3`。可先配置 Token 并将 `AGP_POTATO_GROUPS` 留空，分配群聊后再填写映射。Token 仅保存在服务端环境中。
+`AGP_POTATO_GROUPS` 仅用于首次启动时导入绑定。之后由超级管理员在“管理后台 → 机器人管理”中查看机器人当前加入的群聊，并设置对应学习小组。绑定保存在 `${AGP_NOTIFICATION_DIR}/bindings.json`；一个群聊只能绑定一个学习小组，一个学习小组可绑定多个群聊。Token 仅保存在服务端环境中。
 
 重新构建并启动后端：
 
