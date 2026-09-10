@@ -96,7 +96,7 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 		readErr  error
 		want     string
 	}{
-		{"daily Shanghai midnight", "daily_devotion", date, nil, false, nil, "每日灵修\n1 【新】张三"},
+		{"daily Shanghai midnight", "daily_devotion", date, nil, false, nil, "每日灵修\n1 张三"},
 		{"daily historical", "daily_devotion", date.AddDate(0, 0, -1), nil, false, nil, ""},
 		{"weekly current", "weekly_book", start, int64(7), false, nil, "本周任务\n1 张三 【新】基督"},
 		{"weekly video", "weekly_video", start, int64(7), false, nil, "本周任务\n1 张三 【新】视频"},

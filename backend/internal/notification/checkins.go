@@ -40,7 +40,6 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 	}
 	type member struct {
 		name     string
-		isNew    bool
 		contents []content
 	}
 	var members []member
@@ -79,7 +78,6 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 			members = append(members, member{name: cleanText(entry.Name)})
 		}
 		m := &members[index]
-		m.isNew = m.isNew || isNew
 		if daily {
 			continue
 		}
@@ -107,11 +105,7 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 		lines = append(lines, "暂无打卡记录")
 	}
 	for i, m := range members {
-		name := m.name
-		if daily && m.isNew {
-			name = "【新】" + name
-		}
-		parts := []string{fmt.Sprintf("%d %s", i+1, name)}
+		parts := []string{fmt.Sprintf("%d %s", i+1, m.name)}
 		for _, c := range m.contents {
 			label := c.label
 			if c.isNew {

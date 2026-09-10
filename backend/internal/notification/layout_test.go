@@ -26,7 +26,7 @@ func TestNotificationLayout(t *testing.T) {
 				{RecordID: 3, UserID: 3, Name: "王五", TaskType: "daily_devotion"},
 				{RecordID: 4, UserID: 4, Name: "赵六", TaskType: "daily_devotion"},
 			},
-			want: "每日灵修\n1 张三\n2 李四\n3 王五\n4 【新】赵六",
+			want: "每日灵修\n1 张三\n2 李四\n3 王五\n4 赵六",
 		},
 		{
 			name: "weekly title and grouped content",
@@ -45,8 +45,12 @@ func TestNotificationLayout(t *testing.T) {
 			if got != tt.want {
 				t.Fatalf("message = %q, want %q", got, tt.want)
 			}
-			if strings.Count(got, "【新】") != 1 {
-				t.Fatal("message must mark only the triggering checkin")
+			wantMarkers := 1
+			if tt.daily {
+				wantMarkers = 0
+			}
+			if strings.Count(got, "【新】") != wantMarkers {
+				t.Fatalf("new marker count = %d, want %d", strings.Count(got, "【新】"), wantMarkers)
 			}
 		})
 	}
@@ -105,8 +109,8 @@ func TestSnapshotIncludesRecordsBeforeBotJoined(t *testing.T) {
 			t.Fatalf("summary omitted %s", name)
 		}
 	}
-	if strings.Count(snapshot.Text, "【新】") != 1 || !strings.Contains(snapshot.Text, "【新】赵六") {
-		t.Fatalf("incorrect new marker: %q", snapshot.Text)
+	if strings.Contains(snapshot.Text, "【新】") {
+		t.Fatalf("daily summary must not include new marker: %q", snapshot.Text)
 	}
 	if len(connector.steps) != 0 {
 		t.Fatal("summary query was not executed")

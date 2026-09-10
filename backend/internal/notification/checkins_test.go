@@ -16,19 +16,19 @@ func TestFormatCheckins(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "first daily checkin is new",
+			name: "first daily checkin has no new marker",
 			entries: []Entry{
 				{RecordID: 1, UserID: 10, Name: "张三", TaskType: "daily_devotion"},
 			},
-			id: 1, daily: true, want: "每日灵修\n1 【新】张三",
+			id: 1, daily: true, want: "每日灵修\n1 张三",
 		},
 		{
-			name: "daily summary",
+			name: "daily summary has no new marker",
 			entries: []Entry{
 				{RecordID: 1, UserID: 10, Name: "张三", TaskType: "daily_devotion"},
 				{RecordID: 2, UserID: 20, Name: "李四", TaskType: "daily_devotion"},
 			},
-			id: 2, daily: true, want: "每日灵修\n1 张三\n2 【新】李四",
+			id: 2, daily: true, want: "每日灵修\n1 张三\n2 李四",
 		},
 		{
 			name: "first book is new",
