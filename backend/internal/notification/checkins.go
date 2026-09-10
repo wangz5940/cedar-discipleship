@@ -25,6 +25,7 @@ type Entry struct {
 }
 
 type Snapshot struct {
+	// Text is the complete current-period summary; diffs only decide whether to send it.
 	Text      string
 	ExpiresAt time.Time
 	Topic     string

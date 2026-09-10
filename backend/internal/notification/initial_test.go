@@ -146,7 +146,7 @@ func TestQueueWakeInitialContentDiff(t *testing.T) {
 		Version:   "daily:2026-09-10",
 	}
 	weekly := Snapshot{
-		Text:      "本周任务\n1 张三 基督",
+		Text:      "本周任务\n1 张三 基督 视频\n2 李四 史剧",
 		ExpiresAt: now.Add(72 * time.Hour),
 		Topic:     "weekly",
 		Version:   "weekly:2026-09-13",
@@ -173,7 +173,7 @@ func TestQueueWakeInitialContentDiff(t *testing.T) {
 			currentWeek:   weekly,
 		},
 		{
-			name:          "daily changed",
+			name:          "daily changed sends full current day",
 			previousDaily: stateForSnapshot(target, snapshotWithText(daily, "每日灵修\n1 张三"), now),
 			previousWeek:  stateForSnapshot(target, weekly, now),
 			currentDaily:  daily,
@@ -181,17 +181,17 @@ func TestQueueWakeInitialContentDiff(t *testing.T) {
 			want:          []string{daily.Text},
 		},
 		{
-			name:          "weekly changed",
+			name:          "weekly changed sends full current week",
 			previousDaily: stateForSnapshot(target, daily, now),
-			previousWeek:  stateForSnapshot(target, snapshotWithText(weekly, "本周任务\n暂无打卡记录"), now),
+			previousWeek:  stateForSnapshot(target, snapshotWithText(weekly, "本周任务\n1 张三 基督"), now),
 			currentDaily:  daily,
 			currentWeek:   weekly,
 			want:          []string{weekly.Text},
 		},
 		{
-			name:          "both changed",
+			name:          "both changed send both full snapshots",
 			previousDaily: stateForSnapshot(target, snapshotWithText(daily, "每日灵修\n1 张三"), now),
-			previousWeek:  stateForSnapshot(target, snapshotWithText(weekly, "本周任务\n暂无打卡记录"), now),
+			previousWeek:  stateForSnapshot(target, snapshotWithText(weekly, "本周任务\n1 张三 基督"), now),
 			currentDaily:  daily,
 			currentWeek:   weekly,
 			want:          []string{daily.Text, weekly.Text},
