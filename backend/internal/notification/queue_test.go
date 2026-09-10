@@ -43,7 +43,12 @@ func (s *fakeSender) SendText(_ context.Context, target Target, text string) err
 func queueFixture(t *testing.T) (*Queue, *fakeSource, *fakeSender, Event, time.Time) {
 	t.Helper()
 	now := time.Now()
-	source := &fakeSource{snapshot: Snapshot{Text: "1 张三 【新】视频", ExpiresAt: now.Add(time.Hour)}}
+	source := &fakeSource{snapshot: Snapshot{
+		Text:      "每日灵修\n1 【新】张三",
+		ExpiresAt: now.Add(time.Hour),
+		Topic:     "daily",
+		Version:   "daily:2026-09-09",
+	}}
 	sender := &fakeSender{}
 	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{1: {{ChatID: 99, ChatType: 2}}}, source, sender)
 	if err != nil {
@@ -104,7 +109,12 @@ func TestQueuePersistsAndDeduplicates(t *testing.T) {
 func TestQueueSendsToEveryBoundChat(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	source := &fakeSource{snapshot: Snapshot{Text: "每日灵修\n1 张三", ExpiresAt: now.Add(time.Hour)}}
+	source := &fakeSource{snapshot: Snapshot{
+		Text:      "每日灵修\n1 张三",
+		ExpiresAt: now.Add(time.Hour),
+		Topic:     "daily",
+		Version:   "daily:2026-09-09",
+	}}
 	sender := &fakeSender{}
 	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{
 		1: {
@@ -134,6 +144,10 @@ func TestQueueRetryFreezesNewMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue.processNext(t.Context(), now)
+	target := queue.targets[event.GroupID][0]
+	if _, err := os.Stat(queue.sent.path(target, "daily")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed delivery advanced sent state: %v", err)
+	}
 	source.snapshot.Text = "1 张三 视频 2 李四 【新】基督"
 	queue.processNext(t.Context(), now.Add(time.Second))
 	if len(sender.messages) != 1 {
@@ -292,7 +306,12 @@ func TestQueueRearmsInitialProgressWhenNotificationIsEnabled(t *testing.T) {
 	now := time.Now()
 	source := &fakeSource{
 		disabled: true,
-		snapshot: Snapshot{Text: "每日灵修\n1 张三", ExpiresAt: now.Add(time.Hour)},
+		snapshot: Snapshot{
+			Text:      "每日灵修\n1 张三",
+			ExpiresAt: now.Add(time.Hour),
+			Topic:     "daily",
+			Version:   "daily:2026-09-09",
+		},
 	}
 	sender := &fakeSender{}
 	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{
@@ -315,5 +334,62 @@ func TestQueueRearmsInitialProgressWhenNotificationIsEnabled(t *testing.T) {
 	queue.processNext(t.Context(), now.Add(time.Minute))
 	if len(sender.messages) != 1 || sender.messages[0] != source.snapshot.Text {
 		t.Fatalf("messages = %#v", sender.messages)
+	}
+}
+
+func TestQueueSkipsOlderNotificationVersion(t *testing.T) {
+	t.Parallel()
+	queue, source, sender, event, now := queueFixture(t)
+	target := queue.targets[event.GroupID][0]
+	if err := queue.sent.Record(sentState{
+		Target:  target,
+		Topic:   "daily",
+		Version: "daily:2026-09-10",
+		Hash:    contentHash("每日灵修\n1 张三\n2 李四"),
+		Content: "每日灵修\n1 张三\n2 李四",
+		SentAt:  now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	source.snapshot.Text = "每日灵修\n1 张三"
+	source.snapshot.Version = "daily:2026-09-09"
+	if err := queue.Enqueue(event); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now)
+	if len(sender.messages) != 0 {
+		t.Fatalf("older notification sent: %#v", sender.messages)
+	}
+}
+
+func TestQueueRechecksSentStateAfterReadFailure(t *testing.T) {
+	t.Parallel()
+	queue, source, sender, event, now := queueFixture(t)
+	target := queue.targets[event.GroupID][0]
+	statePath := queue.sent.path(target, "daily")
+	if err := os.WriteFile(statePath, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(event); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now)
+	if len(sender.messages) != 0 {
+		t.Fatal("notification sent before last state was readable")
+	}
+	content := canonicalNotificationContent(source.snapshot.Text)
+	if err := queue.sent.Record(sentState{
+		Target:  target,
+		Topic:   "daily",
+		Version: source.snapshot.Version,
+		Hash:    contentHash(content),
+		Content: content,
+		SentAt:  now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now.Add(11*time.Second))
+	if len(sender.messages) != 0 {
+		t.Fatalf("unchanged notification sent after state recovery: %#v", sender.messages)
 	}
 }

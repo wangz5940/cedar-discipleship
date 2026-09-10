@@ -26,19 +26,24 @@ type Queue struct {
 	targets map[uint64][]Target
 	source  SnapshotSource
 	sender  TextSender
+	sent    *sentStateStore
 	mu      sync.Mutex
 }
 
 type job struct {
-	Event     Event     `json:"event"`
-	Target    Target    `json:"target"`
-	Messages  []string  `json:"messages,omitempty"`
-	ExpiresAt time.Time `json:"expires_at,omitempty"`
-	NextPart  int       `json:"next_part"`
-	Attempts  int       `json:"attempts"`
-	NextTry   time.Time `json:"next_try"`
-	Status    string    `json:"status"`
-	ErrorCode string    `json:"error_code,omitempty"`
+	Event            Event     `json:"event"`
+	Target           Target    `json:"target"`
+	Messages         []string  `json:"messages,omitempty"`
+	ExpiresAt        time.Time `json:"expires_at,omitempty"`
+	NextPart         int       `json:"next_part"`
+	Attempts         int       `json:"attempts"`
+	NextTry          time.Time `json:"next_try"`
+	Status           string    `json:"status"`
+	ErrorCode        string    `json:"error_code,omitempty"`
+	Topic            string    `json:"topic,omitempty"`
+	ContentVersion   string    `json:"content_version,omitempty"`
+	ContentHash      string    `json:"content_hash,omitempty"`
+	CanonicalContent string    `json:"canonical_content,omitempty"`
 }
 
 func NewQueue(dir string, targets map[uint64][]Target, source SnapshotSource, sender TextSender) (*Queue, error) {
@@ -47,7 +52,11 @@ func NewQueue(dir string, targets map[uint64][]Target, source SnapshotSource, se
 			return nil, fmt.Errorf("create notification queue: %w", err)
 		}
 	}
-	return &Queue{dir: dir, targets: cloneTargets(targets), source: source, sender: sender}, nil
+	sent, err := newSentStateStore(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &Queue{dir: dir, targets: cloneTargets(targets), source: source, sender: sender, sent: sent}, nil
 }
 
 func (q *Queue) Enqueue(event Event) error {
@@ -103,7 +112,7 @@ func (q *Queue) WakeInitial(groupID uint64, now time.Time) error {
 		for _, topic := range []string{"daily", "weekly"} {
 			name := fmt.Sprintf("%020d-initial-%020d-%d-%d-%s.json",
 				0, groupID, target.ChatID, target.ChatType, topic)
-			if err := q.rearmDisabledInitial(name, now); err != nil {
+			if err := q.rearmInitial(name, now); err != nil {
 				return err
 			}
 		}
@@ -114,22 +123,36 @@ func (q *Queue) WakeInitial(groupID uint64, now time.Time) error {
 	return nil
 }
 
-func (q *Queue) rearmDisabledInitial(name string, now time.Time) error {
+func (q *Queue) rearmInitial(name string, now time.Time) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	completed := filepath.Join(q.dir, "completed", name)
-	data, err := os.ReadFile(completed)
-	if errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(q.dir, "pending", name)); err == nil {
 		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check pending initial notification: %w", err)
 	}
-	if err != nil {
-		return fmt.Errorf("read initial notification: %w", err)
+	var sourcePath string
+	var data []byte
+	for _, state := range []string{"completed", "failed"} {
+		path := filepath.Join(q.dir, state, name)
+		var err error
+		data, err = os.ReadFile(path)
+		if err == nil {
+			sourcePath = path
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read initial notification: %w", err)
+		}
+	}
+	if sourcePath == "" {
+		return nil
 	}
 	var item job
 	if err := json.Unmarshal(data, &item); err != nil {
 		return fmt.Errorf("decode initial notification: %w", err)
 	}
-	if item.Event.Initial == "" || item.ErrorCode != "notification_disabled" {
+	if item.Event.Initial == "" {
 		return nil
 	}
 	item.Event.OccurredAt = now
@@ -144,8 +167,8 @@ func (q *Queue) rearmDisabledInitial(name string, now time.Time) error {
 	if err := writeJob(pending, item); err != nil {
 		return err
 	}
-	if err := os.Remove(completed); err != nil {
-		return fmt.Errorf("remove completed initial notification: %w", err)
+	if err := os.Remove(sourcePath); err != nil {
+		return fmt.Errorf("remove previous initial notification: %w", err)
 	}
 	return nil
 }
@@ -230,6 +253,10 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if item.Status != "pending" {
+		if item.Status == "sent" {
+			q.finish(ctx, path, item, start)
+			return
+		}
 		q.archive(ctx, path, item)
 		return
 	}
@@ -248,6 +275,9 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		return
 	}
 	if err == nil && len(item.Messages) == 0 {
+		if item.Event.Initial != "" {
+			item.Event.OccurredAt = now
+		}
 		var snapshot Snapshot
 		snapshot, err = q.source.Snapshot(ctx, item.Event)
 		if err == nil {
@@ -259,10 +289,41 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 				q.finish(ctx, path, item, start)
 				return
 			}
-			// Freeze the exact body before making a non-idempotent external call.
-			if err := writeJob(path, *item); err != nil {
-				slog.ErrorContext(ctx, "checkin notification snapshot save failed", "error", err)
+			item.Topic = snapshot.Topic
+			if !validTopic(item.Topic) {
+				item.Topic = inferTopic(snapshot.Text)
+			}
+			item.ContentVersion = snapshot.Version
+			if item.ContentVersion == "" {
+				item.ContentVersion = legacyContentVersion(*item, item.Topic)
+			}
+			item.CanonicalContent = canonicalNotificationContent(snapshot.Text)
+			item.ContentHash = contentHash(item.CanonicalContent)
+			needsSend, stateErr := q.sent.NeedsSend(
+				item.Target, item.Topic, item.ContentVersion, item.ContentHash,
+			)
+			if stateErr != nil {
+				err = &deliveryError{code: "sent_state_read_failed", retry: true}
+				item.Messages = nil
+				item.ExpiresAt = time.Time{}
+				item.Topic = ""
+				item.ContentVersion = ""
+				item.ContentHash = ""
+				item.CanonicalContent = ""
+			} else if !needsSend {
+				item.Status, item.ErrorCode = "skipped", "content_not_updated"
+				q.finish(ctx, path, item, start)
 				return
+			}
+			// Freeze the exact body before making a non-idempotent external call.
+			if err == nil {
+				err = writeJob(path, *item)
+			}
+			if err != nil {
+				slog.ErrorContext(ctx, "checkin notification snapshot save failed", "error", err)
+				if _, ok := err.(*deliveryError); !ok {
+					return
+				}
 			}
 		} else {
 			err = &deliveryError{code: "summary_read_failed", retry: true}
@@ -358,6 +419,16 @@ func (q *Queue) finish(ctx context.Context, path string, item *job, start time.T
 	if err := writeJob(path, *item); err != nil {
 		slog.ErrorContext(ctx, "checkin notification state save failed", "record_id", item.Event.RecordID, "error", err)
 		return
+	}
+	if item.Status == "sent" {
+		state := stateFromJob(*item)
+		state.SentAt = time.Now().UTC()
+		if err := q.sent.Record(state); err != nil {
+			slog.ErrorContext(ctx, "sent notification state save failed",
+				"record_id", item.Event.RecordID, "group_id", item.Event.GroupID,
+				"topic", item.Topic, "error", err)
+			return
+		}
 	}
 	if item.Status != "pending" {
 		q.archive(ctx, path, item)

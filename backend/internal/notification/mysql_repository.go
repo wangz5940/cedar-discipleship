@@ -144,6 +144,8 @@ func (s *CheckinSource) initialSnapshot(ctx context.Context, event Event) (Snaps
 		return Snapshot{
 			Text:      FormatCheckins(nil, 0, false),
 			ExpiresAt: time.Date(at.Year(), at.Month(), at.Day()+1, 0, 0, 0, 0, s.location),
+			Topic:     "weekly",
+			Version:   "weekly:none:" + today,
 		}, nil
 	}
 	if err != nil {
@@ -213,9 +215,15 @@ func (s *CheckinSource) periodSnapshot(ctx context.Context, event Event, start, 
 	if err := rows.Err(); err != nil {
 		return Snapshot{}, fmt.Errorf("read notification summary: %w", err)
 	}
+	topic := "weekly"
+	if daily {
+		topic = "daily"
+	}
 	return Snapshot{
 		Text:      FormatCheckins(entries, event.RecordID, daily),
 		ExpiresAt: endDate.AddDate(0, 0, 1),
+		Topic:     topic,
+		Version:   topic + ":" + end,
 	}, nil
 }
 

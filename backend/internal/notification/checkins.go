@@ -27,6 +27,8 @@ type Entry struct {
 type Snapshot struct {
 	Text      string
 	ExpiresAt time.Time
+	Topic     string
+	Version   string
 }
 
 // Entries arrive in first-checkin order, independent of member names.
