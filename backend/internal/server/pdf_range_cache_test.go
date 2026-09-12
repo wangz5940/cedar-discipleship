@@ -1,8 +1,10 @@
 package server
 
 import (
+	"mime"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -124,7 +126,7 @@ func TestServePDFRangeBytesSupportsHTTPRange(t *testing.T) {
 	servePDFRangeBytes(
 		recorder,
 		request,
-		"book.pdf",
+		"圣经课程.pdf",
 		"8-9",
 		time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
 		[]byte("%PDF-test"),
@@ -138,5 +140,14 @@ func TestServePDFRangeBytesSupportsHTTPRange(t *testing.T) {
 	}
 	if recorder.Header().Get("ETag") == "" {
 		t.Fatal("ETag is empty")
+	}
+	disposition := recorder.Header().Get("Content-Disposition")
+	_, params, err := mime.ParseMediaType(disposition)
+	if err != nil {
+		t.Fatalf("parse Content-Disposition %q: %v", disposition, err)
+	}
+	if !strings.Contains(strings.ToLower(disposition), "filename*=") ||
+		params["filename"] != "圣经课程.pdf" {
+		t.Fatalf("Content-Disposition = %q, filename = %q", disposition, params["filename"])
 	}
 }

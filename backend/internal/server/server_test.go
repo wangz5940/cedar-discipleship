@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -326,7 +327,7 @@ func TestDownloadAssetSupportsRangeAndCacheHeaders(t *testing.T) {
 		&downloadAssetRepo{asset: assetdomain.Asset{
 			ID:           16,
 			GroupID:      1,
-			OriginalName: "lesson.mp4",
+			OriginalName: "圣经课程.mp4",
 			StoragePath:  "team-agp-resources/objects/test/lesson.mp4",
 			MimeType:     "video/mp4",
 		}},
@@ -365,6 +366,15 @@ func TestDownloadAssetSupportsRangeAndCacheHeaders(t *testing.T) {
 	}
 	if got := recorder.Header().Get("ETag"); got == "" {
 		t.Fatal("ETag is empty")
+	}
+	disposition := recorder.Header().Get("Content-Disposition")
+	_, params, err := mime.ParseMediaType(disposition)
+	if err != nil {
+		t.Fatalf("parse Content-Disposition %q: %v", disposition, err)
+	}
+	if !strings.Contains(strings.ToLower(disposition), "filename*=") ||
+		params["filename"] != "圣经课程.mp4" {
+		t.Fatalf("Content-Disposition = %q, filename = %q", disposition, params["filename"])
 	}
 }
 

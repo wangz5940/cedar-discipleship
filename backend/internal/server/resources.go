@@ -235,10 +235,16 @@ func setAssetDownloadHeaders(w http.ResponseWriter, file *assetdomain.DownloadFi
 	}
 	w.Header().Set("Content-Type", mt)
 	w.Header().Set("Accept-Ranges", "bytes")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(file.OriginalName)))
+	w.Header().Set("Content-Disposition", assetContentDisposition(file.OriginalName))
 	w.Header().Set("Cache-Control", "private, max-age=604800, immutable")
 	w.Header().Set("ETag", fmt.Sprintf(`"agp-%x-%x"`, info.Size(), info.ModTime().UTC().Unix()))
 	w.Header().Set("Last-Modified", info.ModTime().UTC().Format(http.TimeFormat))
+}
+
+func assetContentDisposition(originalName string) string {
+	return mime.FormatMediaType("inline", map[string]string{
+		"filename": filepath.Base(originalName),
+	})
 }
 
 func normalizePageRange(input string) (string, error) {
@@ -330,7 +336,7 @@ func servePDFRangeBytes(
 	payload []byte,
 ) {
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(original)))
+	w.Header().Set("Content-Disposition", assetContentDisposition(original))
 	w.Header().Set("Cache-Control", "private, max-age=86400, immutable")
 	checksum := sha256.Sum256(payload)
 	w.Header().Set("ETag", fmt.Sprintf(`"agp-pdf-%x-%s"`, checksum[:8], pages))
