@@ -134,6 +134,14 @@ func (r *MySQLRepository) FindExistingWeeklyTask(ctx context.Context, groupID, u
 				return id, err
 			}
 		}
+		if weekID == 0 {
+			return 0, sql.ErrNoRows
+		}
+		err = r.db.QueryRowContext(ctx, `SELECT id FROM checkin_records
+			WHERE group_id=? AND user_id=? AND week_id=? AND task_type=?
+			  AND task_id IS NULL AND deleted_at IS NULL
+			ORDER BY logical_date,id LIMIT 1`, groupID, userID, weekID, taskType).Scan(&id)
+		return id, err
 	}
 	if weekID == 0 {
 		return 0, sql.ErrNoRows
