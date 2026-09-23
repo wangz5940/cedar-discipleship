@@ -56,10 +56,11 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	if req.TaskType == "daily_devotion" || req.TaskType == "daily_scripture" {
 		settings, err := a.groupLearningConfig(r.Context(), groupID)
 		if err != nil {
+			slog.ErrorContext(r.Context(), "checkin learning config lookup failed", "group_id", groupID, "error", err)
 			writeError(w, http.StatusInternalServerError, "checkin_save_failed")
 			return
 		}
-		if !learningdomain.DailyTaskTypeEnabled(settings, req.TaskType) {
+		if !learningdomain.DailyTaskTypeEnabledOnDate(settings, req.TaskType, req.LogicalDate) {
 			writeError(w, http.StatusBadRequest, "daily_task_disabled")
 			return
 		}
@@ -84,6 +85,8 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.ErrorContext(r.Context(), "checkin save failed", "group_id", groupID, "user_id", u.ID,
+			"task_type", req.TaskType, "logical_date", req.LogicalDate, "task_id", req.TaskID, "week_id", req.WeekID, "error", err)
 		writeError(w, http.StatusConflict, "checkin_save_failed")
 		return
 	}

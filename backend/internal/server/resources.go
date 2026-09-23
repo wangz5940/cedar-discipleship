@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -18,6 +20,7 @@ import (
 	assetdomain "agp/backend/internal/asset"
 
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
+	pdfmodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
 
 const (
@@ -221,8 +224,20 @@ func (a *app) handleDownloadAssetRange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.servePDFRange(w, r, groupID, id, file, pages); err != nil {
-		writeError(w, http.StatusInternalServerError, "pdf_range_failed")
+		slog.ErrorContext(r.Context(), "PDF range failed", "group_id", groupID, "asset_id", id, "pages", pages, "source_path", file.AbsolutePath, "error", err)
+		writePDFRangeError(w, err)
 	}
+}
+
+func writePDFRangeError(w http.ResponseWriter, err error) {
+	detail := strings.TrimSpace(strings.SplitN(err.Error(), "\n", 2)[0])
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		detail = "PDF file access failed: " + pathErr.Err.Error()
+	}
+	w.Header().Set("X-AGP-Error-Code", "pdf_range_failed")
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "pdf_range_failed", "detail": detail})
 }
 
 func setAssetDownloadHeaders(w http.ResponseWriter, file *assetdomain.DownloadFile, info os.FileInfo) {
@@ -277,7 +292,7 @@ func (a *app) servePDFRange(
 ) error {
 	info, err := os.Stat(file.AbsolutePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("stat source PDF: %w", err)
 	}
 	key := pdfRangeCacheKey{
 		groupID:       groupID,
@@ -296,7 +311,7 @@ func (a *app) servePDFRange(
 
 	payload, err := trimPDFRange(file.AbsolutePath, pages)
 	if err != nil {
-		return err
+		return fmt.Errorf("trim PDF: %w", err)
 	}
 	if a.pdfRangeCache != nil {
 		a.pdfRangeCache.Put(key, payload)
@@ -317,8 +332,42 @@ func trimPDFRange(srcPath, pages string) ([]byte, error) {
 		return nil, err
 	}
 	defer os.Remove(tmpName)
-	if err := pdfapi.TrimFile(srcPath, tmpName, []string{pages}, nil); err != nil {
-		return nil, err
+	conf := pdfmodel.NewDefaultConfiguration()
+	conf.ValidationMode = pdfmodel.ValidationRelaxed
+	if err := pdfapi.TrimFile(srcPath, tmpName, []string{pages}, conf); err != nil {
+		if !strings.Contains(err.Error(), "unsupported in version") {
+			return nil, fmt.Errorf("pdfcpu: %w", err)
+		}
+		// Some PDFs declare an older version while using newer annotation fields.
+		// Update only a temporary copy so pdfcpu can validate the actual content.
+		src, openErr := os.Open(srcPath)
+		if openErr != nil {
+			return nil, openErr
+		}
+		defer src.Close()
+		header := make([]byte, 8)
+		if _, readErr := src.ReadAt(header, 0); readErr != nil || !strings.HasPrefix(string(header), "%PDF-1.") || header[7] >= '7' {
+			return nil, err
+		}
+		patched, createErr := os.CreateTemp("", "agp-pdf-version-*.pdf")
+		if createErr != nil {
+			return nil, createErr
+		}
+		defer os.Remove(patched.Name())
+		if _, copyErr := io.Copy(patched, src); copyErr != nil {
+			patched.Close()
+			return nil, copyErr
+		}
+		if _, writeErr := patched.WriteAt([]byte("1.7"), 5); writeErr != nil {
+			patched.Close()
+			return nil, writeErr
+		}
+		if closeErr := patched.Close(); closeErr != nil {
+			return nil, closeErr
+		}
+		if err := pdfapi.TrimFile(patched.Name(), tmpName, []string{pages}, conf); err != nil {
+			return nil, fmt.Errorf("pdfcpu after version correction: %w", err)
+		}
 	}
 	payload, err := os.ReadFile(tmpName)
 	if err != nil {

@@ -1,6 +1,11 @@
 type SaveWeekRequest<T> = (force: boolean) => Promise<T>;
 type ConfirmForce = () => boolean;
 
+export function nextReadingStartPage(previousEnd: unknown): string {
+  const page = Number(String(previousEnd ?? '').trim());
+  return Number.isFinite(page) && page > 0 ? String(Math.floor(page)) : '';
+}
+
 function errorCode(error: unknown): string {
   if (!error || typeof error !== 'object') return '';
   const value = error as { code?: unknown; message?: unknown };

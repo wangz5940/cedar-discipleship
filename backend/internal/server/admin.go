@@ -63,6 +63,7 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 		CreateUser  bool   `json:"create_user"`
 		UserID      uint64 `json:"user_id"`
 		DisplayName string `json:"display_name"`
+		Username    string `json:"username"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -71,7 +72,17 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 		CreateUser:  req.CreateUser,
 		UserID:      req.UserID,
 		DisplayName: req.DisplayName,
+		Username:    req.Username,
 	})
+	var usernameConflict *userdomain.UsernameConflictError
+	if errors.As(err, &usernameConflict) {
+		w.Header().Set("X-AGP-Error-Code", "username_exists")
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "username_exists",
+			"existing_user": usernameConflict.ExistingUser,
+		})
+		return
+	}
 	if errors.Is(err, userdomain.ErrUsernameDisplayNameRequired) {
 		writeError(w, http.StatusBadRequest, "username_display_name_required")
 		return
@@ -86,6 +97,10 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, userdomain.ErrUserCreateFailed) {
 		writeError(w, http.StatusConflict, "user_create_failed")
+		return
+	}
+	if errors.Is(err, userdomain.ErrUsernameExists) {
+		writeError(w, http.StatusConflict, "username_exists")
 		return
 	}
 	if errors.Is(err, userdomain.ErrMemberAddFailed) {

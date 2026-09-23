@@ -814,6 +814,27 @@ input:focus, select:focus, textarea:focus {
   display: grid;
   gap: 8px;
 }
+.admin-paired-fields,
+.admin-page-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-compact-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+.admin-compact-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.admin-paired-fields input,
+.admin-page-range input {
+  width: 100%;
+  min-width: 0;
+}
 .admin-field-label {
   font-size: 13px;
   font-weight: 780;
@@ -3554,7 +3575,8 @@ button.ministry-join-button {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    overflow-x: hidden;
+    /* Clip sideways overflow without creating nested vertical scroll containers. */
+    overflow-x: clip;
   }
 
   input,
@@ -4213,6 +4235,79 @@ button.ministry-join-button {
 .segmented-control button.active {
   background: var(--primary);
   color: #fff;
+}
+
+.daily-plan-mode {
+  width: 100%;
+}
+
+.daily-plan-mode button {
+  flex: 1;
+}
+
+.daily-plan-editor {
+  display: grid;
+  gap: 13px;
+  padding-top: 2px;
+}
+
+.daily-plan-add-button {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.daily-plan-list {
+  display: grid;
+  gap: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.daily-plan-list > .admin-field-label {
+  padding: 10px 2px 6px;
+}
+
+.daily-plan-list > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  min-height: 50px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  box-shadow: none;
+}
+
+.daily-plan-list > button:hover,
+.daily-plan-list > button.active {
+  transform: none;
+  background: var(--surface-muted);
+  box-shadow: inset 3px 0 var(--primary);
+}
+
+.daily-plan-list > button span,
+.daily-plan-list > button b,
+.daily-plan-list > button small {
+  display: block;
+  min-width: 0;
+}
+
+.daily-plan-list > button b,
+.daily-plan-list > button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-plan-list > button small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .resource-depth-input {

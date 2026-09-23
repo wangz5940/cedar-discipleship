@@ -82,6 +82,10 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 				if entry.MediaKind == "audio" {
 					key, label = "audio", "音频"
 				}
+			case "weekly_verse":
+				key, label = "weekly_verse", "背经"
+			case "weekly_outline":
+				key, label = "weekly_outline", "提纲"
 			default:
 				continue
 			}
@@ -149,7 +153,7 @@ func eligible(taskType, logicalDate, today, weekStart, weekEnd string) bool {
 	switch taskType {
 	case "daily_devotion", "daily_scripture":
 		return logicalDate == today
-	case "weekly_checkin", "weekly_book", "weekly_video":
+	case "weekly_checkin", "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
 		return weekStart != "" && weekStart <= today && today <= weekEnd &&
 			weekStart <= logicalDate && logicalDate <= weekEnd
 	default:

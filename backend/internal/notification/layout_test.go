@@ -35,8 +35,10 @@ func TestNotificationLayout(t *testing.T) {
 				{RecordID: 2, UserID: 1, Name: "张三", TaskType: "weekly_book", BookName: "史剧"},
 				{RecordID: 3, UserID: 2, Name: "李四", TaskType: "weekly_book", BookName: "史剧"},
 				{RecordID: 4, UserID: 2, Name: "李四", TaskType: "weekly_video"},
+				{RecordID: 5, UserID: 1, Name: "张三", TaskType: "weekly_verse"},
+				{RecordID: 6, UserID: 1, Name: "张三", TaskType: "weekly_outline"},
 			},
-			want: "本周任务\n1 张三 基督 史剧\n2 李四 史剧 【新】视频",
+			want: "本周任务\n1 张三 基督 史剧 背经 提纲\n2 李四 史剧 【新】视频",
 		},
 	}
 	for _, tt := range tests {

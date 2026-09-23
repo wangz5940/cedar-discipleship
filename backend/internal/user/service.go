@@ -20,10 +20,23 @@ var ErrCannotManageSuperAdmin = errors.New("cannot_manage_super_admin")
 var ErrCannotManageGroupLeader = errors.New("cannot_manage_group_leader")
 var ErrGroupDefaultPasswordMissing = errors.New("group_default_password_missing")
 var ErrUserCreateFailed = errors.New("user_create_failed")
+var ErrUsernameExists = errors.New("username_exists")
 var ErrMemberAddFailed = errors.New("member_add_failed")
 var ErrInvalidRole = errors.New("invalid_role")
 var ErrGroupNameRequired = errors.New("group_name_required")
 var ErrGroupNotFound = errors.New("group_not_found")
+
+type UsernameConflictError struct {
+	ExistingUser ExistingUserVO
+}
+
+func (e *UsernameConflictError) Error() string {
+	return ErrUsernameExists.Error()
+}
+
+func (e *UsernameConflictError) Unwrap() error {
+	return ErrUsernameExists
+}
 
 type Service struct {
 	repo Repository
@@ -145,20 +158,49 @@ func (s *Service) ListUsers(ctx context.Context, limit int) ([]UserListItemVO, e
 
 func (s *Service) CreateMember(ctx context.Context, groupID, actorID uint64, input CreateMemberInput) (uint64, error) {
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if input.CreateUser && input.DisplayName == "" {
-		return 0, ErrUsernameDisplayNameRequired
-	}
 	if input.CreateUser {
-		input.NamePinyin = firstNonEmpty(input.NamePinyin, memberNamePinyin(input.DisplayName))
-		input.Username = normalizeUsername(firstNonEmpty(input.Username, input.NamePinyin))
-		if input.Username == "" {
+		input.Username = normalizeUsername(input.Username)
+		if input.Username == "" || input.DisplayName == "" {
 			return 0, ErrUsernameDisplayNameRequired
 		}
+		existing, err := s.repo.FindByUsername(ctx, input.Username)
+		if err == nil {
+			return 0, s.usernameConflict(ctx, existing)
+		}
+		if !errors.Is(err, ErrUserNotFound) {
+			return 0, err
+		}
+		input.NamePinyin = firstNonEmpty(input.NamePinyin, memberNamePinyin(input.DisplayName))
 	}
 	if !input.CreateUser && input.UserID == 0 {
 		return 0, ErrUserIDRequired
 	}
-	return s.repo.CreateMember(ctx, groupID, actorID, input)
+	userID, err := s.repo.CreateMember(ctx, groupID, actorID, input)
+	if input.CreateUser && errors.Is(err, ErrUsernameExists) {
+		existing, findErr := s.repo.FindByUsername(ctx, input.Username)
+		if findErr == nil {
+			return 0, s.usernameConflict(ctx, existing)
+		}
+	}
+	return userID, err
+}
+
+func (s *Service) usernameConflict(ctx context.Context, item *User) error {
+	groups, err := s.repo.ListMembershipGroups(ctx, item.ID)
+	if err != nil {
+		// Membership names are informational; preserve the existing conflict path if
+		// they cannot be loaded.
+		groups = nil
+	}
+	return &UsernameConflictError{
+		ExistingUser: ExistingUserVO{
+			ID:          item.ID,
+			Username:    item.Username,
+			DisplayName: item.DisplayName,
+			Status:      item.Status,
+			Groups:      groups,
+		},
+	}
 }
 
 func (s *Service) RemoveMember(ctx context.Context, groupID, memberID, actorID uint64, actorIsSuperAdmin bool, at time.Time) (uint64, error) {

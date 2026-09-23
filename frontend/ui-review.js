@@ -1,0 +1,30 @@
+import { createApp, h, nextTick } from 'vue';
+import { createPinia } from 'pinia';
+import Antd from 'ant-design-vue';
+import 'ant-design-vue/dist/reset.css';
+import './src/styles.css';
+import './src/styles/tokens.css';
+import './src/styles/base.css';
+import './src/styles/layout.css';
+import AppRoot from './src/components/AppRoot.vue';
+import CheckinWorkbench from './src/components/CheckinWorkbench.vue';
+import Dashboard from './src/components/Dashboard.vue';
+import SiteDialog from './src/components/SiteDialog.vue';
+import { useAppStateStore } from './src/stores/appState';
+import { useCheckinWorkbenchStore } from './src/stores/checkinWorkbench';
+import { useDashboardStore } from './src/stores/dashboard';
+import { confirmDialog } from './src/ui/dialog';
+
+// Temporary local visual fixture. No application initialization or API login.
+const page = new URLSearchParams(location.search).get('page') || 'home';
+const pinia = createPinia();
+const app = createApp({ render: () => h('div', [h(AppRoot), h(CheckinWorkbench), h(Dashboard), h(SiteDialog)]) });
+app.use(pinia).use(Antd);
+const state = useAppStateStore();
+state.$patch({authenticated:true, tab:page, pageTitle:({home:'今日学习',dashboard:'小组统计',resources:'资料库',admin:'管理工作台'})[page],canAdmin:true,canEditLearning:true,canEditStudyWeeks:true,user:{username:'preview',display_name:'布局验证成员',roles:['group_admin']},groups:[{id:1,name:'香柏木学习小组',code:'CEDAR'},{id:2,name:'较长的小组名称用于检查手机端排版',code:'LONG'}],currentGroupID:1,defaultGroupID:2,navItems:[['home','今日学习'],['dashboard','小组统计'],['groups','小组与服事'],['resources','资料库'],['admin','管理工作台']],resources:[{id:1,title:'较长的书籍资料名称：在日常生活中学习与成长（第三章）',original_name:'学习资料.pdf',type:'pdf',category:'book',url:'/sample.pdf'},{id:2,title:'本周课程视频',type:'video',category:'video',url:'/sample.mp4'}]});
+const tasks = ['daily_devotion','weekly_book','weekly_video','weekly_outline'].map((type,i)=>({type,title:['每日灵修与经文阅读','较长的学习任务标题：在日常生活中学习与成长，第三章完整阅读内容','本周音视频学习课程','本周背诵大纲'][i],subtitle:'查看本组安排的学习材料',completed:i===0,contentLinks:[{label:'学习资料',title:'本周学习资料',url:'/sample.pdf'}]}));
+useCheckinWorkbenchStore().$patch({visible:page==='home',selectedDate:'2026-09-20',selectedDateLabel:'9 月 20 日 · 周日',maxDate:'2026-09-20',title:'香柏木小组 · 本周学习计划',total:4,completed:1,tasks,statsVisible:true,statsMonthLabel:'2026-09',statsRanking:[{user_id:1,member_name:'测试成员',total:12,counts:{daily_devotion:12}}]});
+useDashboardStore().$patch({visible:page==='dashboard',selectedDate:'2026-09-20',maxDate:'2026-09-20',groupName:'香柏木学习小组',overallPercent:50,doneSlots:4,totalSlots:8,memberCount:2,completed:1,taskCount:4,statsFrom:'2026-09-01',statsTo:'2026-09-20',statsMaxDate:'2026-09-20',progressCards:tasks.map((task)=>({title:task.type==='daily_devotion'?'每日灵修':'学习分项',task,count:1,percent:50})),members:[{user_id:1,name:'较长姓名的成员',avatar:'林',taskStates:tasks.map(task=>({title:task.title,done:task.completed,taskForMember:task}))}],ranking:[]});
+app.mount('#app');
+await nextTick();
+if (new URLSearchParams(location.search).has('dialog')) confirmDialog({title:'确认修改学习安排？',message:'这是本地布局验证。取消或关闭窗口后，焦点应回到原来的位置。'});

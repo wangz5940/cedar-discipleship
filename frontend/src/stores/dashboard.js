@@ -25,7 +25,7 @@ export const useDashboardStore = defineStore('dashboard', {
     statsTo: '',
     statsMaxDate: '',
     activeCount: 0,
-    activeMemberRule: { mode: 'any', task_types: ['weekly_outline'] },
+    activeMemberRule: { mode: 'any', task_types: ['daily_devotion', 'daily_scripture', 'weekly_book', 'weekly_video'] },
     canManageActiveRule: false,
   }),
   actions: {
@@ -54,7 +54,7 @@ export const useDashboardStore = defineStore('dashboard', {
         statsTo: snapshot?.statsTo || '',
         statsMaxDate: snapshot?.statsMaxDate || '',
         activeCount: Number(snapshot?.activeCount || 0),
-        activeMemberRule: snapshot?.activeMemberRule || { mode: 'any', task_types: ['weekly_outline'] },
+        activeMemberRule: snapshot?.activeMemberRule || { mode: 'any', task_types: ['daily_devotion', 'daily_scripture', 'weekly_book', 'weekly_video'] },
         canManageActiveRule: Boolean(snapshot?.canManageActiveRule),
       });
     },

@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Isolated real-component touch regression fixture; no API or account writes. -->
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body><div id="app"></div><script type="module">
+import { createApp, h } from '/node_modules/.vite/deps/vue.js';
+import Stack from '/src/components/ui/StackedWheel.vue';
+import '/src/styles.css';
+import '/src/styles/tokens.css';
+import '/src/styles/base.css';
+import '/src/styles/layout.css';
+import '/src/styles/composition.css';
+window.commits = []; window.clicks = 0;
+createApp({ render: () => h('div', {class:'cedar-app-shell'}, [h('main',{class:'content'},[
+  h('h1', 'Scroll regression'), h('div',{style:'height:160px'},'Swipe page here'),
+  h(Stack,{items:[1,2,3,4,5],itemKey:x=>x,ariaLabel:'Cards',onChange:(_,i)=>window.commits.push(i)},
+    {default:({item})=>h('div',{style:'background:white;border:1px solid #999;padding:20px'},[
+      h('h2',`Card ${item}`),h('button',{onClick:()=>window.clicks++},'Action')])}),
+  h('div',{style:'height:1800px'},'Page content'),h('footer',{id:'end'},'Page end')])]) }).mount('#app');
+</script></body></html>

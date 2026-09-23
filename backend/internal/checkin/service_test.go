@@ -5,7 +5,58 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+
+	"github.com/go-sql-driver/mysql"
 )
+
+func TestServiceCreateDailyRetryReturnsExistingRecord(t *testing.T) {
+	for _, taskType := range []string{"daily_devotion", "daily_scripture"} {
+		t.Run(taskType, func(t *testing.T) {
+			repo := &fakeRepository{existingDailyID: 42}
+			id, existing, err := NewService(repo).Create(context.Background(), &Record{
+				GroupID: 1, UserID: 2, TaskType: taskType, LogicalDate: "2026-09-23",
+			}, 2)
+			if err != nil || !existing || id != 42 || repo.createCalled {
+				t.Fatalf("id=%d existing=%t err=%v createCalled=%t", id, existing, err, repo.createCalled)
+			}
+		})
+	}
+}
+
+func TestServiceCreateNewDailyRecord(t *testing.T) {
+	repo := &fakeRepository{existingDailyErr: sql.ErrNoRows, createID: 44}
+	id, existing, err := NewService(repo).Create(context.Background(), &Record{
+		GroupID: 1, UserID: 2, TaskType: "daily_devotion", LogicalDate: "2026-09-23",
+	}, 2)
+	if err != nil || existing || id != 44 || !repo.createCalled {
+		t.Fatalf("id=%d existing=%t err=%v createCalled=%t", id, existing, err, repo.createCalled)
+	}
+}
+
+func TestServiceCreateDailyConcurrentRetry(t *testing.T) {
+	repo := &fakeRepository{
+		existingDailyErr: sql.ErrNoRows,
+		createErr:        &mysql.MySQLError{Number: 1062},
+	}
+	repo.onCreate = func() { repo.existingDailyErr = nil; repo.existingDailyID = 43 }
+	id, existing, err := NewService(repo).Create(context.Background(), &Record{
+		GroupID: 1, UserID: 2, TaskType: "daily_devotion", LogicalDate: "2026-09-23",
+	}, 2)
+	if err != nil || !existing || id != 43 {
+		t.Fatalf("id=%d existing=%t err=%v", id, existing, err)
+	}
+}
+
+func TestServiceCreateDailyPreservesStorageErrors(t *testing.T) {
+	want := errors.New("storage unavailable")
+	repo := &fakeRepository{existingDailyErr: want}
+	_, _, err := NewService(repo).Create(context.Background(), &Record{
+		GroupID: 1, UserID: 2, TaskType: "daily_devotion", LogicalDate: "2026-09-23",
+	}, 2)
+	if !errors.Is(err, want) || repo.createCalled {
+		t.Fatalf("err=%v createCalled=%t", err, repo.createCalled)
+	}
+}
 
 func TestServiceCreateWeeklyTaskIdempotent(t *testing.T) {
 	tests := []struct {
@@ -123,12 +174,23 @@ func TestServiceCreateRejectsInvalidWeeklyTarget(t *testing.T) {
 }
 
 type fakeRepository struct {
+	existingDailyID         uint64
+	existingDailyErr        error
+	createErr               error
+	onCreate                func()
 	validateWeeklyTargetErr error
 	existingWeeklyTaskID    uint64
 	existingWeeklyTaskErr   error
 	weeklyTaskType          string
 	createID                uint64
 	createCalled            bool
+}
+
+func (r *fakeRepository) FindExistingDaily(ctx context.Context, groupID, userID uint64, taskType, logicalDate string) (uint64, error) {
+	if r.existingDailyErr != nil {
+		return 0, r.existingDailyErr
+	}
+	return r.existingDailyID, nil
 }
 
 func (r *fakeRepository) ValidateWeeklyTarget(ctx context.Context, groupID, taskID, weekID uint64, taskType, logicalDate string) error {
@@ -149,7 +211,10 @@ func (r *fakeRepository) FindExistingWeeklyTask(ctx context.Context, groupID, us
 
 func (r *fakeRepository) Create(ctx context.Context, record *Record, actorID uint64) (uint64, error) {
 	r.createCalled = true
-	return r.createID, nil
+	if r.onCreate != nil {
+		r.onCreate()
+	}
+	return r.createID, r.createErr
 }
 
 func (r *fakeRepository) DeleteOwn(ctx context.Context, groupID, userID, recordID uint64) error {

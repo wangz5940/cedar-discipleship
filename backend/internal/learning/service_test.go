@@ -450,9 +450,20 @@ func TestWeekTitleUsesLearningContent(t *testing.T) {
 	}
 }
 
-func TestWeekTitleIgnoresStaleManualTitle(t *testing.T) {
+func TestWeekTitleUsesManualTitle(t *testing.T) {
 	title := WeekTitle(WeekInput{
 		Title:       "手动周标题",
+		BookEnabled: true,
+		Readings:    []TaskBinding{{Title: "读物标题"}},
+	})
+	if title != "手动周标题" {
+		t.Fatalf("WeekTitle() = %q, want manual title", title)
+	}
+}
+
+func TestWeekTitleFallsBackToLearningContentWhenManualTitleEmpty(t *testing.T) {
+	title := WeekTitle(WeekInput{
+		Title:       "  ",
 		BookEnabled: true,
 		Readings:    []TaskBinding{{Title: "读物标题"}},
 	})

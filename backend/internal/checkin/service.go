@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 var ErrInvalidWeeklyTarget = errors.New("invalid_weekly_target")
@@ -18,6 +20,14 @@ func NewService(repo Repository) *Service {
 
 func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (uint64, bool, error) {
 	switch record.TaskType {
+	case "daily_devotion", "daily_scripture":
+		existingID, err := s.repo.FindExistingDaily(ctx, record.GroupID, record.UserID, record.TaskType, record.LogicalDate)
+		if err == nil {
+			return existingID, true, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, false, err
+		}
 	case "weekly_book":
 		if err := s.validateWeeklyTarget(ctx, record); err != nil {
 			return 0, false, err
@@ -42,6 +52,15 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 		}
 	}
 	id, err := s.repo.Create(ctx, record, actorID)
+	if err != nil && (record.TaskType == "daily_devotion" || record.TaskType == "daily_scripture") {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			existingID, findErr := s.repo.FindExistingDaily(ctx, record.GroupID, record.UserID, record.TaskType, record.LogicalDate)
+			if findErr == nil {
+				return existingID, true, nil
+			}
+		}
+	}
 	return id, false, err
 }
 

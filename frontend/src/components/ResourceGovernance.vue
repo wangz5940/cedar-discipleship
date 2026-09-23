@@ -27,6 +27,7 @@ const { currentGroupID, resources } = storeToRefs(app);
 
 const activeView = ref('owned');
 const loading = ref(false);
+const refreshing = ref(false);
 const groups = ref([]);
 const sharedResources = ref([]);
 const historyItems = ref([]);
@@ -145,6 +146,24 @@ async function loadGovernance() {
     toast(error.message);
   } finally {
     loading.value = false;
+  }
+}
+
+async function refreshResources() {
+  if (refreshing.value || loading.value) return;
+  refreshing.value = true;
+  try {
+    // Keep the Pinia resource snapshot, admin library and governance views in sync.
+    await Promise.all([
+      reloadApp(),
+      loadAdminData(true),
+    ]);
+    await loadGovernance();
+    toast('资源已刷新');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    refreshing.value = false;
   }
 }
 
@@ -438,8 +457,8 @@ onMounted(loadGovernance);
         <h2>资源库管理</h2>
       </div>
       <div class="resource-governance-actions">
-        <button class="ghost resource-icon-button" type="button" title="刷新资源数据" aria-label="刷新资源数据" @click="loadGovernance">
-          <RefreshCw :size="17" />
+        <button class="ghost resource-icon-button" type="button" :disabled="refreshing || loading" title="刷新资源数据" aria-label="刷新资源数据" @click="refreshResources">
+          <RefreshCw :size="17" :class="{ spin: refreshing || loading }" />
         </button>
       </div>
     </header>

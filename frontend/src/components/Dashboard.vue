@@ -51,7 +51,7 @@ const legend = [
   { key: 'weekly_outline', label: '背大纲' },
 ];
 
-const statsView = ref('chart');
+const statsView = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'table' : 'chart');
 const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
@@ -356,16 +356,16 @@ async function exportRankingChart() {
                 <td v-for="item in member.taskStates" :key="item.title">
                   <button
                     v-if="member.isSelf"
-                    :class="item.done ? 'taskdone' : 'quiet'"
+                    :class="[item.done ? 'taskdone' : 'quiet', item.done ? 'is-done' : 'is-pending']"
                     class="daily-checkin"
                     type="button"
                     :title="memberTaskTitle(member, item)"
                     @click="toggleCheckin(item.taskForMember, member)"
                   >
-                    {{ item.done ? '✓ 已打卡' : '打卡' }}
+                    {{ item.done ? '✓ 已打卡' : '去打卡' }}
                   </button>
-                  <span v-else-if="item.done" class="check">✓ 已打卡</span>
-                  <span v-else class="muted small">— 待完成</span>
+                  <span v-else-if="item.done" class="check status-done">✓ 已打卡</span>
+                  <span v-else class="status-pending">未打卡</span>
                 </td>
                 <td>
                   <b class="numeric">
@@ -392,8 +392,8 @@ async function exportRankingChart() {
               <div class="member-stack-tasks">
                 <div v-for="state in member.taskStates" :key="state.title">
                   <span>{{ state.title }}</span>
-                  <button v-if="member.isSelf" :class="state.done ? 'taskdone' : 'quiet'" type="button" @click="toggleCheckin(state.taskForMember, member)">{{ state.done ? '✓ 已打卡' : '打卡' }}</button>
-                  <strong v-else :class="state.done ? 'check' : 'muted'">{{ state.done ? '✓ 已打卡' : '待完成' }}</strong>
+                  <button v-if="member.isSelf" :class="[state.done ? 'taskdone' : 'quiet', state.done ? 'is-done' : 'is-pending']" type="button" @click="toggleCheckin(state.taskForMember, member)">{{ state.done ? '✓ 已打卡' : '去打卡' }}</button>
+                  <strong v-else :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong>
                 </div>
               </div>
             </div>
@@ -616,6 +616,11 @@ async function exportRankingChart() {
 .member-cell { gap: 10px; }
 .member-avatar { width: 44px; height: 44px; border: 0; font-size: 12px; cursor: pointer; }
 .daily-checkin { min-height: 44px; padding: 4px 12px; font-size: 12px; }
+.daily-checkin.is-pending, .member-stack-tasks button.is-pending { border: 1px solid #bd891f; background: #fff1c9; color: #754500; font-weight: 700; white-space: nowrap; }
+.daily-checkin.is-done, .member-stack-tasks button.is-done { border: 1px solid #216647; background: #216647; color: #fff; font-weight: 700; white-space: nowrap; }
+.status-pending, .status-done { display: inline-flex; align-items: center; padding: 4px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.status-pending { border: 1px solid #bd891f; background: #fff1c9; color: #754500; }
+.status-done { border: 1px solid #216647; background: #216647; color: #fff; }
 .numeric, .progress-count { font-variant-numeric: tabular-nums; }
 .progress-panel { margin-bottom: 32px; }
 .progress-label { font-weight: 500; }
@@ -670,6 +675,8 @@ async function exportRankingChart() {
   .date-range :deep(.date-field) { flex: 1; width: 0; }
   .view-toggle { width: 100%; }
   .view-toggle button { flex: 1; min-height: 44px; }
+  .view-toggle button:first-child { display: none; }
+  .progress-panel { display: none; }
   .filter-chip, .sort-button, .export-row button { min-height: 44px; }
   .desktop-stack-content { display: none; }
   .mobile-stack-content { display: block; }

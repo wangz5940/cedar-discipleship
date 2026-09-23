@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { RotateCcw, X } from '@lucide/vue';
+import { ExternalLink, RotateCcw, X } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
 import {
   closeViewer,
@@ -261,6 +261,33 @@ function openItemInNewWindow(item) {
   });
 }
 
+function openCurrentInNewWindow() {
+  if (!viewer.value) return;
+  const popup = window.open('about:blank', '_blank');
+  if (popup) popup.opener = null;
+  if (viewer.value.type === 'markdown' && viewer.value.html) {
+    const documentHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeStandaloneText(viewer.value.title)}</title><style>body{max-width:760px;margin:0 auto;padding:clamp(24px,6vw,64px) 20px 72px;color:#17231d;background:#fff;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:20px;line-height:1.9;text-align:justify}h1,h2,h3,h4{line-height:1.45;text-align:left}p{margin:0 0 1.15em}blockquote{margin:1.2em 0;padding:8px 16px;border-left:4px solid #2f6b50;background:#eef5f0}a{color:#2f6b50}@media(max-width:600px){body{font-size:19px;padding:28px 18px 64px}}</style></head><body><h1>${escapeStandaloneText(viewer.value.title)}</h1>${viewer.value.html}</body></html>`;
+    const objectURL = URL.createObjectURL(new Blob([documentHTML], { type: 'text/html;charset=utf-8' }));
+    if (popup) popup.location.replace(objectURL);
+    else window.open(objectURL, '_blank', 'noopener,noreferrer');
+    window.setTimeout(() => URL.revokeObjectURL(objectURL), 60000);
+    return;
+  }
+  openViewerItemInNewWindow({
+    ...viewer.value,
+    url: viewer.value.sourceURL || viewer.value.downloadURL || viewer.value.externalURL || viewer.value.url,
+  }, popup);
+}
+
+function escapeStandaloneText(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function openAdjacentItem(item) {
   if (!item) return;
   openItem(item);
@@ -288,6 +315,16 @@ function openAdjacentItem(item) {
     @close="closeViewer"
   >
     <template #header>
+        <button
+          class="ghost viewer-new-page-button"
+          type="button"
+          title="在新页面打开"
+          aria-label="在新页面打开"
+          @click="openCurrentInNewWindow"
+        >
+          <ExternalLink :size="17" aria-hidden="true" />
+          <span>新页面</span>
+        </button>
         <div class="viewer-head-copy">
           <h2 id="content-viewer-title" :title="viewer?.title">{{ viewer?.title }}</h2>
         </div>
@@ -387,7 +424,7 @@ function openAdjacentItem(item) {
             <div v-if="viewer.type === 'markdown'" class="reader-controls" :class="{ expanded: readerSettingsOpen }" aria-label="阅读显示设置">
               <label>
                 <span>字号 {{ readerFontSize }}</span>
-                <input v-model.number="readerFontSize" type="range" min="16" max="24" step="1" />
+                <input v-model.number="readerFontSize" type="range" min="16" max="32" step="1" />
               </label>
               <label>
                 <span>行距 {{ readerLineHeight.toFixed(1) }}</span>
@@ -467,6 +504,7 @@ function openAdjacentItem(item) {
             :src="viewer.url"
             :data="viewer.pdfData"
             :title="viewer.title"
+            :single-page="viewer.dailyPage || 0"
           />
           <iframe
             v-else
@@ -485,7 +523,8 @@ function openAdjacentItem(item) {
 </template>
 
 <style scoped>
-:global(.viewer-modal .viewer-head) { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 10px; }
+:global(.viewer-modal .viewer-head) { display: grid; grid-template-columns: auto minmax(0, 1fr) 44px; align-items: center; gap: 10px; }
+.viewer-new-page-button { grid-column: 1; grid-row: 1; min-height: 40px; padding-inline: 10px; color: var(--cd-primary); font-size: 13px; }
 .viewer-head-copy { grid-column: 2; grid-row: 1; min-width: 0; text-align: center; }
 :global(.viewer-modal .viewer-close-button) { grid-column: 3; grid-row: 1; justify-self: end; }
 :global(.viewer-modal) {
@@ -557,11 +596,13 @@ function openAdjacentItem(item) {
 
 @media (max-width: 767px) {
   :global(.viewer-modal) { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
-  :global(.viewer-modal.viewer-modal-reading) { width: calc(100vw - 16px); height: 88dvh; max-height: 88dvh; border: 1px solid var(--cd-border); border-radius: 20px; }
-  :global(.viewer-modal .viewer-head) { display: grid; flex: 0 0 auto; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 10px; }
+  :global(.viewer-modal.viewer-modal-reading) { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  :global(.viewer-modal .viewer-head) { display: grid; flex: 0 0 auto; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 8px; padding-inline: 10px; }
+  .viewer-new-page-button { width: 44px; min-width: 44px; padding: 0; }
+  .viewer-new-page-button span { display: none; }
   .viewer-head-copy { grid-column: 2; grid-row: 1; align-self: center; }
   :global(.viewer-modal .viewer-close-button) { grid-column: 3; grid-row: 1; }
-  :global(.viewer-modal .viewer-head h2) { display: -webkit-box; overflow: hidden; text-overflow: unset; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  :global(.viewer-modal .viewer-head h2) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.viewer-modal .viewer-body),
   :global(.viewer-modal .viewer-body.viewer-body-split) { min-height: 0; padding: 8px; overflow: hidden; }
   .viewer-main-toolbar { padding: 10px 12px; gap: 8px; }

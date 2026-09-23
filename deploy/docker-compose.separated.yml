@@ -32,6 +32,7 @@ services:
         max-file: "3"
 
   backend:
+    image: ${AGP_BACKEND_IMAGE:-cedar-backend}
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -59,6 +60,7 @@ services:
       AGP_POTATO_BOT_TOKEN: "${AGP_POTATO_BOT_TOKEN:-}"
       AGP_POTATO_GROUPS: "${AGP_POTATO_GROUPS:-}"
       AGP_NOTIFICATION_DIR: "/data/agp/notifications"
+      AGP_BOT_API_KEY: "${AGP_BOT_API_KEY:-}"
       BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
       BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
@@ -73,6 +75,7 @@ services:
         max-file: "3"
 
   frontend:
+    image: ${AGP_FRONTEND_IMAGE:-cedar-frontend}
     build:
       context: ..
       dockerfile: frontend/Dockerfile

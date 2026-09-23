@@ -297,6 +297,9 @@ func WeekTitle(input WeekInput) string {
 	if input.WeeklyCheckin {
 		return firstNonEmpty(strings.TrimSpace(input.Title), "周任务")
 	}
+	if title := strings.TrimSpace(input.Title); title != "" {
+		return title
+	}
 	parts := make([]string, 0, 3)
 	if input.BookEnabled {
 		for _, reading := range input.Readings {
@@ -411,7 +414,7 @@ func TaskMaps(tasks []Task) []map[string]any {
 
 func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any, settings map[string]any, records []TodayRecord) []TodayTaskVO {
 	weekID := mapUint64(week, "id")
-	tasks := dailyTasks(settings)
+	tasks := dailyTasks(date, settings)
 	aggregate := hasAggregateWeeklyTask(rawTasks)
 
 	if week != nil {

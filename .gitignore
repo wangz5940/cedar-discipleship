@@ -11,7 +11,11 @@ config.json
 docs/
 
 .trae
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/preserve-existing-behavior/
+!.agents/skills/preserve-existing-behavior/SKILL.md
 
 # Local environment
 .env

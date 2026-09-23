@@ -8,6 +8,23 @@ func DailyTaskTypeEnabled(settings map[string]any, taskType string) bool {
 	if !SeparateDailyCheckins(settings) {
 		return taskType == "daily_devotion" && DailyTaskEnabled(settings)
 	}
+	return dailyComponentEnabled(settings, taskType)
+}
+
+func DailyTaskTypeEnabledOnDate(settings map[string]any, taskType, date string) bool {
+	if !SeparateDailyCheckins(settings) {
+		if taskType != "daily_devotion" {
+			return false
+		}
+		return dailyDevotionEnabledOnDate(settings, date) || dailyComponentEnabled(settings, "daily_scripture")
+	}
+	if taskType == "daily_devotion" {
+		return dailyDevotionEnabledOnDate(settings, date)
+	}
+	return dailyComponentEnabled(settings, taskType)
+}
+
+func dailyComponentEnabled(settings map[string]any, taskType string) bool {
 	component := ""
 	switch taskType {
 	case "daily_devotion":
@@ -21,10 +38,43 @@ func DailyTaskTypeEnabled(settings map[string]any, taskType string) bool {
 	return !exists || mapBool(config, "enabled", true)
 }
 
-func dailyTasks(settings map[string]any) []TodayTaskVO {
+func dailyDevotionEnabledOnDate(settings map[string]any, date string) bool {
+	config, exists := nestedMap(settings, "task_sections", "daily", "devotion")
+	if exists && !mapBool(config, "enabled", true) {
+		return false
+	}
+	if !exists || asString(config["plan_mode"]) != "custom" || date == "" {
+		return true
+	}
+	_, found := customDailyDevotionPlan(config, date)
+	return found
+}
+
+func customDailyDevotionPlan(config map[string]any, date string) (map[string]any, bool) {
+	var source []any
+	switch plans := config["plans"].(type) {
+	case []any:
+		source = plans
+	case []map[string]any:
+		source = make([]any, 0, len(plans))
+		for _, plan := range plans {
+			source = append(source, plan)
+		}
+	}
+	var matched map[string]any
+	for _, item := range source {
+		plan, ok := item.(map[string]any)
+		if ok && asString(plan["date"]) == date {
+			matched = plan
+		}
+	}
+	return matched, matched != nil
+}
+
+func dailyTasks(date string, settings map[string]any) []TodayTaskVO {
 	var tasks []TodayTaskVO
 	for _, taskType := range []string{"daily_devotion", "daily_scripture"} {
-		if !DailyTaskTypeEnabled(settings, taskType) {
+		if !DailyTaskTypeEnabledOnDate(settings, taskType, date) {
 			continue
 		}
 		title := nestedString(settings, []string{"task_sections", "daily", "label"}, "每日灵修")
@@ -35,6 +85,14 @@ func dailyTasks(settings map[string]any) []TodayTaskVO {
 				title = nestedString(settings, []string{"task_sections", "daily", "scripture", "label"}, "每日读经")
 			}
 			summary = title
+		}
+		if taskType == "daily_devotion" {
+			if config, ok := nestedMap(settings, "task_sections", "daily", "devotion"); ok {
+				if plan, found := customDailyDevotionPlan(config, date); found {
+					title = firstNonEmpty(asString(plan["title"]), title)
+					summary = title
+				}
+			}
 		}
 		tasks = append(tasks, TodayTaskVO{
 			ID: taskType, Type: taskType, Kind: todayTaskKind(taskType),

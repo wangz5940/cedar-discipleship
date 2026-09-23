@@ -19,6 +19,7 @@ const drafts = ref({});
 const newGroupName = ref('');
 const loading = ref(false);
 const saving = ref(false);
+const showMinistryEntry = computed(() => learningConfig.value?.ministry?.show_entry === true);
 const showRecycleBin = computed(() => learningConfig.value?.ministry?.show_recycle_bin === true);
 
 watch(currentGroupID, loadGroups, { immediate: true });
@@ -101,6 +102,18 @@ async function setRecycleBinVisible(event) {
   }
 }
 
+async function setMinistryEntryVisible(event) {
+  const previousValue = showMinistryEntry.value;
+  saving.value = true;
+  try {
+    updateLearningValue(['ministry', 'show_entry'], event.target.checked);
+    const saved = await saveLearningConfig('专项小组入口显示设置已保存');
+    if (!saved) updateLearningValue(['ministry', 'show_entry'], previousValue);
+  } finally {
+    saving.value = false;
+  }
+}
+
 async function mutate(action) {
   saving.value = true;
   try {
@@ -129,6 +142,15 @@ async function mutate(action) {
           <p class="muted">新增、修改名称或停用不再使用的专项小组</p>
         </div>
         <div class="inline-actions">
+          <label class="admin-toggle">
+            <input
+              type="checkbox"
+              :checked="showMinistryEntry"
+              :disabled="saving"
+              @change="setMinistryEntryVisible"
+            />
+            <span>显示专项小组入口</span>
+          </label>
           <label class="admin-toggle">
             <input
               type="checkbox"

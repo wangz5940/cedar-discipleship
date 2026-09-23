@@ -68,6 +68,7 @@ type app struct {
 		Assign(context.Context, string, notificationdomain.Target, uint64, time.Time) error
 		BindingGroupID(string, int64) uint64
 	}
+	botAPIKey []byte
 }
 
 type config struct {
@@ -85,6 +86,7 @@ type config struct {
 	PotatoBotToken       string
 	PotatoGroups         string
 	NotificationDir      string
+	BotAPIKey            string
 }
 
 type ctxKey string
@@ -166,6 +168,7 @@ func Run() error {
 		pdfRangeCache: newPDFRangeCache(defaultPDFRangeCacheMaxEntries, defaultPDFRangeCacheMaxBytes),
 		cacheRefresh:  make(chan uint64, defaultTodayCacheMaxEntries),
 		users:         userdomain.NewService(userdomain.NewMySQLRepository(db)),
+		botAPIKey:     []byte(cfg.BotAPIKey),
 	}
 	if err := a.runMigrations(); err != nil {
 		return err
@@ -236,6 +239,7 @@ func loadConfig() config {
 		PotatoBotToken:       env("AGP_POTATO_BOT_TOKEN", ""),
 		PotatoGroups:         env("AGP_POTATO_GROUPS", ""),
 		NotificationDir:      env("AGP_NOTIFICATION_DIR", "./data/notifications"),
+		BotAPIKey:            env("AGP_BOT_API_KEY", ""),
 	}
 }
 
@@ -298,6 +302,12 @@ func env(key, fallback string) string {
 
 func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", a.handleHealth)
+	mux.HandleFunc("GET /api/bot/groups", a.botAuth(a.handleBotGroups))
+	mux.HandleFunc("GET /api/bot/groups/{code}/config", a.botAuth(a.handleBotConfig))
+	mux.HandleFunc("GET /api/bot/groups/{code}/state", a.botAuth(a.handleBotState))
+	mux.HandleFunc("GET /api/bot/groups/{code}/events", a.botAuth(a.handleBotEvents))
+	mux.HandleFunc("POST /api/bot/groups/{code}/checkins", a.botAuth(a.handleBotCreateCheckin))
+	mux.HandleFunc("DELETE /api/bot/groups/{code}/checkins/{id}", a.botAuth(a.handleBotDeleteCheckin))
 	mux.HandleFunc("POST /api/auth/login", a.handleLogin)
 	mux.HandleFunc("POST /api/auth/refresh", a.handleRefreshSession)
 	mux.HandleFunc("POST /api/auth/logout", a.handleLogout)

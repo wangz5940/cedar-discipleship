@@ -327,10 +327,13 @@
   .app-group-card__actions button { flex: 1 1 130px; }
 
   .pagehead.spread { align-items: stretch; flex-direction: column; }
+  .pagehead.spread { gap: 10px; margin-bottom: 14px; }
+  .pagehead.spread h1 { font-size: 22px; }
+  .pagehead.spread p { display: -webkit-box; overflow: hidden; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .app-resource-selection { flex-wrap: wrap; }
-  .app-resource-toolbar { align-items: stretch; }
+  .app-resource-toolbar { align-items: stretch; gap: 6px; margin-bottom: 14px; }
   .app-resource-search { flex-basis: 100%; max-width: none; }
-  .app-resource-toolbar > button { flex: 1 1 auto; }
+  .app-resource-toolbar > button { flex: 0 0 auto; min-height: 40px; padding-inline: 12px; }
   .cd-resource-grid.app-resource-grid--desktop { display: none; }
   .app-resource-grid--mobile { display: block; }
   .cd-resource-card { grid-template-columns: 40px minmax(0, 1fr) auto; padding: 16px; }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { saveWeekWithConfirmation } from './weekProtection';
+import { nextReadingStartPage, saveWeekWithConfirmation } from './weekProtection';
 
 describe('saveWeekWithConfirmation', () => {
   it('saves once when no check-in conflict exists', async () => {
@@ -41,5 +41,15 @@ describe('saveWeekWithConfirmation', () => {
 
     await expect(saveWeekWithConfirmation(send, confirm)).rejects.toBe(error);
     expect(confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe('nextReadingStartPage', () => {
+  it('reuses the previous ending page for the next week', () => {
+    expect(nextReadingStartPage('22')).toBe('22');
+  });
+
+  it('keeps the next start empty when the previous range has no ending page', () => {
+    expect(nextReadingStartPage('')).toBe('');
   });
 });

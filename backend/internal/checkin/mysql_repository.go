@@ -24,6 +24,15 @@ func (r *MySQLRepository) ValidateWeeklyTarget(
 	return validateWeeklyTarget(ctx, r.db, groupID, taskID, weekID, taskType, logicalDate)
 }
 
+func (r *MySQLRepository) FindExistingDaily(ctx context.Context, groupID, userID uint64, taskType, logicalDate string) (uint64, error) {
+	var id uint64
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM checkin_records
+		WHERE group_id=? AND user_id=? AND task_type=? AND logical_date=?
+		  AND part='' AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+		groupID, userID, taskType, logicalDate).Scan(&id)
+	return id, err
+}
+
 type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }

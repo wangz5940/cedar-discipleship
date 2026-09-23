@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 type MySQLRepository struct {
@@ -38,6 +40,9 @@ func (r *MySQLRepository) FindByUsername(ctx context.Context, username string) (
 	var defaultGroupID sql.NullInt64
 	err := r.db.QueryRowContext(ctx, `SELECT id, username, display_name, password_hash, is_super_admin, default_group_id, must_change_password, status FROM users WHERE username = ?`, username).
 		Scan(&item.ID, &item.Username, &item.DisplayName, &item.PasswordHash, &item.IsSuperAdmin, &defaultGroupID, &item.MustChangePassword, &item.Status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +259,10 @@ func (r *MySQLRepository) ListGroups(ctx context.Context, userID uint64, isSuper
 	if isSuperAdmin {
 		return r.allGroups(ctx)
 	}
+	return r.ListMembershipGroups(ctx, userID)
+}
+
+func (r *MySQLRepository) ListMembershipGroups(ctx context.Context, userID uint64) ([]Group, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT g.id,g.code,g.name FROM study_groups g JOIN group_members m ON m.group_id=g.id WHERE m.user_id=? AND m.status=1 AND g.status=1 ORDER BY g.id`, userID)
 	if err != nil {
 		return nil, err
@@ -323,13 +332,11 @@ func (r *MySQLRepository) CreateMember(ctx context.Context, groupID, actorID uin
 		if err != nil {
 			return 0, ErrGroupDefaultPasswordMissing
 		}
-		username, err := nextAvailableUsernameTx(ctx, tx, input.Username)
-		if err != nil {
-			return 0, err
-		}
-		input.Username = username
 		userID, err = createUserWithHashTx(ctx, tx, input.Username, input.DisplayName, firstNonEmpty(input.NamePinyin, input.Username), hash, false, actorID, now)
 		if err != nil {
+			if isDuplicateKeyError(err) {
+				return 0, ErrUsernameExists
+			}
 			return 0, fmt.Errorf("%w: %v", ErrUserCreateFailed, err)
 		}
 	}
@@ -569,26 +576,9 @@ func createUserWithHash(ctx context.Context, execer execer, username, displayNam
 	return insertedID(res)
 }
 
-func nextAvailableUsernameTx(ctx context.Context, tx *sql.Tx, base string) (string, error) {
-	base = normalizeUsername(base)
-	if base == "" {
-		return "", ErrUsernameDisplayNameRequired
-	}
-	for i := 0; i < 1000; i++ {
-		candidate := base
-		if i > 0 {
-			candidate = fmt.Sprintf("%s%d", base, i+1)
-		}
-		var id uint64
-		err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE username=? LIMIT 1`, candidate).Scan(&id)
-		if errors.Is(err, sql.ErrNoRows) {
-			return candidate, nil
-		}
-		if err != nil {
-			return "", err
-		}
-	}
-	return "", errors.New("username_generate_failed")
+func isDuplicateKeyError(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }
 
 func addMemberTx(ctx context.Context, tx *sql.Tx, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {

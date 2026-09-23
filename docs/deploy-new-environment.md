@@ -124,6 +124,7 @@ GOSUMDB=sum.golang.org
 - `GOPROXY` 会传给 `backend` 镜像构建阶段，也会传给迁移脚本中临时启动的 `golang` 容器。
 - 受限网络环境推荐改成 `https://goproxy.cn,direct`。
 - `GOSUMDB=off` 只建议在校验服务明确不可达时临时使用。
+- 新环境首次初始化仍可使用源码构建；日常生产发布推荐等待 GitHub Actions 生成预构建镜像后，在 NAS 执行 `./scripts/nas-deploy-prebuilt.sh`。
 
 ### 首组迁移相关
 

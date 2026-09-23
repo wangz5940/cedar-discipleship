@@ -760,7 +760,7 @@ async function refreshResources() {
             :items="filteredResources"
             :item-key="resourceSelectionKey"
             aria-label="学习资料"
-            :card-height="220"
+            :card-height="196"
           >
             <template #default="{ item: asset }">
               <article class="cd-resource-card app-resource-stack-card">

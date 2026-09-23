@@ -101,6 +101,8 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 		{"weekly current", "weekly_book", start, int64(7), false, nil, "本周任务\n1 张三 【新】基督"},
 		{"weekly video", "weekly_video", start, int64(7), false, nil, "本周任务\n1 张三 【新】视频"},
 		{"weekly audio", "weekly_video", start, int64(7), false, nil, "本周任务\n1 张三 【新】音频"},
+		{"weekly verse", "weekly_verse", start, int64(7), false, nil, "本周任务\n1 张三 【新】背经"},
+		{"weekly outline", "weekly_outline", start, int64(7), false, nil, "本周任务\n1 张三 【新】提纲"},
 		{"weekly previous despite current date", "weekly_book", date, int64(6), false, nil, ""},
 		{"deleted record", "", date, nil, true, nil, ""},
 		{"database error", "", date, nil, false, errors.New("db unavailable"), ""},
@@ -136,7 +138,8 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 					args[1], args[2] = "2026-09-07", "2026-09-13"
 					args = append(args[:3], int64(7), int64(7), int64(42))
 					fragments = append(fragments, "c.week_id=?", "current_task.week_id=?",
-						"current_ta.asset_id=checked_ta.asset_id", "checked_ta.group_id=c.group_id")
+						"current_ta.asset_id=checked_ta.asset_id", "checked_ta.group_id=c.group_id",
+						"weekly_verse", "weekly_outline")
 				}
 				content, mediaType, mediaName := `{"book_name":"基督是一切"}`, "", ""
 				if tt.name == "weekly audio" {
@@ -214,6 +217,24 @@ func TestCheckinSourceEnabled(t *testing.T) {
 			rows: [][]driver.Value{{
 				"weekly_video", `{"checkin_notifications":{"daily_enabled":true,"weekly_enabled":false}}`,
 			}},
+		},
+		{
+			name: "weekly verse defaults enabled",
+			event: Event{
+				RecordID: 1, GroupID: 2, LogicalDate: "2026-09-09",
+			},
+			columns: 2,
+			rows:    [][]driver.Value{{"weekly_verse", nil}},
+			want:    true,
+		},
+		{
+			name: "weekly outline defaults enabled",
+			event: Event{
+				RecordID: 1, GroupID: 2, LogicalDate: "2026-09-09",
+			},
+			columns: 2,
+			rows:    [][]driver.Value{{"weekly_outline", nil}},
+			want:    true,
 		},
 		{
 			name:    "initial defaults enabled without settings row",

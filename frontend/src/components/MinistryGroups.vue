@@ -28,6 +28,7 @@ import {
 import { useAppStateStore } from '../stores/appState';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { confirmDialog } from '../ui/dialog';
+import { useStackGesture } from '../ui/useStackGesture';
 import { api, fetchWithAuth, openContentTarget, toast as showToast } from '../legacy-app';
 import { classifyAttachment, markdownToSafeHTML } from '../runtime/content';
 import { downloadErrorMessage } from '../runtime/downloads';
@@ -66,16 +67,16 @@ const detailCache = new Map();
 let workspaceLoadPromise = null;
 let workspaceWarmTimer = 0;
 let detailRequestID = 0;
-let wheelRAF = 0;
-let wheelTimer = 0;
-let wheelLastY = 0;
-let wheelLastTime = 0;
-let wheelVelocity = 0;
 
 const workspaceCacheTTL = 60_000;
 const wheelPosition = ref(0);
-const wheelDragging = ref(false);
-const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+const wheelGesture = useStackGesture({
+  position: wheelPosition,
+  count: () => groups.value.length,
+  cardSelector: '.ministry-stack-card.current',
+  onCommit: commitWheelSelection,
+});
+const { dragging: wheelDragging, animating: wheelAnimating, reducedMotion } = wheelGesture;
 
 const visible = computed(() => authenticated.value && currentGroupID.value > 0 && tab.value === 'groups');
 const joinedGroups = computed(() => groups.value.filter((group) => group.joined));
@@ -135,14 +136,12 @@ watch(showRecycleBin, (isVisible) => {
 
 onBeforeUnmount(() => {
   window.clearTimeout(workspaceWarmTimer);
-  window.clearTimeout(wheelTimer);
-  window.cancelAnimationFrame(wheelRAF);
 });
 
 watch(
   [() => groups.value.length, selectedGroupID],
   () => {
-    if (wheelDragging.value || wheelRAF) return;
+    if (wheelDragging.value || wheelAnimating.value) return;
     wheelPosition.value = selectedGroupIndex.value;
   },
 );
@@ -648,117 +647,9 @@ function wheelCardStyle(slot, progress) {
   };
 }
 
-function stopWheelMotion() {
-  window.cancelAnimationFrame(wheelRAF);
-  window.clearTimeout(wheelTimer);
-  wheelRAF = 0;
-}
-
-function normalizeWheelPosition() {
-  const total = groups.value.length;
-  if (total && Math.abs(wheelPosition.value) > 10000) {
-    wheelPosition.value = mod(Math.round(wheelPosition.value), total);
-  }
-}
-
 function commitWheelSelection() {
   const group = groups.value[wheelSelectedIndex.value];
   if (group && Number(group.id) !== Number(selectedGroupID.value)) selectGroup(group.id);
-}
-
-function snapWheel() {
-  stopWheelMotion();
-  const from = wheelPosition.value;
-  const to = Math.round(from);
-  if (reducedMotion) {
-    wheelPosition.value = to;
-    normalizeWheelPosition();
-    commitWheelSelection();
-    return;
-  }
-  const startedAt = performance.now();
-  const duration = 260;
-  const frame = (now) => {
-    const progress = Math.min((now - startedAt) / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 4);
-    wheelPosition.value = from + (to - from) * eased;
-    if (progress < 1) {
-      wheelRAF = window.requestAnimationFrame(frame);
-      return;
-    }
-    wheelRAF = 0;
-    wheelPosition.value = to;
-    normalizeWheelPosition();
-    commitWheelSelection();
-  };
-  wheelRAF = window.requestAnimationFrame(frame);
-}
-
-function continueWheelInertia() {
-  stopWheelMotion();
-  if (reducedMotion) {
-    snapWheel();
-    return;
-  }
-  let previous = performance.now();
-  const frame = (now) => {
-    const elapsed = Math.min(32, now - previous);
-    previous = now;
-    wheelPosition.value += wheelVelocity * elapsed;
-    wheelVelocity *= Math.pow(0.91, elapsed / 16);
-    if (Math.abs(wheelVelocity) > 0.00007) {
-      wheelRAF = window.requestAnimationFrame(frame);
-      return;
-    }
-    wheelRAF = 0;
-    snapWheel();
-  };
-  wheelRAF = window.requestAnimationFrame(frame);
-}
-
-function startWheelDrag(event) {
-  if (groups.value.length < 2 || event.target.closest('button')) return;
-  stopWheelMotion();
-  wheelDragging.value = true;
-  wheelLastY = event.clientY;
-  wheelLastTime = performance.now();
-  wheelVelocity = 0;
-  event.currentTarget.setPointerCapture(event.pointerId);
-}
-
-function moveWheelDrag(event) {
-  if (!wheelDragging.value) return;
-  const now = performance.now();
-  const delta = -(event.clientY - wheelLastY) / 145;
-  const elapsed = Math.max(1, now - wheelLastTime);
-  wheelPosition.value += delta;
-  wheelVelocity = delta / elapsed;
-  wheelLastY = event.clientY;
-  wheelLastTime = now;
-}
-
-function endWheelDrag() {
-  if (!wheelDragging.value) return;
-  wheelDragging.value = false;
-  continueWheelInertia();
-}
-
-function scrollWheel(event) {
-  if (groups.value.length < 2) return;
-  event.preventDefault();
-  stopWheelMotion();
-  const delta = Math.max(-90, Math.min(90, event.deltaY));
-  wheelPosition.value += delta * 0.0035;
-  wheelVelocity = 0;
-  wheelTimer = window.setTimeout(snapWheel, 90);
-}
-
-function keyWheel(event) {
-  if (!['ArrowUp', 'ArrowDown'].includes(event.key) || groups.value.length < 2) return;
-  event.preventDefault();
-  stopWheelMotion();
-  wheelPosition.value += event.key === 'ArrowDown' ? 1 : -1;
-  snapWheel();
 }
 
 function shareStatusLabel(status) {
@@ -886,17 +777,18 @@ function localDateTimeValue() {
           <div v-if="groups.length" class="ministry-stack-selector">
             <div
               class="ministry-stack-stage"
-              :class="{ dragging: wheelDragging }"
+              :class="{ dragging: wheelDragging, 'has-multiple': groups.length > 1 }"
               tabindex="0"
               role="listbox"
               aria-label="上下滑动选择专项小组"
-              @pointerdown="startWheelDrag"
-              @pointermove="moveWheelDrag"
-              @pointerup="endWheelDrag"
-              @pointercancel="endWheelDrag"
-              @lostpointercapture="endWheelDrag"
-              @wheel="scrollWheel"
-              @keydown="keyWheel"
+              @pointerdown="wheelGesture.start"
+              @pointermove="wheelGesture.move"
+              @pointerup="wheelGesture.end"
+              @pointercancel="wheelGesture.end"
+              @lostpointercapture="wheelGesture.end"
+              @wheel="wheelGesture.wheel"
+              @keydown="wheelGesture.key"
+              @click.capture="wheelGesture.click"
             >
               <article
                 v-for="item in wheelCards"
@@ -1369,3 +1261,17 @@ function localDateTimeValue() {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.ministry-stack-stage {
+  touch-action: pan-y pinch-zoom;
+}
+
+.ministry-stack-card {
+  width: calc(100% - 40px);
+}
+
+.ministry-stack-stage.has-multiple .ministry-stack-card.current {
+  touch-action: pan-x pinch-zoom;
+}
+</style>

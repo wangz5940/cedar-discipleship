@@ -77,3 +77,54 @@ func TestLegacyContentBindings(t *testing.T) {
 		t.Fatalf("empty content created required tasks: %+v", drafts)
 	}
 }
+
+func TestCustomDailyDevotionPlansRespectLogicalDate(t *testing.T) {
+	settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
+		"checkin_mode": "separate",
+		"devotion": map[string]any{
+			"enabled":   true,
+			"plan_mode": "custom",
+			"plans": []any{
+				map[string]any{"date": "2026-09-22", "title": "当日灵修"},
+			},
+		},
+		"scripture": map[string]any{"enabled": false},
+	}}}
+
+	tasks := buildTodayTasks("2026-09-22", nil, nil, settings, nil)
+	if len(tasks) != 1 || tasks[0].Type != "daily_devotion" || tasks[0].Title != "当日灵修" {
+		t.Fatalf("custom daily tasks = %+v, want matching devotion plan", tasks)
+	}
+	if DailyTaskTypeEnabledOnDate(settings, "daily_devotion", "2026-09-23") {
+		t.Fatal("custom devotion check-in should be disabled without a matching plan")
+	}
+	if tasks := buildTodayTasks("2026-09-23", nil, nil, settings, nil); len(tasks) != 0 {
+		t.Fatalf("missing custom date returned tasks: %+v", tasks)
+	}
+}
+
+func TestAutomaticAndCombinedDailyModesRemainCompatible(t *testing.T) {
+	automatic := buildTodayTasks("2026-09-22", nil, nil, map[string]any{}, nil)
+	if len(automatic) != 1 || automatic[0].Type != "daily_devotion" {
+		t.Fatalf("automatic daily tasks = %+v, want legacy devotion task", automatic)
+	}
+
+	combined := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
+		"checkin_mode": "combined",
+		"devotion": map[string]any{
+			"enabled":   true,
+			"plan_mode": "custom",
+			"plans": []any{
+				map[string]any{"date": "2026-09-22", "title": "合并模式当天标题"},
+			},
+		},
+		"scripture": map[string]any{"enabled": true},
+	}}}
+	tasks := buildTodayTasks("2026-09-22", nil, nil, combined, nil)
+	if len(tasks) != 1 || tasks[0].Title != "合并模式当天标题" {
+		t.Fatalf("combined custom daily tasks = %+v, want custom title", tasks)
+	}
+	if !DailyTaskTypeEnabledOnDate(combined, "daily_devotion", "2026-09-23") {
+		t.Fatal("combined daily check-in should remain enabled when scripture is enabled")
+	}
+}

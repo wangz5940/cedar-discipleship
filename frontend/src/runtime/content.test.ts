@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyPdfPageRangeToTitle,
+  assetDownloadURLWithPageRange,
   buildReaderPageURL,
   classifyAttachment,
   deepMerge,
@@ -9,9 +10,11 @@ import {
   extractNumberedMarkdownSection,
   extractPdfPageRange,
   markdownToSafeHTML,
+  normalizeContentViewerType,
   normalizeSearchText,
   parsePdfPageRangeParts,
   parseReaderPageRequest,
+  pdfViewerSinglePage,
   sameOriginAPIPath,
   shouldRenderWeeklyTask,
   videoMediaErrorMessage,
@@ -152,5 +155,65 @@ describe('content runtime helpers', () => {
       pageRange: '',
     }, 'http://localhost:5114')).toBe('');
     expect(parseReaderPageRequest('?reader_source=https://example.com/book.pdf')).toBeNull();
+  });
+
+  it('converts asset downloads to ranged PDF downloads when pages are known', () => {
+    expect(assetDownloadURLWithPageRange(
+      '/api/assets/22/download',
+      '88-96',
+      'http://localhost:5114',
+    )).toBe('/api/assets/22/range?pages=88-96');
+    expect(assetDownloadURLWithPageRange(
+      'http://localhost:5114/api/assets/22/download',
+      '88-96',
+      'http://localhost:5114',
+    )).toBe('/api/assets/22/range?pages=88-96');
+    expect(assetDownloadURLWithPageRange(
+      '/api/assets/22/download',
+      '',
+      'http://localhost:5114',
+    )).toBe('/api/assets/22/download');
+  });
+
+  it('treats ranged asset links as PDFs even when their fallback type is iframe', () => {
+    expect(normalizeContentViewerType(
+      'iframe',
+      '/api/assets/22/download',
+      '88-96',
+      'http://localhost:5114',
+    )).toBe('pdf');
+    expect(normalizeContentViewerType(
+      'iframe',
+      'https://example.com/book',
+      '88-96',
+      'http://localhost:5114',
+    )).toBe('iframe');
+  });
+
+  it('renders every page in a multi-page daily PDF range while preserving single-page behavior', () => {
+    expect(pdfViewerSinglePage(
+      'daily_devotion',
+      '1-10',
+      '/api/assets/22/range?pages=1-10',
+      'http://localhost:5114',
+    )).toBe(0);
+    expect(pdfViewerSinglePage(
+      'daily_devotion',
+      '10-10',
+      '/api/assets/22/range?pages=10-10',
+      'http://localhost:5114',
+    )).toBe(1);
+    expect(pdfViewerSinglePage(
+      'daily_devotion',
+      '10-12',
+      'https://example.com/book.pdf',
+      'http://localhost:5114',
+    )).toBe(10);
+    expect(pdfViewerSinglePage(
+      'weekly_book',
+      '1-10',
+      '/api/assets/22/range?pages=1-10',
+      'http://localhost:5114',
+    )).toBe(0);
   });
 });

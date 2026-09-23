@@ -281,6 +281,7 @@ async function exportStatsChart() {
               v-for="task in tasks"
               :key="`${task.type}:${task.part || ''}:${task.title}`"
               class="task"
+              :class="taskIsCompleted(task) ? 'is-completed' : 'is-pending'"
             >
               <header class="task__header">
                 <div
@@ -297,9 +298,11 @@ async function exportStatsChart() {
                 </div>
                 <div class="task__heading">
                   <p v-if="task.title !== taskTypeLabel(task)" class="tasktype">{{ taskTypeLabel(task) }}</p>
-                  <h3 class="task-name">{{ task.title }}</h3>
+                  <h3 class="task-name" :title="task.title">{{ task.title }}</h3>
                 </div>
-                <span v-if="taskIsCompleted(task)" class="task-status completed"><Check :size="13" />已完成</span>
+                <span class="task-status" :class="taskIsCompleted(task) ? 'completed' : 'pending'">
+                  <Check v-if="taskIsCompleted(task)" :size="13" />{{ taskIsCompleted(task) ? '已打卡' : '未打卡' }}
+                </span>
               </header>
 
               <div v-if="task.contentLinks?.length > 1" class="task__body">
@@ -427,12 +430,15 @@ async function exportStatsChart() {
 .sectiontitle { margin-bottom: 12px; }
 .tasks { display: grid; gap: 12px; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .task { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: none; }
+.task.is-completed { border-color: #70a68b; border-inline-start: 4px solid #216647; background: #edf7f0; }
+.task.is-pending { border-color: #d8b36a; border-inline-start: 4px solid #b4770c; background: #fffdf7; }
 .task__header { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .task__heading { min-width: 0; }
 .task__body { min-width: 0; }
 .tasktype { min-width: 0; color: var(--cd-muted); font-size: 12px; }
-.task-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-.task-status.completed { background: var(--cd-primary-soft); color: var(--cd-primary); }
+.task-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid transparent; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.task-status.completed { border-color: #216647; background: #216647; color: #fff; }
+.task-status.pending { border-color: #bd891f; background: #fff1c9; color: #754500; }
 .task-name { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
 .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--cd-border); }
 .actions button:only-child { grid-column: 1 / -1; }
@@ -451,21 +457,25 @@ async function exportStatsChart() {
   .grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 767px) {
-  .page-header { align-items: stretch; flex-wrap: wrap; gap: 16px; }
-  .summary { padding: 16px; gap: 12px; }
+  .page-header { align-items: stretch; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  .page-header h1 { font-size: 22px; }
+  .summary { padding: 13px 14px; gap: 8px; margin-bottom: 18px; }
   .summary h2 { font-size: 16px; }
   .summary .small { font-size: 13px; }
   .progress { width: 100%; }
-  .task { gap: 12px; padding: 16px; }
+  .task { gap: 10px; padding: 14px; }
   .task__header { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; }
   .tile { width: 40px; height: 40px; }
   .task-status { padding-inline: 7px; }
+  .task-name { display: -webkit-box; overflow: hidden; font-size: 15px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 12px; }
   .actions button, .task-material-link { min-height: 44px; }
   .actions button:only-child { grid-column: 1 / -1; }
   .task-materials { display: grid; grid-template-columns: 1fr; margin-top: 10px; }
   .task-material-link { width: 100%; text-align: left; white-space: normal; }
+  .task-material-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sectiontitle { flex-wrap: wrap; gap: 4px; }
   .date { width: 100%; flex-wrap: wrap; justify-content: center; }
+  .stats-section { display: none; }
 }
 </style>

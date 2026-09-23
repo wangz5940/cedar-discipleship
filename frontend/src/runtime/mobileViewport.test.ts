@@ -17,7 +17,7 @@ describe('mobile viewport safeguards', () => {
   it('keeps mobile roots constrained and form controls above iOS auto-zoom size', () => {
     const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
-    expect(css).toContain('overflow-x: hidden');
+    expect(css).toMatch(/\.vue-app-shell\s*\{[^}]*overflow-x:\s*clip;/);
     expect(css).toMatch(/@media\s*\(max-width:\s*980px\)\s*{[\s\S]*input,\s*\n\s*select,\s*\n\s*textarea\s*{[\s\S]*font-size:\s*16px;/);
     expect(css).toMatch(/@media\s*\(max-width:\s*430px\)\s*{[\s\S]*input\[type="date"\][\s\S]*font-size:\s*16px;/);
   });

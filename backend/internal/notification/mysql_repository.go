@@ -38,7 +38,7 @@ func (s *CheckinSource) Enabled(ctx context.Context, event Event) (bool, error) 
 		switch taskType {
 		case "daily_devotion", "daily_scripture":
 			topic = "daily"
-		case "weekly_checkin", "weekly_book", "weekly_video":
+		case "weekly_checkin", "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
 			topic = "weekly"
 		}
 	} else {
@@ -97,7 +97,8 @@ func (s *CheckinSource) Snapshot(ctx context.Context, event Event) (Snapshot, er
 	start, end := today, today
 	daily := taskType == "daily_devotion" || taskType == "daily_scripture"
 	if !daily {
-		if taskType != "weekly_checkin" && taskType != "weekly_book" && taskType != "weekly_video" {
+		if taskType != "weekly_checkin" && taskType != "weekly_book" && taskType != "weekly_video" &&
+			taskType != "weekly_verse" && taskType != "weekly_outline" {
 			return Snapshot{}, nil
 		}
 		var currentWeekID int64
@@ -169,7 +170,7 @@ func (s *CheckinSource) periodSnapshot(ctx context.Context, event Event, start, 
 		cutoffValue = event.OccurredAt.UTC().Format("2006-01-02 15:04:05.000")
 	}
 	if !daily {
-		where = "c.task_type IN ('weekly_checkin','weekly_book','weekly_video')"
+		where = "c.task_type IN ('weekly_checkin','weekly_book','weekly_video','weekly_verse','weekly_outline')"
 		// Videos retain completion when the same asset is assigned again this week.
 		period = `((c.logical_date BETWEEN ? AND ? AND c.week_id=?)
 			OR (c.task_type='weekly_video' AND EXISTS (

@@ -16,6 +16,36 @@ docs/deploy-new-environment.md
 docs/migrate-other-groups.md
 ```
 
+## 推荐生产发布：预构建镜像
+
+`master` 推送后，GitHub Actions 会构建并推送以下镜像：
+
+```text
+ghcr.io/wangz5940/cedar-discipleship-backend:<commit-sha>
+ghcr.io/wangz5940/cedar-discipleship-frontend:<commit-sha>
+```
+
+NAS 上发布时不再编译代码，只拉取当前 Git 提交对应的镜像并替换后端/前端容器：
+
+```bash
+cd /volume2/docker/cedar-discipleship
+./scripts/nas-deploy-prebuilt.sh
+```
+
+如果 GHCR 包是私有的，NAS 需要先登录一次：
+
+```bash
+sudo /usr/local/bin/docker login ghcr.io -u <github-user>
+```
+
+脚本会使用 `/tmp/cedar-prebuilt-deploy.lock` 防止重复发布并发执行。需要回滚时指定目标提交：
+
+```bash
+AGP_GIT_REF=<commit-sha> ./scripts/nas-deploy-prebuilt.sh
+```
+
+本地开发和应急发布仍可继续使用 `docker compose ... up -d --build`。
+
 ## 启动与停止
 
 在项目根目录执行：

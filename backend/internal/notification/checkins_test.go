@@ -80,12 +80,20 @@ func TestFormatCheckins(t *testing.T) {
 			id: 2, want: "本周任务\n1 张三 【新】基督",
 		},
 		{
-			name: "unsupported checkin does not notify",
+			name: "verse checkin is new",
 			entries: []Entry{
 				{RecordID: 1, UserID: 10, Name: "张三", TaskType: "weekly_book", BookName: "基督是一切"},
 				{RecordID: 2, UserID: 10, Name: "张三", TaskType: "weekly_verse"},
 			},
-			id: 2, want: "",
+			id: 2, want: "本周任务\n1 张三 基督 【新】背经",
+		},
+		{
+			name: "outline checkin is new",
+			entries: []Entry{
+				{RecordID: 1, UserID: 10, Name: "张三", TaskType: "weekly_verse"},
+				{RecordID: 2, UserID: 10, Name: "张三", TaskType: "weekly_outline"},
+			},
+			id: 2, want: "本周任务\n1 张三 背经 【新】提纲",
 		},
 		{
 			name: "deleted trigger does not notify",
@@ -136,7 +144,9 @@ func TestEligible(t *testing.T) {
 		{"previous week", "weekly_book", "2026-09-06", "2026-09-09", "2026-08-31", "2026-09-06", false},
 		{"week last day", "weekly_video", "2026-09-13", "2026-09-13", "2026-09-07", "2026-09-13", true},
 		{"week first day", "weekly_video", "2026-09-07", "2026-09-07", "2026-09-07", "2026-09-13", true},
-		{"unsupported", "weekly_outline", "2026-09-09", "2026-09-09", "2026-09-07", "2026-09-13", false},
+		{"weekly verse", "weekly_verse", "2026-09-09", "2026-09-09", "2026-09-07", "2026-09-13", true},
+		{"weekly outline", "weekly_outline", "2026-09-09", "2026-09-09", "2026-09-07", "2026-09-13", true},
+		{"unsupported", "reflection", "2026-09-09", "2026-09-09", "2026-09-07", "2026-09-13", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

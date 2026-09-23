@@ -57,6 +57,48 @@ export function parseReaderPageRequest(search: unknown): ReaderPageRequest | nul
   };
 }
 
+export function assetDownloadURLWithPageRange(value: unknown, pageRange: unknown, origin = ''): string {
+  const originalURL = String(value || '').trim();
+  const apiPath = sameOriginAPIPath(originalURL, origin);
+  const sourceURL = apiPath || originalURL;
+  const range = resolvePdfPageRange({ pageRange });
+  const assetMatch = sourceURL.match(/^\/api\/assets\/(\d+)\/download$/);
+  if (!assetMatch || !range) return sourceURL;
+  return `/api/assets/${assetMatch[1]}/range?pages=${encodeURIComponent(range)}`;
+}
+
+export function normalizeContentViewerType(
+  value: unknown,
+  sourceURL: unknown = '',
+  pageRange: unknown = '',
+  origin = '',
+): string {
+  const type = String(value || '').trim().toLowerCase();
+  if (['book', 'mentor', 'passage'].includes(type)) return 'pdf';
+
+  const apiPath = sameOriginAPIPath(sourceURL, origin) || String(sourceURL || '');
+  const hasAssetPageRange = Boolean(resolvePdfPageRange({ pageRange }))
+    && /^\/api\/assets\/\d+\/(?:download|range)\b/.test(apiPath);
+  if (hasAssetPageRange && ['', 'download', 'iframe'].includes(type)) return 'pdf';
+  return type;
+}
+
+export function pdfViewerSinglePage(
+  taskType: unknown,
+  pageRange: unknown,
+  sourceURL: unknown,
+  origin = '',
+): number {
+  if (taskType !== 'daily_devotion') return 0;
+  const normalizedRange = resolvePdfPageRange({ pageRange });
+  if (!normalizedRange) return 0;
+  const [start, end] = normalizedRange.split('-').map(Number);
+  const apiPath = sameOriginAPIPath(sourceURL, origin) || String(sourceURL || '');
+  const trimmedSource = /^\/api\/assets\/\d+\/range\b/.test(apiPath);
+  if (trimmedSource && end > start) return 0;
+  return trimmedSource ? 1 : start;
+}
+
 export type AttachmentPresentation = {
   action: 'preview' | 'download';
   type: 'pdf' | 'image' | 'video' | 'audio' | 'markdown' | 'download';
@@ -87,6 +129,65 @@ export function classifyAttachment(input: { filename?: unknown; mimeType?: unkno
     return { action: 'preview', type: 'markdown' };
   }
   return { action: 'download', type: 'download' };
+}
+
+export function inferAssetContentType(input: {
+  type?: unknown;
+  original_name?: unknown;
+  title?: unknown;
+  mime_type?: unknown;
+  category?: unknown;
+}, fallback = 'iframe'): string {
+  const explicitType = String(input.type || '').trim().toLowerCase();
+  if (['book', 'mentor', 'passage'].includes(explicitType)) return 'pdf';
+  if (explicitType) return explicitType;
+  const attachment = classifyAttachment({
+    filename: input.original_name || input.title,
+    mimeType: input.mime_type,
+  });
+  if (attachment.action === 'preview') return attachment.type;
+  switch (String(input.category || '').trim().toLowerCase()) {
+    case 'book':
+    case 'mentor':
+    case 'passage':
+      return 'pdf';
+    case 'markdown':
+      return 'markdown';
+    case 'outline':
+      return 'image';
+    case 'video':
+      return 'video';
+    default:
+      return fallback;
+  }
+}
+
+export function inferDailyDevotionContentType(
+  config: { type?: unknown; path?: unknown } = {},
+  asset?: {
+    id?: unknown;
+    type?: unknown;
+    original_name?: unknown;
+    title?: unknown;
+    mime_type?: unknown;
+    category?: unknown;
+  },
+): '' | 'markdown' | 'pdf' {
+  if (asset) {
+    const explicitType = String(asset.type || '').trim().toLowerCase();
+    const assetType = inferAssetContentType({
+      ...asset,
+      type: explicitType === 'pdf' || explicitType === 'markdown' ? explicitType : '',
+    }, '');
+    if (assetType === 'pdf' || assetType === 'markdown') return assetType;
+    if (!config.path && !config.type) return '';
+  }
+
+  const pathType = classifyAttachment({ filename: config.path });
+  if (pathType.action === 'preview' && (pathType.type === 'pdf' || pathType.type === 'markdown')) {
+    return pathType.type;
+  }
+  return String(config.type || '').trim().toLowerCase() === 'pdf' ? 'pdf' : 'markdown';
 }
 
 function numberedMarkdownHeading(line: string): number | null {
@@ -285,6 +386,70 @@ export function composePdfPageRange(startValue: unknown, endValue: unknown): str
   if (!start) return '';
   const end = Math.max(start, Number(normalizePageField(endValue) || start));
   return `${start}-${end}`;
+}
+
+function normalizePdfPageRange(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  const match = raw.match(/^(\d{1,4})(?:\s*[-~—–至到]\s*(\d{1,4}))?$/);
+  if (!match) return extractPdfPageRange(raw);
+  const start = Math.max(1, Number(match[1] || 1));
+  const end = Math.max(start, Number(match[2] || match[1] || start));
+  return `${start}-${end}`;
+}
+
+export function extractPdfPageRangeFromMetadata(value: unknown): string {
+  let metadata: PlainRecord | null = null;
+  if (isPlainObject(value)) {
+    metadata = value;
+  } else {
+    const raw = String(value || '').trim();
+    if (!raw.startsWith('{')) return '';
+    try {
+      const parsed = JSON.parse(raw);
+      metadata = isPlainObject(parsed) ? parsed : null;
+    } catch {
+      return '';
+    }
+  }
+  if (!metadata) return '';
+
+  for (const key of ['source_title', 'sourceTitle', 'title']) {
+    const pageRange = extractPdfPageRange(metadata[key]);
+    if (pageRange) return pageRange;
+  }
+  return composePdfPageRange(
+    metadata.page_start ?? metadata.pageStart,
+    metadata.page_end ?? metadata.pageEnd,
+  );
+}
+
+export function resolvePdfPageRange(...sources: unknown[]): string {
+  for (const source of sources) {
+    if (isPlainObject(source)) {
+      for (const key of ['pageRange', 'page_range', 'pages']) {
+        const pageRange = normalizePdfPageRange(source[key]);
+        if (pageRange) return pageRange;
+      }
+      const fieldRange = composePdfPageRange(
+        source.page_start ?? source.pageStart,
+        source.page_end ?? source.pageEnd,
+      );
+      if (fieldRange) return fieldRange;
+      for (const key of ['source_title', 'sourceTitle', 'title', 'label', 'detail', 'part']) {
+        const pageRange = extractPdfPageRange(source[key]);
+        if (pageRange) return pageRange;
+      }
+      const metadataRange = extractPdfPageRangeFromMetadata(source.content ?? source.metadata);
+      if (metadataRange) return metadataRange;
+      continue;
+    }
+
+    const pageRange = extractPdfPageRange(source);
+    if (pageRange) return pageRange;
+    const metadataRange = extractPdfPageRangeFromMetadata(source);
+    if (metadataRange) return metadataRange;
+  }
+  return '';
 }
 
 export function applyPdfPageRangeToTitle(
