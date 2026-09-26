@@ -10,7 +10,10 @@ config.json
 .ssh/
 docs/
 
-.trae
+.trae/*
+!.trae/rules/
+.trae/rules/*
+!.trae/rules/project_rules.md
 .agents/*
 !.agents/skills/
 .agents/skills/*
