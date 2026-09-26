@@ -94,3 +94,30 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  zk-sync:
+    profiles: ["zk-sync"]
+    image: cedar-zk-sync
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.zk-sync
+    container_name: ${AGP_CONTAINER_PREFIX:-agp}-zk-sync
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: ${MYSQL_USER:-agp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-agp}
+      ZK_RECORDS_PATH: /data/zk/records.json
+      ZK_SYNC_REPORT: /data/zk-sync/skipped.json
+    volumes:
+      - ${AGP_ZK_RECORDS_HOST_PATH:-/volume2/docker/zk-checkin/data/records.json}:/data/zk/records.json:ro
+      - ${AGP_DATA_DIR:-../data}/zk-sync:/data/zk-sync
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

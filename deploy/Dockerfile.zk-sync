@@ -1,0 +1,4 @@
+FROM python:3.12-alpine
+RUN pip install --no-cache-dir PyMySQL==1.1.1
+COPY scripts/zk_sync.py /app/zk_sync.py
+CMD ["python", "-u", "/app/zk_sync.py"]

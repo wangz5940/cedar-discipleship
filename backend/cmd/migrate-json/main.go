@@ -38,23 +38,26 @@ const (
 )
 
 type options struct {
-	dsn                      string
-	groupCode                string
-	groupName                string
-	configPath               string
-	recordsPath              string
-	defaultPassword          string
-	reportDir                string
-	dryRun                   bool
-	allowDuplicateAsDeleted  bool
-	skipConfig               bool
-	skipRecords              bool
-	failOnGeneratedUsernames bool
-	forceOverwrite           bool
-	preferSharedAssets       bool
-	dailyCheckinMode         string
-	weeklyCheckinMode        string
-	devotionMode             string
+	dsn                         string
+	groupCode                   string
+	groupName                   string
+	configPath                  string
+	recordsPath                 string
+	defaultPassword             string
+	reportDir                   string
+	dryRun                      bool
+	allowDuplicateAsDeleted     bool
+	allowUnmatchedWeeklyRecords bool
+	reuseGroupMembersByName     bool
+	namespaceGeneratedUsernames bool
+	skipConfig                  bool
+	skipRecords                 bool
+	failOnGeneratedUsernames    bool
+	forceOverwrite              bool
+	preferSharedAssets          bool
+	dailyCheckinMode            string
+	weeklyCheckinMode           string
+	devotionMode                string
 }
 
 type oldConfig struct {
@@ -303,6 +306,9 @@ func main() {
 	flag.StringVar(&opt.reportDir, "report-dir", "../data/migration-reports", "migration report directory")
 	flag.BoolVar(&opt.dryRun, "dry-run", true, "parse and report without writing database")
 	flag.BoolVar(&opt.allowDuplicateAsDeleted, "allow-duplicate-as-deleted", false, "import duplicate checkins as soft-deleted rows with non-zero active_key")
+	flag.BoolVar(&opt.allowUnmatchedWeeklyRecords, "allow-unmatched-weekly-records", false, "preserve weekly checkins without a matching configured task as unbound history")
+	flag.BoolVar(&opt.reuseGroupMembersByName, "reuse-group-members-by-name", false, "reuse an existing group's unique active member with the same member name")
+	flag.BoolVar(&opt.namespaceGeneratedUsernames, "namespace-generated-usernames", false, "prefix auto-generated usernames with the group code")
 	flag.BoolVar(&opt.skipConfig, "skip-config", false, "skip config import")
 	flag.BoolVar(&opt.skipRecords, "skip-records", false, "skip records import")
 	flag.BoolVar(&opt.failOnGeneratedUsernames, "fail-on-generated-usernames", false, "fail members whose usernames must be auto-generated")
@@ -321,6 +327,9 @@ func main() {
 func run(opt options) error {
 	if strings.TrimSpace(opt.groupCode) == "" || strings.TrimSpace(opt.groupName) == "" {
 		return errors.New("--group-code and --group-name are required")
+	}
+	if opt.namespaceGeneratedUsernames && normalizeUsername(opt.groupCode) == "" {
+		return errors.New("--namespace-generated-usernames requires an alphanumeric group code")
 	}
 	if opt.defaultPassword == "" {
 		opt.defaultPassword = randomPassword(10)
@@ -417,7 +426,7 @@ func planDryRun(cfg oldConfig, records []oldRecord, usernameMap map[string]strin
 		report.Members.WouldSave = len(cfg.Members)
 		report.Weeks.WouldSave = len(cfg.WeeklySchedule)
 		for i, name := range cfg.Members {
-			username, generated := usernameForMember(name, i+1, usernameMap)
+			username, generated := usernameForImport(name, i+1, usernameMap, opt)
 			report.Details["generated_usernames"].(map[string]string)[name] = username
 			if generated {
 				report.Warnings = append(report.Warnings, fmt.Sprintf("member %q username auto-generated as %q", name, username))
@@ -499,7 +508,21 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 
 	report.Members.Parsed = len(cfg.Members)
 	for i, name := range cfg.Members {
-		username, generated := usernameForMember(name, i+1, usernameMap)
+		userID, reusedByName, err := reuseGroupMemberByName(ctx, tx, groupID, name, !created && opt.reuseGroupMembersByName)
+		if err != nil {
+			report.Members.Failed++
+			report.Failures = append(report.Failures, failure{Scope: "member", Key: name, Message: err.Error()})
+			continue
+		}
+		if reusedByName {
+			if err := ensureRole(ctx, tx, groupID, userID, roleMember, now); err != nil {
+				return err
+			}
+			state.memberIDs[name] = userID
+			report.Members.Reused++
+			continue
+		}
+		username, generated := usernameForImport(name, i+1, usernameMap, opt)
 		report.Details["generated_usernames"].(map[string]string)[name] = username
 		if generated {
 			report.Warnings = append(report.Warnings, fmt.Sprintf("member %q username auto-generated as %q", name, username))
@@ -648,7 +671,7 @@ func importRecords(ctx context.Context, tx *sql.Tx, records []oldRecord, opt opt
 		for _, row := range checkinRowsForRecord(rec) {
 			report.Checkins.RowsPlanned++
 			if isWeeklyRecordType(row.TaskType) {
-				resolved, err := resolveRecordTask(row, candidates)
+				resolved, err := resolveRecordTaskForImport(row, candidates, opt.allowUnmatchedWeeklyRecords)
 				if err != nil {
 					report.Checkins.Failed++
 					report.Failures = append(report.Failures, failure{Scope: "checkin", Key: recordKey(rec) + ":" + row.TaskType, Message: err.Error()})
@@ -681,6 +704,28 @@ type checkinRow struct {
 	Detail   string
 	Part     string
 	TaskID   uint64
+}
+
+type taskResolutionError struct {
+	taskType string
+	title    string
+	matches  int
+}
+
+func (e taskResolutionError) Error() string {
+	return fmt.Sprintf("task identity is ambiguous or missing: type=%s title=%q matches=%d", e.taskType, e.title, e.matches)
+}
+
+func resolveRecordTaskForImport(row checkinRow, candidates []recordTask, allowUnmatched bool) (checkinRow, error) {
+	resolved, err := resolveRecordTask(row, candidates)
+	if !allowUnmatched || err == nil {
+		return resolved, err
+	}
+	var resolutionErr taskResolutionError
+	if errors.As(err, &resolutionErr) && resolutionErr.matches == 0 {
+		return row, nil
+	}
+	return resolved, err
 }
 
 func recordTasksForWeek(ctx context.Context, tx *sql.Tx, groupID, weekID uint64) ([]recordTask, error) {
@@ -727,7 +772,7 @@ func resolveRecordTask(row checkinRow, candidates []recordTask) (checkinRow, err
 		}
 	}
 	if len(matches) != 1 {
-		return row, fmt.Errorf("task identity is ambiguous or missing: type=%s title=%q matches=%d", row.TaskType, title, len(matches))
+		return row, taskResolutionError{taskType: row.TaskType, title: title, matches: len(matches)}
 	}
 	row.TaskID = matches[0].ID
 	return row, nil
@@ -850,6 +895,33 @@ func ensureUser(ctx context.Context, tx *sql.Tx, username, displayName, hash, no
 	}
 	newID, err := insertedID(res)
 	return newID, true, err
+}
+
+func reuseGroupMemberByName(ctx context.Context, tx *sql.Tx, groupID uint64, name string, enabled bool) (uint64, bool, error) {
+	if !enabled {
+		return 0, false, nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM group_members
+		WHERE group_id=? AND status=1 AND member_name=? LIMIT 2`, groupID, name)
+	if err != nil {
+		return 0, false, err
+	}
+	defer rows.Close()
+	var userID uint64
+	count := 0
+	for rows.Next() {
+		count++
+		if err := rows.Scan(&userID); err != nil {
+			return 0, false, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, false, err
+	}
+	if count > 1 {
+		return 0, false, fmt.Errorf("multiple active group members match name %q", name)
+	}
+	return userID, count == 1, nil
 }
 
 func ensureMember(ctx context.Context, tx *sql.Tx, groupID, userID uint64, name, now string) error {
@@ -1694,6 +1766,14 @@ func usernameForMember(name string, index int, usernameMap map[string]string) (s
 	return fmt.Sprintf("member%03d", index), true
 }
 
+func usernameForImport(name string, index int, usernameMap map[string]string, opt options) (string, bool) {
+	username, generated := usernameForMember(name, index, usernameMap)
+	if generated && opt.namespaceGeneratedUsernames {
+		username = normalizeUsername(opt.groupCode) + "-" + username
+	}
+	return username, generated
+}
+
 func normalizeUsername(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
@@ -1714,6 +1794,12 @@ func parseTime(s string) (time.Time, error) {
 		return time.Now(), nil
 	}
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05-07:00", s); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
 		return t, nil
 	}
 	return time.Parse("2006-01-02 15:04:05", s)

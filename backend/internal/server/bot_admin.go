@@ -66,6 +66,18 @@ func (a *app) handleBotRobot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"robot": status})
 }
 
+func (a *app) handleBotRobotDelete(w http.ResponseWriter, r *http.Request) {
+	if a.botManager == nil { writeError(w, http.StatusServiceUnavailable, "bot_not_configured"); return }
+	if err := a.botManager.Remove(r.PathValue("id")); err != nil {
+		if errors.Is(err, notificationdomain.ErrRobotNotFound) { writeError(w, http.StatusNotFound, err.Error()); return }
+		if errors.Is(err, notificationdomain.ErrRobotCannotRemove) { writeError(w, http.StatusBadRequest, err.Error()); return }
+		writeError(w, http.StatusInternalServerError, "bot_robot_delete_failed"); return
+	}
+	user := mustUser(r)
+	a.audit(0, user.ID, "delete_bot_robot", "potato_robot", 0, nil, map[string]any{"robot_id": r.PathValue("id")}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (a *app) handleBotBinding(w http.ResponseWriter, r *http.Request) {
 	if a.botManager == nil {
 		writeError(w, http.StatusServiceUnavailable, "bot_not_configured")

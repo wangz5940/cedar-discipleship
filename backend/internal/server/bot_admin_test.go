@@ -22,6 +22,7 @@ type fakeBotManager struct {
 	register    notificationdomain.RobotStatus
 	err         error
 }
+func (m *fakeBotManager) Remove(string) error { return m.err }
 
 func (m *fakeBotManager) Robots(context.Context) []notificationdomain.RobotStatus {
 	return m.robots

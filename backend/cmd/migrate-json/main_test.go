@@ -108,6 +108,91 @@ func TestEnsureGroupPreservesExistingGroupStatus(t *testing.T) {
 	}
 }
 
+type memberLookupConnector struct {
+	t       *testing.T
+	userIDs []int64
+}
+
+func (c *memberLookupConnector) Connect(context.Context) (driver.Conn, error) {
+	return &memberLookupConn{memberLookupConnector: c}, nil
+}
+
+func (*memberLookupConnector) Driver() driver.Driver { return existingGroupDriver{} }
+
+type memberLookupConn struct{ *memberLookupConnector }
+
+func (*memberLookupConn) Prepare(string) (driver.Stmt, error) {
+	return nil, errors.New("unexpected prepare")
+}
+
+func (*memberLookupConn) Close() error { return nil }
+
+func (*memberLookupConn) Begin() (driver.Tx, error) { return existingGroupTx{}, nil }
+
+func (c *memberLookupConn) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if !strings.Contains(query, "SELECT user_id FROM group_members") ||
+		!strings.Contains(query, "group_id=? AND status=1 AND member_name=? LIMIT 2") ||
+		len(args) != 2 || args[0].Value != int64(42) || args[1].Value != "same name" {
+		c.t.Fatalf("unexpected member lookup: %q, %#v", query, args)
+	}
+	rows := make([][]driver.Value, 0, len(c.userIDs))
+	for _, id := range c.userIDs {
+		rows = append(rows, []driver.Value{id})
+	}
+	return &existingGroupRows{rows: rows}, nil
+}
+
+func TestReuseGroupMemberByNameOnlyWhenEnabledAndUnique(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		ids     []int64
+		enabled bool
+		wantID  uint64
+		wantHit bool
+		wantErr bool
+	}{
+		{name: "disabled", ids: []int64{12}, enabled: false},
+		{name: "absent", enabled: true},
+		{name: "unique", ids: []int64{12}, enabled: true, wantID: 12, wantHit: true},
+		{name: "ambiguous", ids: []int64{12, 13}, enabled: true, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := sql.OpenDB(&memberLookupConnector{t: t, userIDs: tc.ids})
+			defer db.Close()
+			tx, err := db.BeginTx(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			id, hit, err := reuseGroupMemberByName(t.Context(), tx, 42, "same name", tc.enabled)
+			if id != tc.wantID || hit != tc.wantHit || (err != nil) != tc.wantErr {
+				t.Fatalf("reuseGroupMemberByName() = (%d,%v,%v)", id, hit, err)
+			}
+		})
+	}
+}
+
+func TestNamespacedGeneratedUsernameKeepsExplicitMappings(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opt  options
+		mapa map[string]string
+		want string
+		gen  bool
+	}{
+		{name: "legacy default", want: "member003", gen: true},
+		{name: "opted in", opt: options{groupCode: "ZW1", namespaceGeneratedUsernames: true}, want: "zw1-member003", gen: true},
+		{name: "explicit map", opt: options{groupCode: "zw1", namespaceGeneratedUsernames: true}, mapa: map[string]string{"张三": "Existing_123"}, want: "existing_123"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, generated := usernameForImport("张三", 3, tc.mapa, tc.opt)
+			if got != tc.want || generated != tc.gen {
+				t.Fatalf("usernameForImport() = (%q,%v)", got, generated)
+			}
+		})
+	}
+}
+
 func TestTasksForWeekSplitsMultipleReadingsIntoMultipleWeeklyBookTasks(t *testing.T) {
 	titleJSON, err := json.Marshal([]string{
 		"《基督是一切》48-52页",

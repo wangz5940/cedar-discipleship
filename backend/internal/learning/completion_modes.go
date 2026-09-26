@@ -16,12 +16,38 @@ func DailyTaskTypeEnabledOnDate(settings map[string]any, taskType, date string) 
 		if taskType != "daily_devotion" {
 			return false
 		}
-		return dailyDevotionEnabledOnDate(settings, date) || dailyComponentEnabled(settings, "daily_scripture")
+		return dailyDevotionEnabledOnDate(settings, date) || dailyComponentEnabledOnDate(settings, "daily_scripture", date)
 	}
 	if taskType == "daily_devotion" {
 		return dailyDevotionEnabledOnDate(settings, date)
 	}
-	return dailyComponentEnabled(settings, taskType)
+	return dailyComponentEnabledOnDate(settings, taskType, date)
+}
+
+func dailyComponentEnabledOnDate(settings map[string]any, taskType, date string) bool {
+	if !dailyComponentEnabled(settings, taskType) {
+		return false
+	}
+	component := ""
+	if taskType == "daily_devotion" {
+		component = "devotion"
+	} else if taskType == "daily_scripture" {
+		component = "scripture"
+	}
+	config, exists := nestedMap(settings, "task_sections", "daily", component)
+	if !exists || date == "" {
+		return true
+	}
+	start := asString(config["start_date"])
+	if component == "devotion" {
+		if numbered := asString(config["numbered_start_date"]); numbered != "" {
+			start = numbered
+		}
+	}
+	if len(start) != len("2006-01-02") {
+		return true
+	}
+	return date >= start
 }
 
 func dailyComponentEnabled(settings map[string]any, taskType string) bool {
@@ -41,6 +67,9 @@ func dailyComponentEnabled(settings map[string]any, taskType string) bool {
 func dailyDevotionEnabledOnDate(settings map[string]any, date string) bool {
 	config, exists := nestedMap(settings, "task_sections", "daily", "devotion")
 	if exists && !mapBool(config, "enabled", true) {
+		return false
+	}
+	if !dailyComponentEnabledOnDate(settings, "daily_devotion", date) {
 		return false
 	}
 	if !exists || asString(config["plan_mode"]) != "custom" || date == "" {

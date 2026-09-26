@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestLegacyConfigFixtures(t *testing.T) {
@@ -132,6 +133,38 @@ func TestChineseRecordsAndExactTaskIdentity(t *testing.T) {
 	}
 	if _, err := resolveRecordTask(checkinRow{TaskType: "weekly_video"}, candidates); err == nil {
 		t.Fatal("missing task must fail instead of inserting a nil identity")
+	}
+}
+
+func TestUnmatchedWeeklyHistoryRequiresOptIn(t *testing.T) {
+	row := checkinRow{TaskType: "weekly_video", Detail: "旧站周视频", Part: "第 3 周"}
+	if _, err := resolveRecordTaskForImport(row, nil, false); err == nil {
+		t.Fatal("default import must reject a weekly record without a configured task")
+	}
+	got, err := resolveRecordTaskForImport(row, nil, true)
+	if err != nil || got != row || nullableID(got.TaskID) != nil {
+		t.Fatalf("unmatched history must retain type/detail/part and a NULL task ID: %+v, %v", got, err)
+	}
+	matched, err := resolveRecordTaskForImport(row, []recordTask{{ID: 12, Type: "weekly_video", Title: "本周视频"}}, true)
+	if err != nil || matched.TaskID != 12 {
+		t.Fatalf("matched task must keep its identity: %+v, %v", matched, err)
+	}
+	ambiguous := []recordTask{{ID: 12, Type: "weekly_video"}, {ID: 13, Type: "weekly_video"}}
+	if _, err := resolveRecordTaskForImport(row, ambiguous, true); err == nil {
+		t.Fatal("opt-in must not discard an ambiguous task identity")
+	}
+}
+
+func TestLegacyTimezoneCheckinTime(t *testing.T) {
+	for _, value := range []string{"2026-04-08T04:41:20+00:00", "2026-04-08 04:41:20", "2026-04-08 04:41:20+00:00"} {
+		got, err := parseTime(value)
+		if err != nil || got.UTC().Format(time.RFC3339) != "2026-04-08T04:41:20Z" {
+			t.Fatalf("parseTime(%q) = %v, %v", value, got, err)
+		}
+	}
+	dateOnly, err := parseTime("2026-05-01")
+	if err != nil || dateOnly.UTC().Format(time.RFC3339) != "2026-05-01T00:00:00Z" {
+		t.Fatalf("date-only checkin time = %v, %v", dateOnly, err)
 	}
 }
 

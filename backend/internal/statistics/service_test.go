@@ -164,7 +164,7 @@ func TestMonthlyRankingTaskTypes(t *testing.T) {
 			name: "empty counts expose independent types",
 			want: map[string]int{
 				"daily_devotion": 0, "daily_scripture": 0, "weekly_checkin": 0,
-				"weekly_book": 0, "weekly_video": 0, "weekly_outline": 0,
+				"weekly_book": 0, "weekly_video": 0, "weekly_verse": 0, "weekly_outline": 0,
 			},
 		},
 		{
@@ -176,7 +176,7 @@ func TestMonthlyRankingTaskTypes(t *testing.T) {
 			},
 			want: map[string]int{
 				"daily_devotion": 0, "daily_scripture": 3, "weekly_checkin": 1,
-				"weekly_book": 0, "weekly_video": 0, "weekly_outline": 0,
+				"weekly_book": 0, "weekly_video": 0, "weekly_verse": 0, "weekly_outline": 0,
 			},
 			total: 4,
 		},
@@ -191,7 +191,7 @@ func TestMonthlyRankingTaskTypes(t *testing.T) {
 			},
 			want: map[string]int{
 				"daily_devotion": 2, "daily_scripture": 3, "weekly_checkin": 1,
-				"weekly_book": 4, "weekly_video": 0, "weekly_outline": 1,
+				"weekly_book": 4, "weekly_video": 0, "weekly_verse": 0, "weekly_outline": 1,
 			},
 			total: 11,
 		},

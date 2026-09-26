@@ -22,9 +22,15 @@ docs/
 .env.local
 .env.production
 .env.bak*
+.env.development
+.env.*.local
+.env*.bak*
+*.env.bak*
 
 # Logs and local OS noise
 .playwright-cli/
+__pycache__/
+*.pyc
 log/
 logs/*
 *.log
@@ -36,4 +42,5 @@ npm-debug.log*
 /newtestament.md
 /weekly_task.md
 /start-frontend-dev.sh
+/test.bat
 /启动本地调试.bat

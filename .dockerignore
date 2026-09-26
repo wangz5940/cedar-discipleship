@@ -6,6 +6,8 @@ test/
 .npm-cache/
 backup-before-zk-sync-*/
 .git/
+__pycache__/
+*.pyc
 .env
 *.log
 npm-debug.log*

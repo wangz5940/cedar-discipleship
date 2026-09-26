@@ -128,3 +128,17 @@ func TestAutomaticAndCombinedDailyModesRemainCompatible(t *testing.T) {
 		t.Fatal("combined daily check-in should remain enabled when scripture is enabled")
 	}
 }
+
+func TestDailyContentHiddenBeforeConfiguredStartDate(t *testing.T) {
+	settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
+		"checkin_mode": "separate",
+		"devotion": map[string]any{"enabled": true, "numbered_start_date": "2026-09-24"},
+		"scripture": map[string]any{"enabled": true, "start_date": "2026-09-25"},
+	}}}
+	if got := buildTodayTasks("2026-09-23", nil, nil, settings, nil); len(got) != 0 {
+		t.Fatalf("pre-start daily content = %+v, want none", got)
+	}
+	if got := buildTodayTasks("2026-09-24", nil, nil, settings, nil); len(got) != 1 || got[0].Type != "daily_devotion" {
+		t.Fatalf("start-date devotion tasks = %+v", got)
+	}
+}

@@ -237,6 +237,7 @@ func TestDiscoverLegacyResourceFilesScansKnownDirectories(t *testing.T) {
 	files := []string{
 		"Kuangye.md",
 		"newtestament.md",
+		"twelve_baskets.md",
 		"weekly_task.md",
 		filepath.Join("Book", "基督是一切-江守道.pdf"),
 		filepath.Join("Mentor", "马太福音（上）导读.pdf"),
@@ -273,6 +274,7 @@ func TestDiscoverLegacyResourceFilesScansKnownDirectories(t *testing.T) {
 		"PPT/马可福音讲义.pptx:handout",
 		"Passage/经文.pdf:passage",
 		"newtestament.md:markdown",
+		"twelve_baskets.md:markdown",
 		"weekly_task.md:markdown",
 	}
 	if strings.Join(values, "\n") != strings.Join(want, "\n") {

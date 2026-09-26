@@ -33,6 +33,7 @@ var (
 	ErrRobotTokenExists    = errors.New("robot_token_exists")
 	ErrRobotLimitExceeded  = errors.New("robot_limit_exceeded")
 	ErrInvalidRobotConfig  = errors.New("invalid_robot_config")
+	ErrRobotCannotRemove   = errors.New("robot_cannot_remove")
 )
 
 type RobotConfig struct {
@@ -600,6 +601,22 @@ func (f *Fleet) Register(ctx context.Context, req RobotRegistration) (RobotStatu
 	f.startRobotLocked(robot)
 	f.mu.Unlock()
 	return robot.status(ctx), nil
+}
+
+// Remove unregisters a robot added through the admin API.
+func (f *Fleet) Remove(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" || id == defaultRobotID { return ErrRobotCannotRemove }
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.robots[id]; !ok { return ErrRobotNotFound }
+	next := make(map[string]RobotConfig, len(f.registered))
+	for key, config := range f.registered { if key != id { next[key] = config } }
+	if err := f.store.Save(configsFromMap(next)); err != nil { return err }
+	f.registered = next
+	delete(f.robots, id)
+	for i, key := range f.order { if key == id { f.order = append(f.order[:i], f.order[i+1:]...); break } }
+	return nil
 }
 
 func robotConfigFromRegistration(req RobotRegistration, identity RobotIdentity) (RobotConfig, error) {

@@ -101,10 +101,72 @@ func (a *app) handleBotConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "bot_config_failed")
 		return
 	}
+	settings, err := a.groupLearningConfig(r.Context(), group.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "bot_config_failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"site_info": map[string]any{"title": group.Name, "group_code": group.Code},
 		"members":   botMemberNames(members), "weekly_schedule": schedule,
+		"task_sections": settings["task_sections"],
 	})
+}
+
+func (a *app) handleBotAsset(w http.ResponseWriter, r *http.Request) {
+	group, err := a.botGroup(r)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "bot_group_not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "bot_asset_failed")
+		return
+	}
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_asset_id")
+		return
+	}
+	settings, err := a.groupLearningConfig(r.Context(), group.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "bot_asset_failed")
+		return
+	}
+	if !botDevotionAssetAllowed(settings, id) {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	file, err := a.assets.DownloadFile(r.Context(), group.ID, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "asset_not_found")
+		return
+	}
+	serveAssetFile(w, r, file)
+}
+
+func botDevotionAssetAllowed(settings map[string]any, id uint64) bool {
+	sections, _ := settings["task_sections"].(map[string]any)
+	daily, _ := sections["daily"].(map[string]any)
+	devotion, _ := daily["devotion"].(map[string]any)
+	want := "/api/assets/" + strconv.FormatUint(id, 10) + "/download"
+	allowed := func(value any) bool {
+		path, ok := value.(string)
+		return ok && strings.TrimSpace(path) == want
+	}
+	if allowed(daily["path"]) || allowed(devotion["path"]) || allowed(devotion["custom_path"]) {
+		return true
+	}
+	for _, key := range []string{"plans", "schedule_history"} {
+		items, _ := devotion[key].([]any)
+		for _, item := range items {
+			entry, _ := item.(map[string]any)
+			if allowed(entry["path"]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *app) handleBotState(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +198,9 @@ func (a *app) handleBotState(w http.ResponseWriter, r *http.Request) {
 	for _, record := range records {
 		item := map[string]any{"id": record.ID, "name": names[record.UserID], "logical_date": record.LogicalDate,
 			"checkin_time": record.CheckinTime, "is_retro": record.IsRetro, "daily": "", "book": "", "video": "", "verse": ""}
+		item["task_type"] = record.TaskType
+		item["task_id"] = record.TaskID
+		item["week_id"] = record.WeekID
 		switch record.TaskType {
 		case "daily_devotion":
 			item["daily"] = "done"
@@ -175,7 +240,7 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-		SELECT c.id, COALESCE(NULLIF(m.member_name,''),u.display_name), c.logical_date,
+		SELECT c.id, COALESCE(c.task_id,0), COALESCE(c.week_id,0), COALESCE(NULLIF(m.member_name,''),u.display_name), c.logical_date,
 		       c.checkin_time, c.task_type, COALESCE(c.detail,''), COALESCE(c.part,''),
 		       COALESCE(st.title,''), c.is_retro, c.updated_at, c.deleted_at
 		FROM checkin_records c
@@ -192,12 +257,12 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 	events := make([]map[string]any, 0)
 	lastTime, lastID := updatedAt, afterID
 	for rows.Next() {
-		var id uint64
+		var id, taskID, weekID uint64
 		var name, taskType, detail, part, taskTitle string
 		var logicalDate, checkinTime, changedAt time.Time
 		var isRetro bool
 		var deletedAt sql.NullTime
-		if err := rows.Scan(&id, &name, &logicalDate, &checkinTime, &taskType, &detail, &part, &taskTitle, &isRetro, &changedAt, &deletedAt); err != nil {
+		if err := rows.Scan(&id, &taskID, &weekID, &name, &logicalDate, &checkinTime, &taskType, &detail, &part, &taskTitle, &isRetro, &changedAt, &deletedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "bot_events_failed")
 			return
 		}
@@ -207,7 +272,7 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 			action = "cancel"
 		}
 		events = append(events, map[string]any{
-			"id": id, "action": action, "name": strings.TrimSpace(name), "type": label, "task_type": taskType,
+			"id": id, "task_id": taskID, "week_id": weekID, "action": action, "name": strings.TrimSpace(name), "type": label, "task_type": taskType,
 			"logical_date": logicalDate.Format("2006-01-02"), "checkin_time": checkinTime.Format(time.RFC3339),
 			"changed_at": changedAt.UTC().Format(time.RFC3339Nano), "is_retro": isRetro,
 		})
@@ -248,6 +313,13 @@ func botTaskLabel(taskType string, values ...string) string {
 			}
 		}
 		return "每日读经"
+	case "weekly_checkin":
+		for _, value := range values {
+			if label := strings.TrimSpace(value); label != "" {
+				return label
+			}
+		}
+		return "周任务"
 	case "weekly_book":
 		return "周读物"
 	case "weekly_video":
@@ -276,7 +348,7 @@ func botTaskType(value string) string {
 		return "daily_devotion"
 	case "每日读经", "读经", "daily_scripture":
 		return "daily_scripture"
-	case "每周学习", "周学习", "weekly_checkin":
+	case "周任务", "每周打卡", "每周学习", "周学习", "weekly_checkin":
 		return "weekly_checkin"
 	case "周读物", "读物", "weekly_book":
 		return "weekly_book"

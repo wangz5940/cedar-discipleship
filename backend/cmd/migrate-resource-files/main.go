@@ -61,6 +61,7 @@ var legacyRootResourceFiles = []struct {
 	{Name: "weekly_task.md", Category: "markdown"},
 	{Name: "Kuangye.md", Category: "markdown"},
 	{Name: "Yonghuo.md", Category: "markdown"},
+	{Name: "twelve_baskets.md", Category: "markdown"},
 }
 
 type options struct {
@@ -1159,10 +1160,16 @@ func convertAssetToImport(
 		return err
 	}
 	if affected == 0 {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_bindings
-			(asset_id,group_id,resource_key,asset_kind,source_asset_id,imported_at,deleted_at,created_at,updated_at)
-			VALUES (?,?,?,?,?,?,NULL,?,?)`,
-			assetID, groupID, resourceKey, assetKindImported, source.ID, now, now, now); err != nil {
+		var exists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM asset_bindings WHERE asset_id=? AND group_id=? LIMIT 1 FOR UPDATE`, assetID, groupID).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO asset_bindings
+				(asset_id,group_id,resource_key,asset_kind,source_asset_id,imported_at,deleted_at,created_at,updated_at)
+				VALUES (?,?,?,?,?,?,NULL,?,?)`,
+				assetID, groupID, resourceKey, assetKindImported, source.ID, now, now, now); err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
 	}

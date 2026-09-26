@@ -249,7 +249,7 @@ func (r *MySQLRepository) List(ctx context.Context, groupID uint64, from, to str
 		args = append(args, userID)
 	}
 	args = append(args, limit)
-	rows, err := r.db.QueryContext(ctx, `SELECT id,user_id,task_id,week_id,logical_date,checkin_time,task_type,part,detail,note FROM checkin_records WHERE `+where+` ORDER BY logical_date DESC, id DESC LIMIT ?`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,user_id,task_id,week_id,logical_date,checkin_time,task_type,part,detail,note FROM checkin_records WHERE `+where+` ORDER BY checkin_time DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
