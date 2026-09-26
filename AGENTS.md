@@ -1,4 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
+
+本文件是仓库内所有 Agent 的公共开发与发布规则。Codex 直接读取本文件；Claude Code 通过根目录 `CLAUDE.md` 引入；Trae 通过 `.trae/rules/project_rules.md` 加载。维护规则时以本文件为准。
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
@@ -109,6 +111,22 @@ Before every commit or push, read and follow:
 - Local deployment and verification scripts or Skills must not be committed unless they are generalized and required by other repository users.
 - Review every ignored file that is intentionally tracked or force-added.
 - Unstage local files without deleting the user's local copy.
+
+## 10. 分支、合入与部署
+
+- 所有变更从最新 `origin/master` 创建功能分支，经 Pull Request 合入 `master`；禁止直接推送 `master`、强推主干或绕过分支保护，包括仓库所有者和管理员。
+- 合入前必须同步最新 `master`，并通过仓库配置的全部必需 CI 检查；不得为了合入而关闭检查或降低保护要求。
+- **部署版本必须先合入 `master`。** 发布前重新获取远端状态，并确认目标提交已包含在 `origin/master` 历史中。此要求适用于 NAS 及其他部署环境、完整发布和单个服务发布。
+
+```bash
+git fetch origin master
+deploy_commit="$(git rev-parse --verify "${DEPLOY_REF:-origin/master}^{commit}")"
+git merge-base --is-ancestor "$deploy_commit" origin/master
+```
+
+- 上述命令全部成功后，才可从目标提交的干净检出构建并部署；记录该提交及对应制品或镜像，禁止混入未提交代码、未合入分支或服务器工作区中的额外修改。
+- 其他贡献者的未合入修复由原作者提交。未经用户明确授权，不得代为提交、挑选或整合进自己的分支。若部署会覆盖这些修复，暂停受影响的发布并说明差异，等待原作者完成合入。
+- 回滚代码同样通过功能分支、PR 和必需 CI 合入后发布，不得绕过上述流程。
 
 ---
 
