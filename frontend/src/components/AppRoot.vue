@@ -544,13 +544,13 @@ async function refreshResources() {
           >
             <template #default="{ item: asset }">
               <article class="cd-resource-card app-resource-stack-card">
-                <div class="tile" :class="{ gold: asset.type === 'video' || asset.category === 'video', purple: asset.category === 'outline', blue: asset.type === 'markdown' || asset.category === 'book' }">
-                  <Play v-if="asset.type === 'video' || asset.category === 'video'" :size="20" />
-                  <Book v-else-if="asset.category === 'book'" :size="20" />
-                  <FileText v-else :size="20" />
-                </div>
                 <div class="app-resource-card__copy">
                   <div class="inline app-resource-card__meta">
+                    <div class="tile" :class="{ gold: asset.type === 'video' || asset.category === 'video', purple: asset.category === 'outline', blue: asset.type === 'markdown' || asset.category === 'book' }">
+                      <Play v-if="asset.type === 'video' || asset.category === 'video'" :size="16" />
+                      <Book v-else-if="asset.category === 'book'" :size="16" />
+                      <FileText v-else :size="16" />
+                    </div>
                     <span class="pill app-resource-card__pill">{{ resourceTypeLabel(asset) }}</span>
                     <label class="app-resource-select">
                       <input type="checkbox" :checked="resourceSelected(asset)" @change="toggleResourceSelection(asset)" />
@@ -561,8 +561,11 @@ async function refreshResources() {
                   <p class="muted small app-resource-card__path"><template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}</p>
                 </div>
                 <div class="app-resource-stack-card__actions">
-                  <button class="quiet" type="button" @click="openAsset(asset)">打开资料</button>
-                  <button class="primary" type="button" @click="downloadResource(asset)"><Download :size="16" /> 下载</button>
+                  <button class="quiet" type="button" @click="openAsset(asset)">打开</button>
+                  <button class="primary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
+                    <Download :size="16" aria-hidden="true" />
+                    <span class="app-resource-stack-card__download-label">下载</span>
+                  </button>
                 </div>
               </article>
             </template>
