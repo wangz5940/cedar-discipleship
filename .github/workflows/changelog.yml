@@ -16,6 +16,39 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a prepended changelog entry for this PR
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- CHANGELOG.md; then
+            printf 'Every PR must update CHANGELOG.md.\n' >&2
+            exit 1
+          fi
+
+          base_first_entry="$(git show "$BASE_SHA:CHANGELOG.md" | grep -m1 '^## ' || true)"
+          head_first_entry="$(grep -m1 '^## ' CHANGELOG.md || true)"
+          if [[ -z "$head_first_entry" || "$head_first_entry" == "$base_first_entry" ]]; then
+            printf 'Add the new changelog entry before all existing entries.\n' >&2
+            exit 1
+          fi
+
+          added_lines="$(
+            git diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- CHANGELOG.md |
+              sed -n '/^+/ { /^+++/d; s/^+//; p; }'
+          )"
+          if ! grep -Fq "关联 PR：#$PR_NUMBER" <<<"$added_lines"; then
+            printf 'The new changelog entry must reference this PR as 关联 PR：#%s.\n' "$PR_NUMBER" >&2
+            exit 1
+          fi
 
       - name: Reject changelog placeholders
         shell: bash

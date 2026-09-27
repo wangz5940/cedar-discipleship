@@ -79,18 +79,18 @@ Before changing this project, check the latest `master` commit of `wangz5940/ced
 ## 7. Exclude Local Environment Files Before Every Commit
 
 Before committing or opening a PR, inspect staged file paths with `git diff --cached --name-only`. Never include environment backups (`.env*.bak*`, `*.env.bak*`) or local development configuration (`.env.development`, `.env.*.local`), even when Git allows them to be force-added. Remove any such paths from the index before committing. Keep `.env.example` as the committed template.
-## 7. Changelog Management
+## 7. Changelog Required
 
-Every PR must provide a complete change description. `CHANGELOG.md` is curated when preparing a release; ordinary development commits and PRs are not required to update it.
+Every PR must update `CHANGELOG.md`.
 
-- Use the PR template to describe the change summary, main implementation, compatibility or operational impact, and verification results.
-- During release preparation, add concise reader-facing entries at the beginning of `CHANGELOG.md`, ordered newest first.
-- Write changelog entries in Chinese and include the date and user-visible or operational impact.
-- Prefer PR numbers for change references, for example `关联 PR：#23` or `关联 PR：#23、#24`. Commit IDs are optional and must not be backfilled solely to satisfy changelog formatting.
-- Do not use placeholders such as `本次提交` or `待回填`, and do not create changelog-only commits to replace them.
+- Add one concise reader-facing entry at the beginning of the changelog content, ordered newest first.
+- Write changelog entries in Chinese and include the date, related PR number, and user-visible impact.
+- Use `关联 PR：#<PR 编号>` for the change reference. Commit IDs are optional and are not required.
+- Do not use placeholders such as `本次提交` or `待回填`.
 - Use `新增`, `变更`, `修复`, `安全`, or `运维` as appropriate.
 - Describe the behavior, compatibility, data, configuration, or deployment impact.
 - Do not use the changelog as a raw commit log; state why the change matters.
+- Include `CHANGELOG.md` in the same PR as the code, configuration, test, or documentation change.
 
 ## 8. Chinese Git History
 
