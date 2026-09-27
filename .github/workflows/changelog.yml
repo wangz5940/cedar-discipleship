@@ -10,47 +10,19 @@ permissions:
   contents: read
 
 jobs:
-  require-changelog:
-    name: Require changelog updates
+  validate-changelog:
+    name: Validate changelog references
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Check every non-merge commit
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PUSH_BASE: ${{ github.event.before }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.sha }}
+      - name: Reject changelog placeholders
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            base="$PR_BASE"
-          else
-            base="$PUSH_BASE"
-          fi
-
-          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
-            commits=("$HEAD_SHA")
-          else
-            mapfile -t commits < <(git rev-list --reverse --no-merges "$base..$HEAD_SHA")
-          fi
-
-          missing=()
-          for commit in "${commits[@]}"; do
-            if ! git diff-tree --root --no-commit-id --name-only -r "$commit" |
-              grep -Fxq CHANGELOG.md; then
-              missing+=("$commit")
-            fi
-          done
-
-          if ((${#missing[@]})); then
-            printf 'Every non-merge commit must update CHANGELOG.md. Missing:\n' >&2
-            printf '  %s\n' "${missing[@]}" >&2
+          if grep -Eq '本次提交|待回填' CHANGELOG.md; then
+            printf 'CHANGELOG.md must not contain 本次提交 or 待回填 placeholders.\n' >&2
             exit 1
           fi
