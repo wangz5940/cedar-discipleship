@@ -112,10 +112,34 @@ Before every commit or push, read and follow:
 - Review every ignored file that is intentionally tracked or force-added.
 - Unstage local files without deleting the user's local copy.
 
-## 10. 分支、合入与部署
+## 10. 分支、PR、合入与部署
 
-- 所有变更从最新 `origin/master` 创建功能分支，经 Pull Request 合入 `master`；禁止直接推送 `master`、强推主干或绕过分支保护，包括仓库所有者和管理员。
+- 每个任务开始前先获取最新主分支，并从 `origin/master` 创建一个新的功能分支；一个分支只承载一个任务，已合入的分支不得继续开发或复用。
+
+```bash
+git fetch origin master
+git switch -c <feature-branch> origin/master
+```
+
+使用独立工作树时执行：
+
+```bash
+git fetch origin master
+git worktree add -b <feature-branch> <worktree-path> origin/master
+```
+
+- 所有变更经 Pull Request 合入 `master`；禁止直接推送 `master`、强推主干或绕过分支保护，包括仓库所有者和管理员。
 - 合入前必须同步最新 `master`，并通过仓库配置的全部必需 CI 检查；不得为了合入而关闭检查或降低保护要求。
+- 默认使用 **Squash and merge**。除非用户明确要求保留分支提交历史，不使用 merge commit 或 rebase merge。
+- PR 标题和正文同时作为最终 Squash 提交信息：标题使用中文准确概括用户可感知的改动；正文说明主要改动、兼容性或数据/配置/部署影响，以及验证结果。禁止使用“合并分支”“修复问题”等无法说明实际变化的笼统提交信息。
+- 仓库设置应启用 Squash merging，并将默认提交信息设为 PR 标题和描述；启用 Automatically delete head branches。执行合入时优先使用：
+
+```bash
+gh pr merge --squash --delete-branch
+```
+
+- 合入后先确认 PR 状态为 merged 且 `origin/master` 已更新，再删除本地功能分支或工作树并执行 `git fetch --prune`。Squash 后原分支提交不会成为 `master` 的祖先；只有在确认 PR 已合入、工作区干净且没有未推送提交后，才可强制删除本地分支。
+- 后续任务必须重新从当时最新的 `origin/master` 创建新分支，不得在已合入分支上追加提交。
 - **部署版本必须先合入 `master`。** 发布前重新获取远端状态，并确认目标提交已包含在 `origin/master` 历史中。此要求适用于 NAS 及其他部署环境、完整发布和单个服务发布。
 
 ```bash
