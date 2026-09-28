@@ -83,6 +83,7 @@ const calendarMaxDate = (() => {
 const resourceRefreshing = ref(false);
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
+const hasMultipleTenants = computed(() => new Set(groups.value.map((group) => group.tenant_id)).size > 1);
 let ministryGroupRequest = 0;
 watch([authenticated, currentGroupID], async ([isAuthenticated, groupID]) => {
   const request = ++ministryGroupRequest;
@@ -370,7 +371,7 @@ async function refreshResources() {
               <div class="spread">
                 <div>
                   <h3 class="app-group-card__title">{{ group.name }}</h3>
-                  <span class="pill">{{ group.code }}</span>
+                  <span class="pill">{{ hasMultipleTenants ? `${group.tenant_name} · ${group.code}` : group.code }}</span>
                 </div>
               </div>
               <div class="app-group-card__actions">

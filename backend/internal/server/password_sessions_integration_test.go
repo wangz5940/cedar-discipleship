@@ -33,6 +33,7 @@ func passwordSessionFixture(t *testing.T) (*app, *sql.DB) {
 		       (1,4,'Super',1,NOW(),NOW(),NOW()),(1,5,'Left',0,NOW(),NOW(),NOW()),
 		       (2,5,'Left',1,NOW(),NOW(),NOW());
 		INSERT INTO user_group_roles(group_id,user_id,role,created_at) VALUES (1,3,'group_leader',NOW())`)
+	testdb.Apply(t, db, "015_tenants.sql")
 	for id := 1; id <= 5; id++ {
 		for device := 0; device < 2; device++ {
 			token := fmt.Sprintf("user-%d-device-%d", id, device)
@@ -170,8 +171,8 @@ func TestLoginCannotCreateSessionWithSupersededPassword(t *testing.T) {
 	if _, err := a.issueRefreshSession(t.Context(), response, httptest.NewRequest(http.MethodPost, "/", nil), 1, 1, "new"); err != nil {
 		t.Fatalf("current password cannot create session: %v", err)
 	}
-	if len(response.Result().Cookies()) != 2 {
-		t.Fatal("new login missing refresh/CSRF cookies")
+	if len(response.Result().Cookies()) != 3 {
+		t.Fatal("new login missing refresh/playback/CSRF cookies")
 	}
 	if err := a.users.UpdatePassword(t.Context(), 1, "old", "stale-change", time.Now()); err != user.ErrPasswordChanged {
 		t.Fatalf("stale password change error = %v", err)

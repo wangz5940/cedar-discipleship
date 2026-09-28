@@ -8,6 +8,8 @@ type UserVO struct {
 	DefaultGroupID     uint64   `json:"default_group_id"`
 	MustChangePassword bool     `json:"must_change_password"`
 	CurrentGroupID     uint64   `json:"current_group_id"`
+	CurrentTenantID    uint64   `json:"current_tenant_id"`
+	IsTenantAdmin      bool     `json:"is_tenant_admin"`
 	MemberName         string   `json:"member_name"`
 	MobileViewMode     string   `json:"mobile_view_mode"`
 	Groups             []Group  `json:"study_groups"`
@@ -44,6 +46,7 @@ type CreateUserRequest struct {
 
 type CreateMemberInput struct {
 	CreateUser  bool
+	TenantID    uint64
 	UserID      uint64
 	DisplayName string
 	Username    string

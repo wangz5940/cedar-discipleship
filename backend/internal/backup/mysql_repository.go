@@ -895,8 +895,10 @@ func ensureGroupMemberUserTx(ctx context.Context, tx *sql.Tx, groupID uint64, me
 	displayName := firstNonEmpty(strings.TrimSpace(member.DisplayName), username)
 	namePinyin := firstNonEmpty(strings.TrimSpace(member.NamePinyin), username)
 	var userID uint64
+	createdUser := false
 	err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE username=?`, username).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
+		createdUser = true
 		hash, err := groupDefaultPasswordHashTx(ctx, tx, groupID)
 		if err != nil {
 			return 0, err
@@ -916,6 +918,20 @@ func ensureGroupMemberUserTx(ctx context.Context, tx *sql.Tx, groupID uint64, me
 		userID = uint64(id64)
 	} else if err != nil {
 		return 0, err
+	}
+	if createdUser {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+			SELECT tenant_id,?,'member',1,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)
+			FROM study_groups WHERE id=?`, userID, groupID); err != nil {
+			return 0, err
+		}
+	} else {
+		var allowed bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tenant_members tm
+			JOIN study_groups g ON g.tenant_id=tm.tenant_id
+			WHERE g.id=? AND tm.user_id=? AND tm.status=1)`, groupID, userID).Scan(&allowed); err != nil || !allowed {
+			return 0, errors.New("backup_member_outside_tenant")
+		}
 	}
 	memberName := firstNonEmpty(member.MemberName, displayName)
 	if err := addMemberTx(ctx, tx, groupID, userID, memberName, actorID); err != nil {

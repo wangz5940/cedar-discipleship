@@ -53,7 +53,7 @@ func (r *MySQLRepository) FindByUsername(ctx context.Context, username string) (
 }
 
 func (r *MySQLRepository) ListAllGroups(ctx context.Context) ([]Group, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,code,name FROM study_groups ORDER BY id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT g.id,g.code,g.name,g.tenant_id,t.name,0 FROM study_groups g JOIN tenants t ON t.id=g.tenant_id ORDER BY g.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -207,8 +207,14 @@ func groupDeleteArgs(query string, groupID uint64, at time.Time) []any {
 }
 
 func (r *MySQLRepository) ensureGroupNameUnique(ctx context.Context, ownID uint64, name string) error {
+	tenantID := uint64(1)
+	if ownID != 0 {
+		if err := r.db.QueryRowContext(ctx, `SELECT tenant_id FROM study_groups WHERE id=?`, ownID).Scan(&tenantID); err != nil {
+			return err
+		}
+	}
 	var id uint64
-	err := r.db.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE name=? AND id<>? LIMIT 1`, name, ownID).Scan(&id)
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM study_groups WHERE tenant_id=? AND name=? AND id<>? LIMIT 1`, tenantID, name, ownID).Scan(&id)
 	if err == nil {
 		return errors.New("group_name_exists")
 	}
@@ -263,7 +269,12 @@ func (r *MySQLRepository) ListGroups(ctx context.Context, userID uint64, isSuper
 }
 
 func (r *MySQLRepository) ListMembershipGroups(ctx context.Context, userID uint64) ([]Group, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT g.id,g.code,g.name FROM study_groups g JOIN group_members m ON m.group_id=g.id WHERE m.user_id=? AND m.status=1 AND g.status=1 ORDER BY g.id`, userID)
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT g.id,g.code,g.name,g.tenant_id,t.name,
+		(tm.role='admin') FROM study_groups g
+		JOIN tenants t ON t.id=g.tenant_id AND t.status=1
+		JOIN tenant_members tm ON tm.tenant_id=t.id AND tm.user_id=? AND tm.status=1
+		LEFT JOIN group_members m ON m.group_id=g.id AND m.user_id=tm.user_id AND m.status=1
+		WHERE g.status=1 AND (tm.role='admin' OR m.id IS NOT NULL) ORDER BY g.id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -407,6 +418,16 @@ func (r *MySQLRepository) CreateMember(ctx context.Context, groupID, actorID uin
 			}
 			return 0, fmt.Errorf("%w: %v", ErrUserCreateFailed, err)
 		}
+		if err := ensureTenantMemberTx(ctx, tx, groupID, userID, now); err != nil {
+			return 0, err
+		}
+	} else {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+			SELECT 1 FROM tenant_members tm JOIN study_groups g ON g.tenant_id=tm.tenant_id
+			WHERE g.id=? AND tm.user_id=? AND tm.status=1)`, groupID, userID).Scan(&exists); err != nil || !exists {
+			return 0, ErrMemberAddFailed
+		}
 	}
 	if userID == 0 {
 		return 0, ErrUserIDRequired
@@ -492,6 +513,7 @@ func (r *MySQLRepository) SetGroupDefaultPassword(ctx context.Context, groupID u
 		WHERE u.is_super_admin=0
 		  AND r.id IS NULL
 		  AND (SELECT COUNT(*) FROM group_members gm WHERE gm.user_id=u.id AND gm.status=1)=1
+		  AND (SELECT COUNT(*) FROM tenant_members tm WHERE tm.user_id=u.id AND tm.status=1)=1
 		ORDER BY u.id FOR UPDATE`, groupID, groupID, RoleGroupLeader)
 	if err != nil {
 		return 0, err
@@ -596,6 +618,9 @@ func (r *MySQLRepository) CreateUserWithMembership(
 		return 0, err
 	}
 	if groupID > 0 {
+		if err := ensureTenantMemberTx(ctx, tx, groupID, id, at); err != nil {
+			return 0, err
+		}
 		if err := addMemberTx(ctx, tx, groupID, id, displayName, actorID, at); err != nil {
 			return 0, err
 		}
@@ -612,7 +637,40 @@ func (r *MySQLRepository) CreateUserWithMembership(
 }
 
 func (r *MySQLRepository) AddMember(ctx context.Context, groupID, userID uint64, memberName string, actorID uint64, at time.Time) error {
-	return addMember(ctx, r.db, groupID, userID, memberName, actorID, at)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := ensureTenantMemberTx(ctx, tx, groupID, userID, at); err != nil {
+		return err
+	}
+	if err := addMember(ctx, tx, groupID, userID, memberName, actorID, at); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func ensureTenantMemberTx(ctx context.Context, tx *sql.Tx, groupID, userID uint64, at time.Time) error {
+	res, err := tx.ExecContext(ctx, `INSERT IGNORE INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		SELECT g.tenant_id,u.id,'member',1,?,? FROM study_groups g JOIN users u ON u.id=? AND u.status=1
+		WHERE g.id=? AND g.status=1`, at, at, userID, groupID)
+	if err != nil {
+		return err
+	}
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		var active bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tenant_members tm
+			JOIN study_groups g ON g.tenant_id=tm.tenant_id
+			WHERE g.id=? AND tm.user_id=? AND tm.status=1)`, groupID, userID).Scan(&active); err != nil || !active {
+			return ErrMemberAddFailed
+		}
+	}
+	return nil
 }
 
 func (r *MySQLRepository) UpdateLastLogin(ctx context.Context, userID uint64, at time.Time) error {
@@ -677,7 +735,7 @@ func (r *MySQLRepository) UpdatePassword(ctx context.Context, userID uint64, old
 }
 
 func (r *MySQLRepository) allGroups(ctx context.Context) ([]Group, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,code,name FROM study_groups WHERE status=1 ORDER BY id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT g.id,g.code,g.name,g.tenant_id,t.name,0 FROM study_groups g JOIN tenants t ON t.id=g.tenant_id WHERE g.status=1 AND t.status=1 ORDER BY g.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +747,7 @@ func scanGroups(rows *sql.Rows) ([]Group, error) {
 	var groups []Group
 	for rows.Next() {
 		var group Group
-		if err := rows.Scan(&group.ID, &group.Code, &group.Name); err != nil {
+		if err := rows.Scan(&group.ID, &group.Code, &group.Name, &group.TenantID, &group.TenantName, &group.TenantAdmin); err != nil {
 			return nil, err
 		}
 		groups = append(groups, group)

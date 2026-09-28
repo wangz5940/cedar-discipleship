@@ -16,10 +16,11 @@ func (a *app) handleResourceGroups(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "groups_failed")
 		return
 	}
-	currentGroupID := mustUser(r).CurrentGroupID
+	currentUser := mustUser(r)
+	currentGroupID := currentUser.CurrentGroupID
 	filtered := make([]group, 0, len(groups))
 	for _, item := range groups {
-		if item.ID != currentGroupID {
+		if item.ID != currentGroupID && item.TenantID == currentUser.CurrentTenantID {
 			filtered = append(filtered, item)
 		}
 	}

@@ -9,6 +9,7 @@ describe('study group permissions', () => {
     { member: { roles: ['group_leader'] }, allowed: true, label: '组长' },
     { member: { roles: ['group_admin', 'group_leader'] }, allowed: true, label: '组长' },
     { member: { is_super_admin: true, roles: ['group_leader'] }, allowed: true, label: '超级管理员' },
+    { member: { is_tenant_admin: true, roles: [] }, allowed: true, label: '主体管理员' },
     { member: { roles: ['ministry_leader'] }, allowed: false, label: '' },
   ])('preserves capability and role priority for $member', ({ member, allowed, label }) => {
     expect(canManageStudyGroup(member)).toBe(allowed);

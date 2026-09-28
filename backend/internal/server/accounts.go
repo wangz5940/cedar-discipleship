@@ -94,7 +94,7 @@ func (a *app) requireSuper(next http.HandlerFunc) http.HandlerFunc {
 func (a *app) requireRole(role string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := mustUser(r)
-		if u.IsSuperAdmin || hasRole(u.Roles, role) || (role == roleGroupAdmin && hasRole(u.Roles, roleGroupLeader)) {
+		if u.IsSuperAdmin || (u.IsTenantAdmin && u.CurrentGroupID != 0) || hasRole(u.Roles, role) || (role == roleGroupAdmin && hasRole(u.Roles, roleGroupLeader)) {
 			next(w, r)
 			return
 		}
@@ -404,6 +404,16 @@ func setAuthCookies(w http.ResponseWriter, r *http.Request, refreshToken, csrfTo
 		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    refreshToken,
+		Path:     "/api/assets",
+		Expires:  expiresAt,
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    csrfToken,
 		Path:     "/",
@@ -420,6 +430,7 @@ func clearAuthCookies(w http.ResponseWriter, r *http.Request) {
 	expired := time.Unix(0, 0)
 	for _, cookie := range []http.Cookie{
 		{Name: refreshCookieName, Path: "/api/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode},
+		{Name: refreshCookieName, Path: "/api/assets", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode},
 		{Name: csrfCookieName, Path: "/", HttpOnly: false, Secure: secure, SameSite: http.SameSiteStrictMode},
 	} {
 		cookie.Value = ""

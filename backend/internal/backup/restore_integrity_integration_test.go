@@ -20,6 +20,8 @@ func TestImportLocalBackupIntegrity(t *testing.T) {
 			       (3,'super','Super','super',1,NOW(),NOW());
 			INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
 			VALUES (1,1,'Same',NOW(),NOW(),NOW()),(2,2,'Other group',NOW(),NOW(),NOW())`)
+		testdb.Apply(t, db, "015_tenants.sql")
+		testdb.Exec(t, db, `INSERT INTO tenant_members(tenant_id,user_id,role,created_at,updated_at) VALUES(1,3,'member',NOW(),NOW())`)
 		payload := Payload{Members: []Member{
 			{Username: "same", DisplayName: "Local same", NamePinyin: "changed"},
 			{Username: "other", DisplayName: "Local other", NamePinyin: "changed"},
@@ -108,6 +110,7 @@ func TestImportLocalBackupIntegrity(t *testing.T) {
 			VALUES (1,1,'Admin',NOW(),NOW(),NOW());
 			INSERT INTO checkin_records(group_id,user_id,logical_date,checkin_time,task_type,detail,created_by,created_at,updated_at)
 			VALUES (1,1,'2026-09-01',NOW(),'daily_devotion','Original',1,NOW(),NOW())`)
+		testdb.Apply(t, db, "015_tenants.sql")
 		repo := NewMySQLRepository(db)
 		for _, username := range []string{"missing", "unrelated"} {
 			payload := Payload{

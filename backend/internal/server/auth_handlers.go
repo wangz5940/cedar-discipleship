@@ -131,7 +131,27 @@ func loginUserResponse(user *userdomain.User, groups []userdomain.Group, current
 		"is_super_admin": user.IsSuperAdmin, "default_group_id": nullableUint64Value(user.DefaultGroupID),
 		"must_change_password": user.MustChangePassword,
 		"current_group_id":     currentGroupID, "study_groups": groups,
+		"current_tenant_id": currentTenantID(groups, currentGroupID),
+		"is_tenant_admin":   currentTenantAdmin(groups, currentGroupID),
 	}
+}
+
+func currentTenantID(groups []userdomain.Group, groupID uint64) uint64 {
+	for _, group := range groups {
+		if group.ID == groupID {
+			return group.TenantID
+		}
+	}
+	return 0
+}
+
+func currentTenantAdmin(groups []userdomain.Group, groupID uint64) bool {
+	for _, group := range groups {
+		if group.ID == groupID {
+			return group.TenantAdmin
+		}
+	}
+	return false
 }
 
 func (a *app) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +177,12 @@ func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.updateRefreshSessionGroup(r.Context(), r, req.GroupID)
-	writeJSON(w, http.StatusOK, map[string]any{"token": token})
+	user, err := a.users.CurrentUser(r.Context(), u.ID, req.GroupID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "user_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
 }
 
 func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {

@@ -52,8 +52,8 @@ func TestHandleAdminCreateMemberReturnsExistingAccountDetails(t *testing.T) {
 			Status:       1,
 		},
 		groups: []userdomain.Group{
-			{ID: 2, Code: "alpha", Name: "甲组"},
-			{ID: 5, Code: "beta", Name: "乙组"},
+			{ID: 2, Code: "alpha", Name: "甲组", TenantID: 1},
+			{ID: 5, Code: "beta", Name: "乙组", TenantID: 1},
 		},
 	}
 	a := &app{users: userdomain.NewService(repo)}
@@ -119,6 +119,6 @@ func adminMemberRequest(t *testing.T, body string) *http.Request {
 	t.Helper()
 
 	request := httptest.NewRequest(http.MethodPost, "/api/admin/members", bytes.NewBufferString(body))
-	user := currentUser{ID: 9, CurrentGroupID: 7}
+	user := currentUser{ID: 9, CurrentGroupID: 7, CurrentTenantID: 1}
 	return request.WithContext(context.WithValue(request.Context(), currentUserKey, user))
 }

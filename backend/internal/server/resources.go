@@ -114,6 +114,10 @@ func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "invalid_playback_url")
 		return
 	}
+	if a.db != nil && !a.playbackSessionAllowed(r, groupID) {
+		writeError(w, http.StatusForbidden, "invalid_playback_url")
+		return
+	}
 	file, err := a.assets.DownloadFile(r.Context(), groupID, id)
 	if err != nil || !isPlaybackMediaAsset(file) {
 		writeError(w, http.StatusNotFound, "asset_not_found")
@@ -124,6 +128,22 @@ func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serveAssetFile(w, r, playbackAssetFile(file))
+}
+
+func (a *app) playbackSessionAllowed(r *http.Request, groupID uint64) bool {
+	cookie, err := r.Cookie(refreshCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	var userID uint64
+	err = a.db.QueryRowContext(r.Context(), `SELECT user_id FROM refresh_sessions
+		WHERE token_hash=? AND current_group_id=? AND revoked_at IS NULL AND expires_at>?`,
+		tokenHash(cookie.Value), groupID, time.Now().UTC()).Scan(&userID)
+	if err != nil {
+		return false
+	}
+	u, err := a.users.CurrentUser(r.Context(), userID, groupID)
+	return err == nil && u.CurrentGroupID == groupID
 }
 
 func serveAssetFile(w http.ResponseWriter, r *http.Request, file *assetdomain.DownloadFile) {

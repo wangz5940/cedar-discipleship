@@ -45,6 +45,13 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
+	if u.IsTenantAdmin && !u.IsSuperAdmin {
+		var member bool
+		if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id=? AND user_id=? AND status=1)`, groupID, u.ID).Scan(&member); err != nil || !member {
+			writeError(w, http.StatusForbidden, "group_membership_required")
+			return
+		}
+	}
 	var req struct {
 		TaskType    string `json:"task_type"`
 		LogicalDate string `json:"logical_date"`

@@ -28,8 +28,10 @@ func (r *MySQLRepository) RestoreReferenceTx(
 	// source-grant validation as a normal resource import.
 	err = tx.QueryRowContext(ctx, `SELECT a.id
 		FROM assets a JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id
+		JOIN study_groups owner_group ON owner_group.id=a.group_id
+		JOIN study_groups target_group ON target_group.id=? AND target_group.tenant_id=owner_group.tenant_id
 		WHERE BINARY a.storage_path=BINARY ? AND b.asset_kind='owned' AND b.deleted_at IS NULL
-		ORDER BY a.id LIMIT 1`, storagePath).Scan(&id)
+		ORDER BY a.id LIMIT 1`, groupID, storagePath).Scan(&id)
 	if err != nil {
 		return 0, err
 	}

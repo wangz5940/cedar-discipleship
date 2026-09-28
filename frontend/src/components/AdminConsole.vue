@@ -59,6 +59,7 @@ import {
 } from '../legacy-app';
 
 const MinistryCatalogAdmin = lazyPage(() => import('./MinistryCatalogAdmin.vue'));
+const TenantManagement = lazyPage(() => import('./TenantManagement.vue'));
 const BotManagementAdmin = lazyPage(() => import('./BotManagementAdmin.vue'));
 const ReciteHistoryAdmin = lazyPage(() => import('./ReciteHistoryAdmin.vue'));
 const ResourceGovernance = lazyPage(() => import('./ResourceGovernance.vue'));
@@ -104,10 +105,10 @@ function navigateTabs(event) {
   tabs[next].click();
 }
 
-const canManageMinistryCatalog = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.includes('group_admin')));
+const canManageMinistryCatalog = computed(() => Boolean(user.value?.is_super_admin || user.value?.is_tenant_admin || user.value?.roles?.includes('group_admin')));
 const canManageRoles = computed(() => canManageStudyGroup(user.value));
-watch(() => user.value?.is_super_admin, (isSuperAdmin) => {
-  if (!isSuperAdmin && adminSection.value === 'recite-history') setAdminSection('learning');
+watch(() => Boolean(user.value?.is_super_admin || user.value?.is_tenant_admin), (canManageHistory) => {
+  if (!canManageHistory && adminSection.value === 'recite-history') setAdminSection('learning');
 });
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const conflictAlreadyInGroup = computed(() => members.value.some(
@@ -169,7 +170,10 @@ function groupSaveErrorMessage(message) {
 
 async function createGroup() {
   try {
-    const result = await api('/super-admin/groups', {
+    const tenantID = Number(user.value?.current_tenant_id || 0);
+    const path = tenantID > 1 || user.value?.is_tenant_admin
+      ? `/tenants/${tenantID}/groups` : '/super-admin/groups';
+    const result = await api(path, {
       method: 'POST',
       body: JSON.stringify({ name: groupName.value }),
     });
@@ -188,7 +192,10 @@ async function createGroup() {
 async function updateCurrentGroup() {
   if (!currentGroupID.value) return;
   try {
-    await api(`/super-admin/groups/${currentGroupID.value}`, {
+    const tenantID = Number(user.value?.current_tenant_id || 0);
+    const path = tenantID > 1 || user.value?.is_tenant_admin
+      ? `/tenants/${tenantID}/groups/${currentGroupID.value}` : `/super-admin/groups/${currentGroupID.value}`;
+    await api(path, {
       method: 'PUT',
       body: JSON.stringify({ name: groupEditName.value }),
     });
@@ -215,11 +222,27 @@ async function deleteCurrentGroup() {
     return;
   }
   try {
-    await api(`/super-admin/groups/${group.id}`, { method: 'DELETE' });
+    const tenantID = Number(user.value?.current_tenant_id || 0);
+    const path = tenantID > 1 || user.value?.is_tenant_admin
+      ? `/tenants/${tenantID}/groups/${group.id}` : `/super-admin/groups/${group.id}`;
+    await api(path, { method: 'DELETE' });
     showToast('小组已删除');
     await reloadApp();
   } catch (error) {
     showToast(groupSaveErrorMessage(error.message));
+  }
+}
+
+async function setMemberLeader(member, grant) {
+  const tenantID = Number(user.value?.current_tenant_id || 0);
+  if (!tenantID || !currentGroupID.value) return;
+  try {
+    await api(`/tenants/${tenantID}/groups/${currentGroupID.value}/leaders/${member.user_id}`, {
+      method: grant ? 'PUT' : 'DELETE',
+    });
+    await reloadApp();
+  } catch (error) {
+    showToast(error.message);
   }
 }
 
@@ -580,6 +603,17 @@ async function runLocalBackupImport() {
         数据管理
       </button>
       <button
+        v-if="user?.is_super_admin || user?.is_tenant_admin"
+        :class="adminSection === 'tenant' ? 'primary' : 'quiet'"
+        type="button"
+        role="tab"
+        :aria-selected="adminSection === 'tenant'"
+        :tabindex="adminSection === 'tenant' ? 0 : -1"
+        @click="setAdminSection('tenant')"
+      >
+        主体管理
+      </button>
+      <button
         v-if="canManageMinistryCatalog"
         :class="adminSection === 'ministry' ? 'primary' : 'quiet'"
         type="button"
@@ -602,7 +636,7 @@ async function runLocalBackupImport() {
         机器人管理
       </button>
       <button
-        v-if="user?.is_super_admin"
+        v-if="user?.is_super_admin || user?.is_tenant_admin"
         :class="adminSection === 'recite-history' ? 'primary' : 'quiet'"
         type="button"
         role="tab"
@@ -623,7 +657,7 @@ async function runLocalBackupImport() {
       </div>
 
       <div class="grid cols-2 admin-member-settings">
-        <div v-if="user?.is_super_admin" class="card">
+        <div v-if="user?.is_super_admin || user?.is_tenant_admin" class="card">
           <h2>创建小组</h2>
           <div class="form-stack">
             <input v-model.trim="groupName" placeholder="小组名称" @keyup.enter="createGroup" />
@@ -631,7 +665,7 @@ async function runLocalBackupImport() {
           </div>
         </div>
 
-        <div v-if="user?.is_super_admin && currentGroupID" class="card">
+        <div v-if="(user?.is_super_admin || user?.is_tenant_admin) && currentGroupID" class="card">
           <h2>修改当前小组</h2>
           <div class="form-stack">
             <input v-model.trim="groupEditName" placeholder="小组名称" @keyup.enter="updateCurrentGroup" />
@@ -645,7 +679,7 @@ async function runLocalBackupImport() {
           </div>
         </div>
 
-        <div v-if="currentGroupID" class="card">
+        <div v-if="currentGroupID && !user?.is_tenant_admin && (user?.current_tenant_id === 1 || user?.is_super_admin)" class="card">
           <h2>修改本组默认密码</h2>
           <div class="form-stack">
             <input v-model="groupPassword" placeholder="新的默认密码（至少 8 位）" type="password" @keyup.enter="updateGroupPassword(groupPassword)" />
@@ -682,6 +716,14 @@ async function runLocalBackupImport() {
                 {{ roleLabel(member) }}
               </span>
               <button
+                v-if="user?.is_tenant_admin && member.user_id !== user?.id && !member.is_super_admin"
+                class="quiet"
+                type="button"
+                @click="setMemberLeader(member, !member.roles?.includes('group_leader'))"
+              >
+                {{ member.roles?.includes('group_leader') ? '取消组长' : '设为组长' }}
+              </button>
+              <button
                 v-if="canManageRoles && !member.is_super_admin && !member.roles?.includes('group_leader')"
                 :class="member.roles?.includes('group_admin') ? 'secondary' : 'ok'"
                 type="button"
@@ -704,9 +746,10 @@ async function runLocalBackupImport() {
       </div>
     </section>
 
+    <TenantManagement v-else-if="adminSection === 'tenant' && (user?.is_super_admin || user?.is_tenant_admin)" />
     <MinistryCatalogAdmin v-else-if="adminSection === 'ministry' && canManageMinistryCatalog" />
     <BotManagementAdmin v-else-if="adminSection === 'bot' && user?.is_super_admin" />
-    <ReciteHistoryAdmin v-else-if="adminSection === 'recite-history' && user?.is_super_admin" :group-id="currentGroupID" :members="members" />
+    <ReciteHistoryAdmin v-else-if="adminSection === 'recite-history' && (user?.is_super_admin || user?.is_tenant_admin)" :group-id="currentGroupID" :members="members" />
 
     <section v-else-if="adminSection === 'learning'">
               <div class="grid admin-learning-stack">

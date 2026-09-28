@@ -30,6 +30,7 @@ import { useDownloadManagerStore } from '../stores/downloadManager';
 import { confirmDialog } from '../ui/dialog';
 import { api, fetchWithAuth, openContentTarget, toast as showToast } from '../legacy-app';
 import { classifyAttachment, markdownToSafeHTML } from '../runtime/content';
+import { canManageStudyGroup } from '../runtime/studyPermissions';
 import { downloadErrorMessage } from '../runtime/downloads';
 import CountingAttendance from './CountingAttendance.vue';
 
@@ -1164,7 +1165,7 @@ function localDateTimeValue() {
                   />
                   <span>加入/分享免审批</span>
                 </label>
-                <label v-if="app.user?.is_super_admin || app.user?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))">
+                <label v-if="canManageStudyGroup(app.user)">
                   <span>小组组长</span>
                   <select @change="updateLeader($event.target.value)">
                     <option value="">选择组长</option>

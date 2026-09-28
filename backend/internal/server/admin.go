@@ -70,6 +70,7 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := a.users.CreateMember(r.Context(), groupID, u.ID, userdomain.CreateMemberInput{
 		CreateUser:  req.CreateUser,
+		TenantID:    u.CurrentTenantID,
 		UserID:      req.UserID,
 		DisplayName: req.DisplayName,
 		Username:    req.Username,
@@ -148,6 +149,10 @@ func (a *app) handleAdminRemoveMember(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleAdminSetGroupDefaultPassword(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
+	if (u.IsTenantAdmin || u.CurrentTenantID != 1) && !u.IsSuperAdmin {
+		writeError(w, http.StatusForbidden, "global_account_password")
+		return
+	}
 	groupID := requireGroupID(w, u)
 	if groupID == 0 {
 		return

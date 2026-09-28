@@ -146,6 +146,16 @@ func (r *MySQLRepository) saveShareSettingsTx(ctx context.Context, tx *sql.Tx, g
 		}
 	case ShareScopeSelectedGroups:
 		for _, consumerID := range input.ConsumerGroupIDs {
+			var sameTenant bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+				SELECT 1 FROM study_groups owner JOIN study_groups consumer
+				  ON consumer.tenant_id=owner.tenant_id AND consumer.status=1
+				WHERE owner.id=? AND consumer.id=? AND owner.status=1)`, groupID, consumerID).Scan(&sameTenant); err != nil {
+				return err
+			}
+			if !sameTenant {
+				return ErrInvalidShareScope
+			}
 			id := consumerID
 			if err := upsertShareGrant(ctx, tx, assetID, groupID, &id, actorID, at); err != nil {
 				return err
@@ -166,10 +176,11 @@ func (r *MySQLRepository) SharedResources(ctx context.Context, targetGroupID uin
 	  JOIN study_groups sg ON sg.id=a.group_id AND sg.status=1
 	  LEFT JOIN asset_bindings imported
 	    ON imported.group_id=? AND imported.source_asset_id=a.id AND imported.deleted_at IS NULL
+	  JOIN study_groups target ON target.id=? AND target.tenant_id=sg.tenant_id AND target.status=1
 	 WHERE g.permission=? AND g.status=? AND a.group_id<>?
 	   AND (g.consumer_group_id IS NULL OR g.consumer_group_id=?)
 	   AND a.storage_path LIKE ?`
-	args := []any{AssetKindOwned, targetGroupID, sharePermissionImport, shareStatusActive, targetGroupID, targetGroupID, newResourceStorageSQLPattern}
+	args := []any{AssetKindOwned, targetGroupID, targetGroupID, sharePermissionImport, shareStatusActive, targetGroupID, targetGroupID, newResourceStorageSQLPattern}
 	if filter.OwnerGroupID > 0 {
 		query += " AND a.group_id=?"
 		args = append(args, filter.OwnerGroupID)
@@ -398,8 +409,10 @@ func (r *MySQLRepository) importedSource(ctx context.Context, groupID, importedA
 	  FROM asset_dependencies d
 	  JOIN assets source ON source.id=d.provider_asset_id
 	  JOIN asset_bindings source_b ON source_b.asset_id=source.id AND source_b.asset_kind=? AND source_b.deleted_at IS NULL
-	  JOIN asset_share_grants g ON g.asset_id=source.id AND g.permission=? AND g.status=?
+	  JOIN asset_share_grants g ON g.asset_id=source.id AND g.owner_group_id=source.group_id AND g.permission=? AND g.status=?
 	   AND (g.consumer_group_id IS NULL OR g.consumer_group_id=d.consumer_group_id)
+	  JOIN study_groups owner_group ON owner_group.id=source.group_id
+	  JOIN study_groups consumer_group ON consumer_group.id=d.consumer_group_id AND consumer_group.tenant_id=owner_group.tenant_id
 	 WHERE d.consumer_group_id=? AND d.consumer_asset_id=? AND d.status=? AND source.storage_path LIKE ?`,
 		AssetKindOwned, sharePermissionImport, shareStatusActive, groupID, importedAssetID, shareStatusActive, newResourceStorageSQLPattern).
 		Scan(&item.ID, &item.GroupID, &item.Category, &item.Title, &item.OriginalName, &item.StoragePath,
@@ -433,10 +446,11 @@ func (r *MySQLRepository) sharedSourceTx(ctx context.Context, tx *sql.Tx, target
 	  JOIN study_groups sg ON sg.id=a.group_id
 	  JOIN asset_share_grants g ON g.asset_id=a.id
 	  LEFT JOIN asset_bindings imported ON imported.group_id=? AND imported.source_asset_id=a.id AND imported.deleted_at IS NULL
+	  JOIN study_groups target ON target.id=? AND target.tenant_id=sg.tenant_id AND target.status=1
 	 WHERE g.permission=? AND g.status=? AND a.id=? AND a.group_id<>?
 	   AND (g.consumer_group_id IS NULL OR g.consumer_group_id=?)
 	   AND a.storage_path LIKE ? LIMIT 1`,
-		AssetKindOwned, targetGroupID, sharePermissionImport, shareStatusActive, sourceAssetID, targetGroupID, targetGroupID, newResourceStorageSQLPattern)
+		AssetKindOwned, targetGroupID, targetGroupID, sharePermissionImport, shareStatusActive, sourceAssetID, targetGroupID, targetGroupID, newResourceStorageSQLPattern)
 	return scanSharedResource(row)
 }
 

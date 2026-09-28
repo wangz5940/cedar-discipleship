@@ -16,6 +16,9 @@ type Group struct {
 	ID          uint64 `json:"id"`
 	Code        string `json:"code"`
 	Name        string `json:"name"`
+	TenantID    uint64 `json:"tenant_id"`
+	TenantName  string `json:"tenant_name"`
+	TenantAdmin bool   `json:"is_tenant_admin"`
 	Description string `json:"description,omitempty"`
 }
 

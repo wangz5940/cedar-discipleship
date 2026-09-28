@@ -65,6 +65,13 @@ func (s *Service) CurrentUser(ctx context.Context, userID, currentGroupID uint64
 		vo.CurrentGroupID = currentGroupID
 	}
 	if vo.CurrentGroupID > 0 {
+		for _, group := range groups {
+			if group.ID == vo.CurrentGroupID {
+				vo.CurrentTenantID = group.TenantID
+				vo.IsTenantAdmin = group.TenantAdmin
+				break
+			}
+		}
 		roles, err := s.repo.ListRoles(ctx, userID, vo.CurrentGroupID)
 		if err != nil {
 			return UserVO{}, err
@@ -175,7 +182,7 @@ func (s *Service) CreateMember(ctx context.Context, groupID, actorID uint64, inp
 		}
 		existing, err := s.repo.FindByUsername(ctx, input.Username)
 		if err == nil {
-			return 0, s.usernameConflict(ctx, existing)
+			return 0, s.usernameConflict(ctx, input.TenantID, existing)
 		}
 		if !errors.Is(err, ErrUserNotFound) {
 			return 0, err
@@ -189,18 +196,29 @@ func (s *Service) CreateMember(ctx context.Context, groupID, actorID uint64, inp
 	if input.CreateUser && errors.Is(err, ErrUsernameExists) {
 		existing, findErr := s.repo.FindByUsername(ctx, input.Username)
 		if findErr == nil {
-			return 0, s.usernameConflict(ctx, existing)
+			return 0, s.usernameConflict(ctx, input.TenantID, existing)
 		}
 	}
 	return userID, err
 }
 
-func (s *Service) usernameConflict(ctx context.Context, item *User) error {
+func (s *Service) usernameConflict(ctx context.Context, tenantID uint64, item *User) error {
 	groups, err := s.repo.ListMembershipGroups(ctx, item.ID)
 	if err != nil {
-		// Membership names are informational; preserve the existing conflict path if
-		// they cannot be loaded.
-		groups = nil
+		return ErrUsernameExists
+	}
+	if tenantID == 0 {
+		return ErrUsernameExists
+	}
+	visible := groups[:0]
+	for _, group := range groups {
+		if group.TenantID == tenantID {
+			visible = append(visible, group)
+		}
+	}
+	groups = visible
+	if len(groups) == 0 {
+		return ErrUsernameExists
 	}
 	return &UsernameConflictError{
 		ExistingUser: ExistingUserVO{

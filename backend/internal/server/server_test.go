@@ -71,20 +71,27 @@ func TestAuthCookiesUseHttpOnlyRefreshAndReadableCSRF(t *testing.T) {
 	setAuthCookies(recorder, request, "refresh-token", "csrf-token", expires)
 
 	cookies := recorder.Result().Cookies()
-	var refreshCookie, csrfCookie *http.Cookie
+	var refreshCookie, playbackCookie, csrfCookie *http.Cookie
 	for _, cookie := range cookies {
 		switch cookie.Name {
 		case refreshCookieName:
-			refreshCookie = cookie
+			if cookie.Path == "/api/assets" {
+				playbackCookie = cookie
+			} else if cookie.Path == "/api/auth" {
+				refreshCookie = cookie
+			}
 		case csrfCookieName:
 			csrfCookie = cookie
 		}
 	}
-	if refreshCookie == nil || csrfCookie == nil {
-		t.Fatalf("expected refresh and csrf cookies, got %+v", cookies)
+	if refreshCookie == nil || playbackCookie == nil || csrfCookie == nil {
+		t.Fatalf("expected refresh, playback, and csrf cookies, got %+v", cookies)
 	}
 	if !refreshCookie.HttpOnly || !refreshCookie.Secure || refreshCookie.SameSite != http.SameSiteStrictMode {
 		t.Fatalf("refresh cookie security attrs = %+v", refreshCookie)
+	}
+	if playbackCookie.Value != refreshCookie.Value || !playbackCookie.HttpOnly || !playbackCookie.Secure || playbackCookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("playback cookie security attrs = %+v", playbackCookie)
 	}
 	if csrfCookie.HttpOnly || !csrfCookie.Secure || csrfCookie.SameSite != http.SameSiteStrictMode {
 		t.Fatalf("csrf cookie attrs = %+v", csrfCookie)

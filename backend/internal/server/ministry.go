@@ -731,6 +731,7 @@ func ministryActor(user currentUser) ministrydomain.Actor {
 		UserID:       user.ID,
 		IsSuperAdmin: user.IsSuperAdmin,
 		IsStudyAdmin: user.IsSuperAdmin ||
+			user.IsTenantAdmin ||
 			hasRole(user.Roles, roleGroupAdmin),
 	}
 }

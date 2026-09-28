@@ -1,8 +1,12 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { RefreshCw, Trash2 } from '@lucide/vue';
 import { confirmDialog } from '../ui/dialog';
 import { api, toast as showToast } from '../legacy-app';
+import { useAppStateStore } from '../stores/appState';
+
+const app = useAppStateStore();
+const basePath = computed(() => app.user?.is_super_admin ? '/super-admin/recite-attempts' : '/tenant-admin/recite-attempts');
 
 const props = defineProps({ groupId: [Number, String], members: { type: Array, default: () => [] } });
 const selectedUserID = ref('');
@@ -35,7 +39,7 @@ async function load(reset = false) {
   if (selectedUserID.value) params.set('user_id', selectedUserID.value);
   loading.value = true;
   try {
-    const result = await api(`/super-admin/recite-attempts?${params}`);
+    const result = await api(`${basePath.value}?${params}`);
     if (currentRequest !== requestID || String(props.groupId) !== currentGroupID) return;
     const rows = Array.isArray(result.attempts) ? result.attempts : [];
     attempts.value = reset ? rows : [...attempts.value, ...rows];
@@ -58,7 +62,7 @@ async function remove(attempt) {
   if (!confirmed) return;
   deletingID.value = attempt.id;
   try {
-    await api(`/super-admin/recite-attempts/${attempt.id}`, { method: 'DELETE' });
+    await api(`${basePath.value}/${attempt.id}`, { method: 'DELETE' });
     showToast('默写记录已删除');
     await load(true);
   } catch (error) {

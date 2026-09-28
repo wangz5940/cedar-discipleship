@@ -246,13 +246,14 @@ func TestServiceCreateMemberReturnsExistingAccountInformation(t *testing.T) {
 			Status:      1,
 		},
 		groups: []Group{
-			{ID: 2, Code: "alpha", Name: "甲组"},
-			{ID: 5, Code: "beta", Name: "乙组"},
+			{ID: 2, Code: "alpha", Name: "甲组", TenantID: 1},
+			{ID: 5, Code: "beta", Name: "乙组", TenantID: 1},
 		},
 	}
 
 	_, err := NewService(repo).CreateMember(context.Background(), 7, 9, CreateMemberInput{
 		CreateUser:  true,
+		TenantID:    1,
 		DisplayName: "新成员",
 		Username:    "Existing",
 	})
@@ -273,6 +274,23 @@ func TestServiceCreateMemberReturnsExistingAccountInformation(t *testing.T) {
 	}
 	if repo.created {
 		t.Fatal("repository CreateMember called after username conflict")
+	}
+}
+
+func TestServiceCreateMemberDoesNotRevealAnotherTenant(t *testing.T) {
+	repo := &createMemberTestRepository{
+		existingUser: &User{ID: 23, Username: "existing", Status: 1},
+		groups:       []Group{{ID: 5, Name: "乙组", TenantID: 2}},
+	}
+	_, err := NewService(repo).CreateMember(context.Background(), 7, 9, CreateMemberInput{
+		CreateUser: true, TenantID: 1, DisplayName: "新成员", Username: "existing",
+	})
+	if !errors.Is(err, ErrUsernameExists) {
+		t.Fatalf("error = %v, want username conflict", err)
+	}
+	var details *UsernameConflictError
+	if errors.As(err, &details) {
+		t.Fatal("cross-tenant account details were exposed")
 	}
 }
 

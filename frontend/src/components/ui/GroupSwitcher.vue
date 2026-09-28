@@ -1,9 +1,9 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Check, ChevronDown, Users } from '@lucide/vue';
 import AppOverlay from './AppOverlay.vue';
 
-defineProps({
+const props = defineProps({
   groups: { type: Array, default: () => [] },
   currentGroupID: { type: [String, Number], default: '' },
   defaultGroupID: { type: [String, Number], default: '' },
@@ -11,6 +11,7 @@ defineProps({
 });
 const emit = defineEmits(['switch', 'set-default']);
 const pickerOpen = ref(false);
+const hasMultipleTenants = computed(() => new Set(props.groups.map((group) => group.tenant_id)).size > 1);
 
 function chooseGroup(groupID) {
   pickerOpen.value = false;
@@ -27,7 +28,7 @@ function chooseGroup(groupID) {
       :aria-expanded="pickerOpen"
       @click="pickerOpen = true"
     >
-      <span>{{ activeGroup?.name || '选择小组' }}</span>
+      <span>{{ hasMultipleTenants && activeGroup?.tenant_name ? `${activeGroup.tenant_name} / ${activeGroup.name}` : (activeGroup?.name || '选择小组') }}</span>
       <ChevronDown :size="16" aria-hidden="true" />
     </button>
     <button
@@ -63,7 +64,7 @@ function chooseGroup(groupID) {
           <span class="group-switcher-dialog__icon"><Users :size="18" aria-hidden="true" /></span>
           <span class="group-switcher-dialog__copy">
             <strong>{{ group.name }}</strong>
-            <small v-if="group.code">{{ group.code }}</small>
+            <small>{{ hasMultipleTenants ? `${group.tenant_name} · ${group.code}` : group.code }}</small>
           </span>
           <Check
             v-if="Number(group.id) === Number(currentGroupID)"
