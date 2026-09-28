@@ -676,6 +676,17 @@ export async function savePersonalSettings(memberName, mobileViewMode) {
   return settings;
 }
 
+export async function changeOwnPassword(oldPassword, newPassword) {
+  await api('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
+  });
+  await logout({ remote: false });
+}
+
 export function toggleSidebar() {
   state.sidebarCollapsed = !state.sidebarCollapsed;
   render();
@@ -1018,7 +1029,7 @@ export function sameViewerItem(item, viewer) {
   return normalizeSearchText(item?.title || '') === normalizeSearchText(viewer?.title || '');
 }
 
-function markdownToHTML(content) {
+function markdownToHTML(content, options = {}) {
   const contentLines = Array.isArray(content) ? content : String(content || '').replace(/\r/g, '').split('\n');
   function isNewBlockStart(str) {
     if (/^#/.test(str)) return true;
@@ -1037,7 +1048,7 @@ function markdownToHTML(content) {
       continue;
     }
     const prevIdx = processedLines.length - 1;
-    if (prevIdx >= 0 && processedLines[prevIdx] !== '') {
+    if (!options.preserveLineBreaks && prevIdx >= 0 && processedLines[prevIdx] !== '') {
       if (isNewBlockStart(line) || /^#/.test(processedLines[prevIdx])) processedLines.push(line);
       else processedLines[prevIdx] += line;
     } else {
@@ -1101,7 +1112,9 @@ export async function openContentTarget(target) {
     closeViewer();
     state.viewer = {
       type: 'markdown', title,
-      html: markdownToHTML(inlineContent.split('\n')),
+      html: markdownToHTML(inlineContent.split('\n'), {
+        preserveLineBreaks: target.preserveLineBreaks === true,
+      }),
       sourceURL: '', downloadURL: '', downloadSource: 'learning',
       originalName: '', externalURL: '', relatedSections: target.relatedSections || [],
     };

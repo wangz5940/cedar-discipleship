@@ -55,6 +55,29 @@ func TestServiceUploadDefaultsToAllGroupsVisibility(t *testing.T) {
 	}
 }
 
+func TestServiceUploadHonorsPrivateVisibility(t *testing.T) {
+	repo := &fakeRepository{nextID: 12}
+	storage := &fakeStorage{
+		stored: &StoredObject{StoragePath: "1/ministry/upload.pdf"},
+	}
+	service := NewService(repo, storage, "")
+
+	_, err := service.Upload(context.Background(), UploadRequest{
+		GroupID:    1,
+		ActorID:    2,
+		Category:   "ministry-3",
+		Visibility: ShareScopePrivate,
+		FileName:   "upload.pdf",
+		Reader:     strings.NewReader("pdf"),
+	})
+	if err != nil {
+		t.Fatalf("Upload error = %v", err)
+	}
+	if repo.created.Visibility != string(ShareScopePrivate) {
+		t.Fatalf("upload visibility = %q, want %q", repo.created.Visibility, ShareScopePrivate)
+	}
+}
+
 func TestServiceRenameNormalizesTitle(t *testing.T) {
 	t.Parallel()
 

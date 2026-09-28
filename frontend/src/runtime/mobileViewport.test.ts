@@ -30,4 +30,21 @@ describe('mobile viewport safeguards', () => {
     expect(component).not.toContain('useStackGesture');
     expect(component).not.toContain('normalizeMobileViewMode');
   });
+
+  it('keeps ministry catalog name and actions on one mobile row', () => {
+    const component = readFileSync(new URL('../components/MinistryCatalogAdmin.vue', import.meta.url), 'utf8');
+
+    expect(component).toMatch(
+      /@media\s*\(max-width:\s*767px\)[\s\S]*?\.ministry-catalog-row\s*{\s*grid-template-columns:\s*18px 34px minmax\(0,\s*1fr\) auto;/,
+    );
+    expect(component).not.toContain('grid-column: 3');
+  });
+
+  it('keeps ministry desktop columns independently scrollable', () => {
+    const component = readFileSync(new URL('../components/MinistryGroups.vue', import.meta.url), 'utf8');
+
+    expect(component).toMatch(
+      /@media\s*\(min-width:\s*921px\)[\s\S]*?\.ministry-directory,\s*\n\s*\.ministry-workspace\s*{[\s\S]*?overflow-y:\s*auto;/,
+    );
+  });
 });

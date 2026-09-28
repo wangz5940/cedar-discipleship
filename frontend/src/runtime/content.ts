@@ -23,7 +23,15 @@ export function hasPDFSignature(data: Uint8Array): boolean {
 export function buildWeeklyVerseContentLink(verseRef: unknown, reciteText: unknown) {
   const content = String(reciteText || '').trim();
   const title = String(verseRef || '').trim() || '本周背经';
-  if (content) return { label: '查看原文', title, type: 'markdown' as const, content };
+  if (content) {
+    return {
+      label: '查看原文',
+      title,
+      type: 'markdown' as const,
+      content,
+      preserveLineBreaks: true,
+    };
+  }
   const target = bibleReferenceTarget(verseRef);
   return target ? { label: '查看原文', title, type: 'iframe' as const, url: target } : null;
 }

@@ -1,9 +1,13 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Columns2, Layers3, Save, UserRound } from '@lucide/vue';
+import { Columns2, Layers3, LockKeyhole, Save, UserRound } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
-import { savePersonalSettings, toast as showToast } from '../legacy-app';
+import {
+  changeOwnPassword,
+  savePersonalSettings,
+  toast as showToast,
+} from '../legacy-app';
 import { normalizeMobileViewMode } from '../runtime/personalSettings';
 
 const app = useAppStateStore();
@@ -11,6 +15,10 @@ const { user, groups, currentGroupID } = storeToRefs(app);
 const memberName = ref('');
 const mobileViewMode = ref('masonry');
 const saving = ref(false);
+const currentPassword = ref('');
+const newPassword = ref('');
+const confirmPassword = ref('');
+const changingPassword = ref(false);
 
 const activeGroup = computed(() => groups.value.find((group) => Number(group.id) === Number(currentGroupID.value)));
 
@@ -37,6 +45,39 @@ async function submit() {
     showToast(messages[error.message] || error.message);
   } finally {
     saving.value = false;
+  }
+}
+
+async function changePassword() {
+  if (changingPassword.value) return;
+  if (!currentPassword.value) {
+    showToast('请输入当前密码');
+    return;
+  }
+  if (newPassword.value.length < 8) {
+    showToast('新密码至少需要 8 位');
+    return;
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    showToast('两次输入的新密码不一致');
+    return;
+  }
+  changingPassword.value = true;
+  try {
+    await changeOwnPassword(currentPassword.value, newPassword.value);
+    currentPassword.value = '';
+    newPassword.value = '';
+    confirmPassword.value = '';
+    showToast('密码已修改，请使用新密码重新登录');
+  } catch (error) {
+    const messages = {
+      invalid_password: '当前密码不正确',
+      password_too_short: '新密码至少需要 8 位',
+      password_save_failed: '密码保存失败，请稍后重试',
+    };
+    showToast(messages[error.message] || error.message);
+  } finally {
+    changingPassword.value = false;
   }
 }
 </script>
@@ -97,6 +138,31 @@ async function submit() {
         </div>
       </section>
 
+      <section class="panel personal-settings__section" @keydown.enter.stop.prevent="changePassword">
+        <header>
+          <LockKeyhole :size="20" />
+          <h2>修改密码</h2>
+        </header>
+        <div class="personal-settings__password-fields">
+          <label>
+            <span>当前密码</span>
+            <input v-model="currentPassword" type="password" autocomplete="current-password" />
+          </label>
+          <label>
+            <span>新密码</span>
+            <input v-model="newPassword" type="password" autocomplete="new-password" minlength="8" />
+          </label>
+          <label>
+            <span>确认新密码</span>
+            <input v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" />
+          </label>
+        </div>
+        <button class="secondary personal-settings__password-save" type="button" :disabled="changingPassword" @click="changePassword">
+          <LockKeyhole :size="17" />
+          {{ changingPassword ? '修改中' : '修改密码' }}
+        </button>
+      </section>
+
       <button class="primary personal-settings__save" type="submit" :disabled="saving">
         <Save :size="17" />
         {{ saving ? '保存中' : '保存设置' }}
@@ -113,8 +179,10 @@ async function submit() {
 .personal-settings__section { display: grid; gap: 18px; }
 .personal-settings__section > header { display: flex; align-items: center; gap: 10px; color: var(--cd-primary); }
 .personal-settings__section h2 { margin: 0; color: var(--cd-text); font-size: 18px; }
-.personal-settings__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.personal-settings__fields label { display: grid; gap: 7px; color: var(--cd-muted); font-size: 13px; font-weight: 600; }
+.personal-settings__fields,
+.personal-settings__password-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.personal-settings__fields label,
+.personal-settings__password-fields label { display: grid; gap: 7px; color: var(--cd-muted); font-size: 13px; font-weight: 600; }
 .personal-settings__layout-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .personal-settings__layout-options button {
   display: grid;
@@ -131,10 +199,14 @@ async function submit() {
   background: var(--cd-primary-soft);
   color: var(--cd-primary);
 }
+.personal-settings__password-save { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
 .personal-settings__save { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
 @media (max-width: 600px) {
-  .personal-settings__fields, .personal-settings__layout-options { grid-template-columns: 1fr; }
+  .personal-settings__fields,
+  .personal-settings__password-fields,
+  .personal-settings__layout-options { grid-template-columns: 1fr; }
   .personal-settings__layout-options button { min-height: 72px; grid-template-columns: auto auto; align-items: center; }
+  .personal-settings__password-save,
   .personal-settings__save { width: 100%; justify-content: center; min-height: 48px; }
 }
 </style>

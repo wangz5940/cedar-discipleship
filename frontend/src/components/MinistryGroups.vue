@@ -1241,4 +1241,19 @@ function localDateTimeValue() {
   outline: 3px solid rgba(47, 107, 69, 0.2);
   outline-offset: 2px;
 }
+
+@media (min-width: 921px) {
+  .ministry-layout {
+    height: calc(100dvh - 190px);
+    min-height: 520px;
+  }
+
+  .ministry-directory,
+  .ministry-workspace {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
 </style>

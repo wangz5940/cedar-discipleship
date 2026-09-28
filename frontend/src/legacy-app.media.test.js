@@ -65,6 +65,29 @@ describe('video learning related resources', () => {
   });
 });
 
+describe('inline reading content', () => {
+  it('preserves configured recitation line breaks without changing ordinary markdown flow', async () => {
+    setActivePinia(createPinia());
+    const firstLine = '这是第一行默写原文，长度足够并且以句号结束来验证换行。';
+    const secondLine = '这是第二行默写原文，长度同样足够并且以句号结束来验证换行。';
+
+    await openContentTarget({
+      type: 'markdown',
+      title: '默写原文',
+      content: `${firstLine}\n${secondLine}`,
+      preserveLineBreaks: true,
+    });
+    expect(useContentViewerStore().viewer.html).toBe(`<p>${firstLine}<br>${secondLine}</p>`);
+
+    await openContentTarget({
+      type: 'markdown',
+      title: '普通文章',
+      content: `${firstLine}\n${secondLine}`,
+    });
+    expect(useContentViewerStore().viewer.html).toBe(`<p>${firstLine}${secondLine}</p>`);
+  });
+});
+
 describe('API error details', () => {
   afterEach(() => vi.unstubAllGlobals());
 

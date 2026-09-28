@@ -702,11 +702,12 @@ func (a *app) handleMinistryAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	item, err := a.assets.Upload(r.Context(), assetdomain.UploadRequest{
-		GroupID:  studyGroupID,
-		ActorID:  user.ID,
-		Category: fmt.Sprintf("ministry-%d", groupID),
-		FileName: header.Filename,
-		Reader:   file,
+		GroupID:    studyGroupID,
+		ActorID:    user.ID,
+		Category:   fmt.Sprintf("ministry-%d", groupID),
+		Visibility: assetdomain.ShareScopePrivate,
+		FileName:   header.Filename,
+		Reader:     file,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ministry_attachment_failed")

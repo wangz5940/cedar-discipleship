@@ -31,8 +31,14 @@ describe('content runtime helpers', () => {
 
   it('opens configured recitation text or resolves a Bible reference when the text is empty', () => {
     expect(buildWeeklyVerseContentLink('罗马书 8:11-15', '罗马书 8:11 原文')).toEqual({
-      label: '查看原文', title: '罗马书 8:11-15', type: 'markdown', content: '罗马书 8:11 原文',
+      label: '查看原文',
+      title: '罗马书 8:11-15',
+      type: 'markdown',
+      content: '罗马书 8:11 原文',
+      preserveLineBreaks: true,
     });
+    expect(buildWeeklyVerseContentLink('罗马书 8:11-15', '第一行\n第二行')?.content)
+      .toBe('第一行\n第二行');
     expect(buildWeeklyVerseContentLink('林前 13：4-8', '')).toMatchObject({
       type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/46/13.htm#4',
     });

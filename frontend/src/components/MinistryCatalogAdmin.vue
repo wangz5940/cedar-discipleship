@@ -279,7 +279,7 @@ section { min-width: 0; }
   .admin-ministry-catalog-head { align-items: flex-start; flex-direction: column; }
   .admin-ministry-catalog-head .inline-actions { width: 100%; justify-content: space-between; }
   .ministry-catalog-create { grid-template-columns: 1fr; }
-  .ministry-catalog-row { grid-template-columns: 18px auto minmax(0, 1fr); }
-  .ministry-catalog-row .inline-actions { grid-column: 3; justify-content: flex-end; }
+  .ministry-catalog-row { grid-template-columns: 18px 34px minmax(0, 1fr) auto; gap: 6px; }
+  .ministry-catalog-row .inline-actions { gap: 4px; }
 }
 </style>

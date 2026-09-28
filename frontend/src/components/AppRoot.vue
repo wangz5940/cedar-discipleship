@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Book,
   Download,
+  Eye,
   FileText,
   Lock,
   LogOut,
@@ -488,7 +489,9 @@ async function refreshResources() {
                 </p>
               </div>
               <div class="app-resource-card__actions">
-                <span class="app-resource-card__cta" aria-hidden="true">查看</span>
+                <button class="quiet app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
+                  <Eye :size="15" aria-hidden="true" /> 查看
+                </button>
                 <button class="quiet app-resource-card__download" type="button" @click="downloadResource(asset)">
                   <Download :size="15" /> 下载
                 </button>

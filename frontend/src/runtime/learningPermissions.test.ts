@@ -1,6 +1,12 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { login, logout, savePersonalSettings, setTab } from '../legacy-app';
+import {
+  changeOwnPassword,
+  login,
+  logout,
+  savePersonalSettings,
+  setTab,
+} from '../legacy-app';
 import { useAppStateStore } from '../stores/appState';
 
 function jsonResponse(payload: unknown) {
@@ -124,5 +130,24 @@ describe('learning content permissions', () => {
 
     setTab('admin');
     expect(app.tab).toBe('home');
+  });
+
+  it('changes the current account password and clears the local session', async () => {
+    setActivePinia(createPinia());
+    vi.stubGlobal('document', { cookie: '' });
+    const request = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', request);
+
+    await changeOwnPassword('old-password', 'new-password');
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith('/api/auth/change-password', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        old_password: 'old-password',
+        new_password: 'new-password',
+      }),
+    }));
+    expect(useAppStateStore().authenticated).toBe(false);
   });
 });

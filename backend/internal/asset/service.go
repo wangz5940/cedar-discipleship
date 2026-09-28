@@ -118,7 +118,7 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 		MimeType:       mt,
 		FileSize:       stored.FileSize,
 		ChecksumSHA256: stored.ChecksumSHA256,
-		Visibility:     string(ShareScopeAllGroups),
+		Visibility:     firstNonEmpty(string(req.Visibility), string(ShareScopeAllGroups)),
 	}
 	id, err := s.repo.Create(ctx, item, req.ActorID)
 	if err != nil {

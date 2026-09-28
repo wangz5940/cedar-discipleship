@@ -6,11 +6,12 @@ import (
 )
 
 type UploadRequest struct {
-	GroupID  uint64
-	ActorID  uint64
-	Category string
-	FileName string
-	Reader   io.Reader
+	GroupID    uint64
+	ActorID    uint64
+	Category   string
+	Visibility ShareScope
+	FileName   string
+	Reader     io.Reader
 }
 
 type AssetVO struct {
