@@ -19,6 +19,9 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (uint64, bool, error) {
+	if record.TaskType == "weekly_checkin" {
+		return 0, false, ErrInvalidWeeklyTarget
+	}
 	switch record.TaskType {
 	case "daily_devotion", "daily_scripture":
 		existingID, err := s.repo.FindExistingDaily(ctx, record.GroupID, record.UserID, record.TaskType, record.LogicalDate)
@@ -42,7 +45,7 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 		if !errors.Is(err, sql.ErrNoRows) {
 			return 0, false, err
 		}
-	case "weekly_video", "weekly_verse", "weekly_outline", "weekly_checkin":
+	case "weekly_video", "weekly_verse", "weekly_outline":
 		if err := s.validateWeeklyTarget(ctx, record); err != nil {
 			return 0, false, err
 		}

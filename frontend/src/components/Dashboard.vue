@@ -13,7 +13,13 @@ import MobileCardCollection from './ui/MobileCardCollection.vue';
 import RankingChart from './ui/RankingChart.vue';
 import { useAppStateStore } from '../stores/appState';
 import { useDashboardStore } from '../stores/dashboard';
-import { statisticsLegend as legend, chartMemberLabel, statisticCount as segmentCount, statisticTotal } from '../runtime/statistics';
+import {
+  availableStatisticsLegend,
+  statisticsLegend as legend,
+  chartMemberLabel,
+  statisticCount as segmentCount,
+  statisticTotal,
+} from '../runtime/statistics';
 import { exportRankingPNG } from '../runtime/rankingExport';
 import {
   openMemberCalendar,
@@ -55,8 +61,10 @@ const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
 const matrixSort = ref({ key: 'total', direction: 'desc' });
-const activeLegend = computed(() => legend.find((item) => item.key === activeStatKey.value) || null);
-const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : legend));
+const availableLegend = computed(() => availableStatisticsLegend(ranking.value));
+const activeLegend = computed(() => availableLegend.value.find((item) => item.key === activeStatKey.value) || null);
+const effectiveStatKey = computed(() => activeLegend.value?.key || 'all');
+const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : availableLegend.value));
 const rankedItems = computed(() => [...ranking.value].sort((left, right) => {
   const leftTotal = rankingItemTotal(left);
   const rightTotal = rankingItemTotal(right);
@@ -95,16 +103,16 @@ const memberCardHeight = computed(() => {
   return Math.min(420, Math.max(210, 112 + taskCount * 48));
 });
 const periodTotals = computed(() => {
-  const totals = Object.fromEntries(legend.map((part) => [part.key, 0]));
+  const totals = Object.fromEntries(availableLegend.value.map((part) => [part.key, 0]));
   for (const row of periodRows.value) {
-    for (const part of legend) {
+    for (const part of availableLegend.value) {
       totals[part.key] += row.counts[part.key];
     }
   }
   return totals;
 });
 const periodGrandTotal = computed(() => periodRows.value.reduce((sum, row) => sum + row.total, 0));
-const zeroCountSummary = computed(() => legend.map((part) => {
+const zeroCountSummary = computed(() => availableLegend.value.map((part) => {
   const count = periodRows.value.filter((row) => row.counts[part.key] === 0).length;
   return `${part.label} ${count}`;
 }).join(' / '));
@@ -114,7 +122,7 @@ function stackHeight(item) {
 }
 
 function rankingItemTotal(item) {
-  return statisticTotal(item, activeStatKey.value);
+  return statisticTotal(item, effectiveStatKey.value);
 }
 
 function setActiveStat(key) {
@@ -152,7 +160,7 @@ async function exportRankingChart() {
     title: '香柏木数据统计中心',
     subtitle: `${monthLabel.value} ${activeScopeLabel.value}统计`,
     items: rankedItems.value,
-    activeKey: activeStatKey.value,
+    activeKey: effectiveStatKey.value,
     filename: `${monthLabel.value}-bar-chart.png`,
   });
 }
@@ -374,14 +382,14 @@ async function exportRankingChart() {
             <div class="inline filter-list" aria-label="统计分类筛选">
               <button
                 class="quiet filter-chip"
-                :class="{ primary: activeStatKey === 'all' }"
+                :class="{ primary: effectiveStatKey === 'all' }"
                 type="button"
                 @click="activeStatKey = 'all'"
               >
                 全部
               </button>
               <button
-                v-for="item in legend"
+                v-for="item in availableLegend"
                 :key="item.key"
                 class="quiet filter-chip"
                 :class="{ primary: activeStatKey === item.key }"
@@ -415,7 +423,7 @@ async function exportRankingChart() {
               <h3 class="table-heading">周期完成数</h3>
               <p class="muted small">{{ rankingFrom }} 至 {{ rankingTo }} · {{ periodRows.length }} 位成员</p>
             </div>
-            <span class="pill">0 次人数：{{ zeroCountSummary }}</span>
+            <span v-if="availableLegend.length" class="pill">0 次人数：{{ zeroCountSummary }}</span>
           </div>
           <div class="tablewrap responsive-table matrix-table desktop-stack-content">
             <table>
@@ -429,7 +437,7 @@ async function exportRankingChart() {
                       <ChevronsUpDown v-else :size="14" />
                     </button>
                   </th>
-                  <th v-for="item in legend" :key="item.key" :aria-sort="matrixSortAria(item.key)">
+                  <th v-for="item in availableLegend" :key="item.key" :aria-sort="matrixSortAria(item.key)">
                     <button class="quiet sort-button" type="button" @click="setMatrixSort(item.key)">
                       <span>{{ item.label }}</span>
                       <ChevronUp v-if="matrixSort.key === item.key && matrixSort.direction === 'asc'" :size="14" />
@@ -453,7 +461,7 @@ async function exportRankingChart() {
                     <b>{{ row.name }}</b>
                     <small v-if="row.username" class="muted username">{{ row.username }}</small>
                   </td>
-                  <td v-for="item in legend" :key="`${row.userID}:${item.key}`">
+                  <td v-for="item in availableLegend" :key="`${row.userID}:${item.key}`">
                     <span :class="{ muted: row.counts[item.key] === 0 }">
                       {{ row.counts[item.key] }} 次
                     </span>
@@ -464,7 +472,7 @@ async function exportRankingChart() {
               <tfoot>
                 <tr class="totals-row">
                   <td>合计</td>
-                  <td v-for="item in legend" :key="`total:${item.key}`">{{ periodTotals[item.key] }} 次</td>
+                  <td v-for="item in availableLegend" :key="`total:${item.key}`">{{ periodTotals[item.key] }} 次</td>
                   <td>{{ periodGrandTotal }} 次</td>
                 </tr>
               </tfoot>
@@ -481,7 +489,7 @@ async function exportRankingChart() {
             <template #default="{ item: row }">
               <div class="matrix-stack-card">
                 <header><div><b>{{ row.name }}</b><small v-if="row.username">{{ row.username }}</small></div><strong>{{ row.total }} 次</strong></header>
-                <dl><div v-for="part in legend" :key="part.key"><dt>{{ part.label }}</dt><dd>{{ row.counts[part.key] }} 次</dd></div></dl>
+                <dl><div v-for="part in availableLegend" :key="part.key"><dt>{{ part.label }}</dt><dd>{{ row.counts[part.key] }} 次</dd></div></dl>
               </div>
             </template>
           </MobileCardCollection>

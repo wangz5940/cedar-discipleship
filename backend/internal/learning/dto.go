@@ -35,7 +35,7 @@ type WeekVO struct {
 	VerseRef       string        `json:"verse_ref"`
 	ReciteText     string        `json:"recite_text"`
 	BookEnabled    bool          `json:"book_enabled"`
-	WeeklyCheckin  bool          `json:"weekly_checkin"`
+	WeeklyCheckin  bool          `json:"-"`
 	VideoEnabled   bool          `json:"video_enabled"`
 	VerseEnabled   bool          `json:"verse_enabled"`
 	OutlineEnabled bool          `json:"outline_enabled"`

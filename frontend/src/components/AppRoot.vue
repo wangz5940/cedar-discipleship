@@ -454,22 +454,22 @@ async function refreshResources() {
             <article
               v-for="asset in filteredResources"
               :key="resourceSelectionKey(asset)"
-              class="cd-resource-card"
+              class="cd-resource-card app-resource-card"
             >
-              <div
-                class="tile"
-                :class="{
-                  gold: asset.type === 'video' || asset.category === 'video',
-                  purple: asset.category === 'outline',
-                  blue: asset.type === 'markdown' || asset.category === 'book',
-                }"
-              >
-                <Play v-if="asset.type === 'video' || asset.category === 'video'" :size="20" />
-                <Book v-else-if="asset.category === 'book'" :size="20" />
-                <FileText v-else :size="20" />
-              </div>
               <div class="app-resource-card__copy">
                 <div class="inline app-resource-card__meta">
+                  <div
+                    class="tile"
+                    :class="{
+                      gold: asset.type === 'video' || asset.category === 'video',
+                      purple: asset.category === 'outline',
+                      blue: asset.type === 'markdown' || asset.category === 'book',
+                    }"
+                  >
+                    <Play v-if="asset.type === 'video' || asset.category === 'video'" :size="16" />
+                    <Book v-else-if="asset.category === 'book'" :size="16" />
+                    <FileText v-else :size="16" />
+                  </div>
                   <span class="pill app-resource-card__pill">
                     {{ resourceTypeLabel(asset) }}
                   </span>
@@ -505,7 +505,7 @@ async function refreshResources() {
             :card-height="196"
           >
             <template #default="{ item: asset }">
-              <article class="cd-resource-card app-resource-stack-card">
+              <article class="cd-resource-card app-resource-card app-resource-stack-card">
                 <div class="app-resource-card__copy">
                   <div class="inline app-resource-card__meta">
                     <div class="tile" :class="{ gold: asset.type === 'video' || asset.category === 'video', purple: asset.category === 'outline', blue: asset.type === 'markdown' || asset.category === 'book' }">
@@ -519,7 +519,11 @@ async function refreshResources() {
                       <span>选择</span>
                     </label>
                   </div>
-                  <h3 class="resource-title app-resource-card__title">{{ optionText(asset) }}</h3>
+                  <h3 class="resource-title app-resource-card__title">
+                    <button type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
+                      {{ optionText(asset) }}
+                    </button>
+                  </h3>
                   <p class="muted small app-resource-card__path"><template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}</p>
                 </div>
                 <div class="app-resource-stack-card__actions">

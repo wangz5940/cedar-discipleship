@@ -53,8 +53,8 @@
 
 ### 完成语义
 
-- 普通逐读物模式、一个整周任务模式分别表达；不能把一个“周任务”完成记录当成所有书籍页码已读。
-- `book_enabled=false` 与 `checkin_enabled=true` 可以同时成立，关闭阅读入口不应删掉周任务签到。
+- 活动周统一按逐读物完成；旧“周任务”记录仅作为历史数据保留，不能当成所有书籍页码已读，也不再生成新的整周任务。
+- 旧聚合周中的读物恢复为逐项任务；`book_enabled=false` 时不展示读物入口。
 - 独立每日灵修、每日读经保留独立完成身份；其他小组维持原有合并模式。
 - 记录解析支持英文字段和 `zwmouss` 的中文字段，识别 `done`、`已完成`；`已撤回` 不计完成。
 - 迁移记录需解析本组、本周内明确的任务身份；存在歧义时报告，不能猜测并制造资源继承。
@@ -78,7 +78,7 @@
 ## 统一实现
 
 - 每日完成方式由 `task_sections.daily.checkin_mode` 控制：`combined` 保持合并签到，`separate` 生成 `daily_devotion` 和 `daily_scripture` 两个独立任务。
-- 周完成方式由 `weekly_checkin` 任务显式表达。该任务存在时，周读物仅作为内容入口，不计为逐读物完成，也不能通过 `weekly_book` 接口绕过。
+- 活动周仅生成 `weekly_book` 等逐项任务；历史 `weekly_checkin` 任务和记录继续用于审计、统计与兼容导入，但不再返回为可操作任务或接受新打卡。
 - 顶层 `daily_reading` 被规范化为带书卷 ID、章数和 `chapters_per_day` 的完整序列；读完最后一章后不再循环。
 - 迁移保留 `weekly_reading_catalog`、`class_rep_shares`、原始 Markdown 路径和外部 HTTP(S) 地址。
 - 资源发现覆盖 `MP3`、`MP4`、`Yonghuo.md`，本地文件仍按 SHA-256 与字节大小判重。

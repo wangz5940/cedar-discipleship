@@ -10,7 +10,7 @@ describe('dashboard statistics', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders scripture and aggregate weekly counts alongside existing categories', async () => {
+  it('renders only categories completed in the selected period', async () => {
     const pinia = createPinia();
     useDashboardStore(pinia).setSnapshot({
       visible: true,
@@ -25,6 +25,10 @@ describe('dashboard statistics', () => {
     expect(html).toContain('读经');
     expect(html).toContain('整周');
     expect(html).toContain('灵修');
+    expect(html).not.toContain('书籍');
+    expect(html).not.toContain('音视频');
+    expect(html).not.toContain('背大纲');
+    expect(html).not.toContain('背经');
     expect(html).toContain('成员甲');
   });
 

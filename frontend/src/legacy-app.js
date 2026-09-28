@@ -1373,8 +1373,6 @@ function currentTaskOptions() {
   const serverTasks = state.bootstrap?.current_tasks || [];
   const bookTasks = serverTasks.filter((task) => task.task_type === 'weekly_book');
   const videoTasks = serverTasks.filter((task) => task.task_type === 'weekly_video');
-  const shareTasks = serverTasks.filter((task) => task.task_type === 'share');
-  const weeklyCheckinTask = serverTasks.find((task) => task.task_type === 'weekly_checkin');
   const verseTask = serverTasks.find((task) => task.task_type === 'weekly_verse');
   const outlineTask = serverTasks.find((task) => task.task_type === 'weekly_outline');
   const devotionLink = getDailyDevotionPlan();
@@ -1417,24 +1415,7 @@ function currentTaskOptions() {
     });
   }
   const weeklyBookEntries = buildWeeklyBookEntries(bookTasks, week.title, configPlan);
-  if (weeklyCheckinTask?.id && enabledFlag(weeklyCheckinTask.enabled, true)) {
-    const shareLinks = shareTasks.map((task) => firstTaskAssetLink(task, task.title) || (
-      isPlayableContentURL(task.content)
-        ? { label: task.title || '资料', title: task.title || '资料', url: task.content, type: inferResourceType(task.content) }
-        : null
-    )).filter(Boolean);
-    const contentLinks = [
-      ...weeklyBookEntries.flatMap((book) => book.contentLinks || []),
-      ...shareLinks,
-    ];
-    const title = weeklyCheckinTask.title || week.title || '周任务';
-    tasks.push({
-      type: 'weekly_checkin', taskID: Number(weeklyCheckinTask.id), weekID: Number(week.id || 0),
-      title, icon: '周课', part: '', detail: title, summary: '本周任务',
-      contentURL: contentLinks[0]?.url || '', contentLinks,
-    });
-  }
-  else if (shouldRenderWeeklyTask(week.book_enabled, bookTasks)) {
+  if (shouldRenderWeeklyTask(week.book_enabled, bookTasks)) {
     for (const book of weeklyBookEntries) {
       tasks.push({
         type: 'weekly_book',
@@ -1886,7 +1867,7 @@ function checkinMatchesTask(item, task) {
     const recordDetail = String(item.detail || '');
     return Boolean(part) && (recordPart === part || recordDetail === part);
   }
-  if (task.type === 'weekly_video' || task.type === 'weekly_verse' || task.type === 'weekly_outline' || task.type === 'weekly_checkin') {
+  if (task.type === 'weekly_video' || task.type === 'weekly_verse' || task.type === 'weekly_outline') {
     if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
     if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
     return item.logical_date === state.selectedDate;
@@ -2138,7 +2119,6 @@ export function weekDraftFromWeek(week = null) {
       verse_ref: '',
       recite_text: '',
       book_enabled: true,
-      weekly_checkin: false,
       video_enabled: true,
       verse_enabled: false,
       outline_enabled: false,
@@ -2148,22 +2128,22 @@ export function weekDraftFromWeek(week = null) {
     };
   }
   const hasTaskContent = weekHasTaskContent(week);
-  const generatedTitle = enabledFlag(week.weekly_checkin, false) ? '周任务' : weeklyTitleFromContent({
+  const generatedTitle = weeklyTitleFromContent({
     ...week,
     title: '',
     readings: (week.readings || []).map((item) => ({
       title: applyPdfPageRangeToTitle(item.title || '', item.page_start, item.page_end),
     })),
   });
+  const title = String(week.title || '').trim();
   return {
     id: Number(week.id || 0),
     start: week.start || todayString(),
     end: week.end || todayString(),
-    title: hasTaskContent && String(week.title || '').trim() !== generatedTitle ? (week.title || '') : '',
+    title: hasTaskContent && title !== generatedTitle && title !== '周任务' ? title : '',
     verse_ref: hasTaskContent ? (week.verse_ref || '') : '',
     recite_text: hasTaskContent ? (week.recite_text || '') : '',
     book_enabled: hasTaskContent ? enabledFlag(week.book_enabled) : true,
-    weekly_checkin: hasTaskContent && enabledFlag(week.weekly_checkin, false),
     video_enabled: hasTaskContent ? enabledFlag(week.video_enabled) : true,
     verse_enabled: hasTaskContent && enabledFlag(week.verse_enabled),
     outline_enabled: hasTaskContent && enabledFlag(week.outline_enabled),
@@ -2185,8 +2165,7 @@ function draftBindingHasContent(item = {}) {
 
 function weekHasTaskContent(week = {}) {
   return Boolean(
-    enabledFlag(week.weekly_checkin, false)
-    || (week.readings || []).some(draftBindingHasContent)
+    (week.readings || []).some(draftBindingHasContent)
     || (week.videos || []).some(draftBindingHasContent)
     || draftBindingHasContent(week.outline)
     || String(week.verse_ref || '').trim()
@@ -2320,7 +2299,6 @@ export async function saveWeekDraft() {
     verse_ref: draft.verse_ref,
     recite_text: draft.recite_text,
     book_enabled: enabledFlag(draft.book_enabled),
-    weekly_checkin: enabledFlag(draft.weekly_checkin, false),
     video_enabled: enabledFlag(draft.video_enabled),
     verse_enabled: enabledFlag(draft.verse_enabled),
     outline_enabled: enabledFlag(draft.outline_enabled),

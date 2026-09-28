@@ -1,6 +1,10 @@
 package learning
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestSeparateDailyCompletion(t *testing.T) {
 	settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
@@ -27,45 +31,47 @@ func TestSeparateDailyCompletion(t *testing.T) {
 	}
 }
 
-func TestAggregateWeekRetainsContentWithoutCompletingBooks(t *testing.T) {
+func TestRetiredAggregateWeekUsesIndividualBooks(t *testing.T) {
 	weekID := uint64(7)
 	input := WeekInput{
 		Title: "本周两个主题", WeeklyCheckin: true, BookEnabled: true,
 		Readings: []TaskBinding{{Title: "第一章", URL: "https://example.org/chapter.htm"}},
 	}
 	if title := WeekTitle(input); title != input.Title {
-		t.Fatalf("aggregate week title = %q", title)
+		t.Fatalf("week title = %q", title)
 	}
 	drafts := BuildTaskDrafts(input, "")
-	var aggregate, book *TaskDraft
-	for i := range drafts {
-		switch drafts[i].TaskType {
-		case "weekly_checkin":
-			aggregate = &drafts[i]
-		case "weekly_book":
-			book = &drafts[i]
-		}
-	}
-	if aggregate == nil || book == nil || !book.Optional {
-		t.Fatalf("drafts must retain optional content and aggregate completion: %+v", drafts)
+	if len(drafts) != 1 || drafts[0].TaskType != "weekly_book" || drafts[0].Optional {
+		t.Fatalf("retired aggregate input must produce one required book: %+v", drafts)
 	}
 	raw := []map[string]any{
 		{"id": uint64(11), "task_type": "weekly_checkin", "title": input.Title},
 		{"id": uint64(12), "task_type": "weekly_book", "title": "第一章"},
 	}
-	tasks := buildTodayTasks("2026-09-20", map[string]any{"id": weekID, "book_enabled": false},
-		raw, map[string]any{}, []TodayRecord{
-			{ID: 1, TaskType: "weekly_book", WeekID: &weekID, Part: "第一章", LogicalDate: "2026-09-20"},
+	settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
+		"devotion":  map[string]any{"enabled": false},
+		"scripture": map[string]any{"enabled": false},
+	}}}
+	tasks := buildTodayTasks("2026-09-20", map[string]any{"id": weekID, "book_enabled": true},
+		raw, settings, []TodayRecord{
+			{ID: 1, TaskType: "weekly_checkin", WeekID: &weekID, LogicalDate: "2026-09-18"},
 		})
-	if len(tasks) != 2 || tasks[1].Type != "weekly_checkin" || tasks[1].Completed {
-		t.Fatalf("aggregate task must be independent of reading toggle and book records: %+v", tasks)
+	if len(tasks) != 1 || tasks[0].Type != "weekly_book" || tasks[0].Completed {
+		t.Fatalf("historical aggregate must be hidden without completing the book: %+v", tasks)
 	}
-	record := TodayRecord{ID: 2, TaskType: "weekly_checkin", WeekID: &weekID, LogicalDate: "2026-09-18"}
-	if matchingTodayRecord(tasks[1], []TodayRecord{record}, "2026-09-20") == nil {
-		t.Fatal("aggregate completion should match within its week")
+	active := activeWeekTaskMaps([]Task{
+		{ID: 11, TaskType: "weekly_checkin", Title: input.Title, Enabled: true},
+		{ID: 12, TaskType: "weekly_book", Title: "第一章", Enabled: true, Required: false},
+	})
+	if len(active) != 1 || active[0]["task_type"] != "weekly_book" {
+		t.Fatalf("active task maps must expose only the book: %+v", active)
 	}
-	if matchingTodayRecord(TodayTaskVO{Type: "weekly_book", WeekID: weekID}, []TodayRecord{record}, "2026-09-20") != nil {
-		t.Fatal("aggregate completion must not satisfy an individual book")
+	payload, err := json.Marshal(WeekVO{WeeklyCheckin: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "weekly_checkin") {
+		t.Fatalf("retired aggregate mode leaked through the week API: %s", payload)
 	}
 }
 
@@ -132,8 +138,8 @@ func TestAutomaticAndCombinedDailyModesRemainCompatible(t *testing.T) {
 func TestDailyContentHiddenBeforeConfiguredStartDate(t *testing.T) {
 	settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
 		"checkin_mode": "separate",
-		"devotion": map[string]any{"enabled": true, "numbered_start_date": "2026-09-24"},
-		"scripture": map[string]any{"enabled": true, "start_date": "2026-09-25"},
+		"devotion":     map[string]any{"enabled": true, "numbered_start_date": "2026-09-24"},
+		"scripture":    map[string]any{"enabled": true, "start_date": "2026-09-25"},
 	}}}
 	if got := buildTodayTasks("2026-09-23", nil, nil, settings, nil); len(got) != 0 {
 		t.Fatalf("pre-start daily content = %+v, want none", got)

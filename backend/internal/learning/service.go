@@ -109,7 +109,18 @@ func (s *Service) WeekTasks(ctx context.Context, groupID, weekID uint64) ([]map[
 	if err != nil {
 		return nil, err
 	}
-	return TaskMaps(tasks), nil
+	return activeWeekTaskMaps(tasks), nil
+}
+
+func activeWeekTaskMaps(tasks []Task) []map[string]any {
+	active := make([]Task, 0, len(tasks))
+	for _, task := range tasks {
+		if task.TaskType == "weekly_checkin" {
+			continue
+		}
+		active = append(active, task)
+	}
+	return TaskMaps(active)
 }
 
 func (s *Service) SaveWeek(ctx context.Context, groupID, weekID uint64, input WeekInput, force bool, now time.Time) (uint64, error) {
@@ -156,7 +167,7 @@ func (s *Service) TodayContent(ctx context.Context, groupID uint64, date string,
 		if err != nil {
 			return TodayContent{}, err
 		}
-		weekTasks = TaskMaps(tasks)
+		weekTasks = activeWeekTaskMaps(tasks)
 	}
 
 	from, to := date, date
@@ -250,11 +261,6 @@ func (s *Service) SaveLearningConfig(ctx context.Context, groupID uint64, settin
 
 func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 	var tasks []TaskDraft
-	if input.WeeklyCheckin {
-		tasks = append(tasks, TaskDraft{
-			TaskType: "weekly_checkin", Title: firstNonEmpty(input.Title, "周任务"), SortOrder: 1,
-		})
-	}
 	if input.BookEnabled {
 		order := 1
 		for _, reading := range input.Readings {
@@ -269,7 +275,6 @@ func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 				SortOrder: order,
 				AssetID:   reading.AssetID,
 				UsageType: "reading",
-				Optional:  input.WeeklyCheckin,
 			})
 			order++
 		}
@@ -314,9 +319,6 @@ func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 }
 
 func WeekTitle(input WeekInput) string {
-	if input.WeeklyCheckin {
-		return firstNonEmpty(strings.TrimSpace(input.Title), "周任务")
-	}
 	if title := strings.TrimSpace(input.Title); title != "" {
 		return title
 	}
@@ -435,7 +437,6 @@ func TaskMaps(tasks []Task) []map[string]any {
 func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any, settings map[string]any, records []TodayRecord) []TodayTaskVO {
 	weekID := mapUint64(week, "id")
 	tasks := dailyTasks(date, settings)
-	aggregate := hasAggregateWeeklyTask(rawTasks)
 
 	if week != nil {
 		for _, raw := range rawTasks {
@@ -445,10 +446,9 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 			taskType := asString(raw["task_type"])
 			switch taskType {
 			case "weekly_book":
-				if aggregate || !mapBool(week, "book_enabled", true) {
+				if !mapBool(week, "book_enabled", true) {
 					continue
 				}
-			case "weekly_checkin":
 			case "weekly_video":
 				if !mapBool(week, "video_enabled", true) {
 					continue

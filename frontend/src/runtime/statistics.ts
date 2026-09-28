@@ -21,6 +21,12 @@ export function statisticCount(item: RankingItem, key: string): number {
   return Number(item.counts?.[key] || 0);
 }
 
+export function availableStatisticsLegend(items: RankingItem[]) {
+  return statisticsLegend.filter((part) => (
+    items.some((item) => statisticCount(item, part.key) > 0)
+  ));
+}
+
 export function statisticTotal(item: RankingItem, key = 'all'): number {
   return key === 'all' ? Number(item.total || 0) : statisticCount(item, key);
 }

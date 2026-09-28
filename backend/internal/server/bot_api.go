@@ -348,8 +348,6 @@ func botTaskType(value string) string {
 		return "daily_devotion"
 	case "每日读经", "读经", "daily_scripture":
 		return "daily_scripture"
-	case "周任务", "每周打卡", "每周学习", "周学习", "weekly_checkin":
-		return "weekly_checkin"
 	case "周读物", "读物", "weekly_book":
 		return "weekly_book"
 	case "周视频", "视频", "weekly_video":

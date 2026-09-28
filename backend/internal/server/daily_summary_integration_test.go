@@ -29,7 +29,7 @@ func TestDailySummaryExport(t *testing.T) {
 		{name: "separate", mode: "separate", expected: "4", completed: "2", rate: "50.00%"},
 		{name: "combined", mode: "combined", expected: "2", completed: "1", rate: "50.00%"},
 		{name: "custom hole", mode: "separate", custom: true, expected: "0", completed: "0", rate: "0.00%"},
-		{name: "aggregate week", custom: true, weekly: "aggregate", expected: "2", completed: "1", rate: "50.00%"},
+		{name: "retired aggregate input", custom: true, weekly: "aggregate", expected: "4", completed: "1", rate: "25.00%"},
 		{name: "two books", custom: true, weekly: "books", expected: "4", completed: "1", rate: "25.00%"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

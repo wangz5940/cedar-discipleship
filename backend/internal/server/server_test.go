@@ -751,8 +751,10 @@ func TestValidCheckinTaskType(t *testing.T) {
 			t.Fatalf("validCheckinTaskType(%q) = false", taskType)
 		}
 	}
-	if validCheckinTaskType("reflection") {
-		t.Fatal("validCheckinTaskType accepted an unsupported task type")
+	for _, taskType := range []string{"weekly_checkin", "reflection"} {
+		if validCheckinTaskType(taskType) {
+			t.Fatalf("validCheckinTaskType(%q) accepted an unsupported task type", taskType)
+		}
 	}
 }
 

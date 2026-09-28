@@ -22,8 +22,8 @@ import (
 
 func TestStudyWeeksExcelRoundTrip(t *testing.T) {
 	for _, bookEnabled := range []bool{true, false} {
-		for _, legacy := range []bool{false, true} {
-			t.Run(fmt.Sprintf("books=%v/legacy=%v", bookEnabled, legacy), func(t *testing.T) {
+		for _, legacyAggregateColumn := range []bool{false, true} {
+			t.Run(fmt.Sprintf("books=%v/legacy-aggregate-column=%v", bookEnabled, legacyAggregateColumn), func(t *testing.T) {
 				db := testdb.Open(t)
 				a := &app{
 					db: db, location: time.UTC,
@@ -50,13 +50,16 @@ func TestStudyWeeksExcelRoundTrip(t *testing.T) {
 					t.Fatalf("export: %d %s", export.Code, export.Body)
 				}
 				data := export.Body.Bytes()
-				if legacy {
+				if legacyAggregateColumn {
 					file, err := excelize.OpenReader(bytes.NewReader(data))
 					if err != nil {
 						t.Fatal(err)
 					}
 					defer file.Close()
-					if err := file.RemoveCol("Weeks", "J"); err != nil {
+					if err := file.SetCellValue("Weeks", "J1", "整周签到"); err != nil {
+						t.Fatal(err)
+					}
+					if err := file.SetCellValue("Weeks", "J2", true); err != nil {
 						t.Fatal(err)
 					}
 					buf, err := file.WriteToBuffer()
@@ -86,7 +89,7 @@ func TestStudyWeeksExcelRoundTrip(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(weeks) != 1 || weeks[0].WeeklyCheckin != !legacy || weeks[0].BookEnabled != bookEnabled {
+				if len(weeks) != 1 || weeks[0].WeeklyCheckin || weeks[0].BookEnabled != bookEnabled {
 					t.Fatalf("round trip changed completion mode: %+v", weeks)
 				}
 				var aggregates, requiredBooks int
@@ -96,14 +99,11 @@ func TestStudyWeeksExcelRoundTrip(t *testing.T) {
 				if err := db.QueryRow("SELECT COUNT(*) FROM study_tasks WHERE group_id=1 AND task_type='weekly_book' AND required=1").Scan(&requiredBooks); err != nil {
 					t.Fatal(err)
 				}
-				wantAggregate, wantRequiredBooks := 1, 0
-				if legacy {
-					wantAggregate = 0
-					if bookEnabled {
-						wantRequiredBooks = 1
-					}
+				wantRequiredBooks := 0
+				if bookEnabled {
+					wantRequiredBooks = 1
 				}
-				if aggregates != wantAggregate || requiredBooks != wantRequiredBooks {
+				if aggregates != 0 || requiredBooks != wantRequiredBooks {
 					t.Fatalf("task contract changed: aggregates=%d required books=%d", aggregates, requiredBooks)
 				}
 			})

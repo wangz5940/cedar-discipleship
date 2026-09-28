@@ -186,7 +186,7 @@ func (a *app) handleAdminExportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 	file := excelize.NewFile()
 	defer file.Close()
 	file.SetSheetName("Sheet1", "Weeks")
-	_ = file.SetSheetRow("Weeks", "A1", &[]string{"开始日期", "结束日期", "标题", "背经经文", "默写原文", "显示读物", "显示视频", "显示背经", "显示提纲", "整周签到"})
+	_ = file.SetSheetRow("Weeks", "A1", &[]string{"开始日期", "结束日期", "标题", "背经经文", "默写原文", "显示读物", "显示视频", "显示背经", "显示提纲"})
 	_, _ = file.NewSheet("Readings")
 	_ = file.SetSheetRow("Readings", "A1", &[]string{"开始日期", "结束日期", "排序", "标题", "URL", "资产ID"})
 	_, _ = file.NewSheet("Videos")
@@ -205,7 +205,6 @@ func (a *app) handleAdminExportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 			week.VideoEnabled,
 			week.VerseEnabled,
 			week.OutlineEnabled,
-			week.WeeklyCheckin,
 		})
 		weekRow++
 		for index, reading := range week.Readings {

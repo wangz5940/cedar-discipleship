@@ -21,7 +21,12 @@ import {
   toggleCheckin,
 } from '../legacy-app';
 import { taskIsCompleted } from '../runtime/checkins';
-import { statisticsLegend as legend, chartMemberLabel, statisticTotal } from '../runtime/statistics';
+import {
+  availableStatisticsLegend,
+  chartMemberLabel,
+  statisticCount,
+  statisticTotal,
+} from '../runtime/statistics';
 import { exportRankingPNG } from '../runtime/rankingExport';
 
 const store = useCheckinWorkbenchStore();
@@ -48,7 +53,10 @@ const {
 const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
-const activeLegend = computed(() => legend.find((item) => item.key === activeStatKey.value) || null);
+const availableLegend = computed(() => availableStatisticsLegend(statsRanking.value));
+const activeLegend = computed(() => availableLegend.value.find((item) => item.key === activeStatKey.value) || null);
+const effectiveStatKey = computed(() => activeLegend.value?.key || 'all');
+const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : availableLegend.value));
 const rankedStats = computed(() => [...statsRanking.value].sort((left, right) => {
   const leftTotal = statsTotal(left);
   const rightTotal = statsTotal(right);
@@ -63,7 +71,7 @@ function taskLocked(task) {
 }
 
 function statsTotal(item) {
-  return statisticTotal(item, activeStatKey.value);
+  return statisticTotal(item, effectiveStatKey.value);
 }
 
 function statStackHeight(item) {
@@ -99,7 +107,6 @@ function taskTypeLabel(task) {
   switch (task.type) {
     case 'daily_devotion': return '每日灵修';
     case 'daily_scripture': return '每日读经';
-    case 'weekly_checkin': return '本周任务';
     case 'weekly_book': return '本周书籍';
     case 'weekly_video': return '本周任务';
     case 'weekly_verse': return '背经任务';
@@ -126,7 +133,7 @@ async function exportStatsChart() {
     title: '今日学习 · 全部分项统计',
     subtitle: `${statsMonthLabel.value || ''} ${scope}`,
     items: rankedStats.value,
-    activeKey: activeStatKey.value,
+    activeKey: effectiveStatKey.value,
     filename: `${statsMonthLabel.value || '全部分项'}-${scope}-bar-chart.png`,
   });
 }
@@ -285,14 +292,14 @@ async function exportStatsChart() {
 
           <div class="toolbar stats-filter" aria-label="统计分类筛选">
             <button
-              :class="activeStatKey === 'all' ? 'primary' : 'quiet'"
+              :class="effectiveStatKey === 'all' ? 'primary' : 'quiet'"
               type="button"
               @click="activeStatKey = 'all'"
             >
               全部
             </button>
             <button
-              v-for="item in legend"
+              v-for="item in availableLegend"
               :key="item.key"
               :class="activeStatKey === item.key ? 'primary' : 'quiet'"
               type="button"
@@ -304,10 +311,12 @@ async function exportStatsChart() {
 
           <RankingChart
             :items="rankedStats"
+            :segments="visibleLegend"
             :get-key="(member) => member.user_id || member.member_name"
             :get-total="statsTotal"
             :get-height="statStackHeight"
             :get-label="chartMemberLabel"
+            :get-segment-value="statisticCount"
           />
         </div>
       </section>

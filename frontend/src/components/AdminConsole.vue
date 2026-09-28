@@ -856,7 +856,6 @@ async function runLocalBackupImport() {
                       <small class="muted">该标题会显示在任务列表与周任务选择器中。</small>
                     </label>
                     <div class="admin-checkbox-row">
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.weekly_checkin, false)" @change="updateWeekDraftField('weekly_checkin', $event.target.checked)" /><span>整周签到</span></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>书籍</span></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.video_enabled)" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>音视频</span></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.verse_enabled)" @change="updateWeekDraftField('verse_enabled', $event.target.checked)" /><span>背经</span></label>

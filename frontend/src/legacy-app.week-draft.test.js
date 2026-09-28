@@ -12,13 +12,15 @@ describe('weekly task drafts', () => {
     expect(weekDraftFromWeek({ ...week, title: '自定义周标题' }).title).toBe('自定义周标题');
   });
 
-  it('retains an aggregate check-in without attached content', () => {
+  it('drops the retired aggregate check-in from existing and new drafts', () => {
+    expect(weekDraftFromWeek()).not.toHaveProperty('weekly_checkin');
+
     const draft = weekDraftFromWeek({
       id: 8, start: '2026-09-21', end: '2026-09-27',
       title: '周任务', weekly_checkin: true,
       book_enabled: false, video_enabled: false,
     });
-    expect(draft.weekly_checkin).toBe(true);
+    expect(draft).not.toHaveProperty('weekly_checkin');
     expect(draft.title).toBe('');
   });
 });

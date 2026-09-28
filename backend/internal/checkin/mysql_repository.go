@@ -53,11 +53,6 @@ func validateWeeklyTarget(
 		WHERE t.id=? AND t.group_id=? AND t.week_id=?
 		  AND t.task_type=? AND t.enabled=1
 		  AND ? BETWEEN w.start_date AND w.end_date
-		  AND (t.task_type<>'weekly_book' OR NOT EXISTS (
-		    SELECT 1 FROM study_tasks aggregate_task
-		    WHERE aggregate_task.group_id=t.group_id AND aggregate_task.week_id=t.week_id
-		      AND aggregate_task.task_type='weekly_checkin' AND aggregate_task.enabled=1
-		  ))
 		LIMIT 1`,
 		taskID,
 		groupID,
@@ -249,7 +244,7 @@ func createRecord(ctx context.Context, execer recordExecer, record *Record, acto
 
 func isWeeklyTaskType(taskType string) bool {
 	switch taskType {
-	case "weekly_book", "weekly_video", "weekly_verse", "weekly_outline", "weekly_checkin":
+	case "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
 		return true
 	default:
 		return false

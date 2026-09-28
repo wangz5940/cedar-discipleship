@@ -34,6 +34,8 @@ func TestWebAndBotMultipleBooksOnSameDay(t *testing.T) {
 				testdb.Exec(t, db, `INSERT INTO study_tasks(id,group_id,week_id,task_type,title,created_at,updated_at)
 					VALUES (?,1,1,'weekly_book',?,NOW(),NOW())`, i+1, title)
 			}
+			testdb.Exec(t, db, `INSERT INTO study_tasks(id,group_id,week_id,task_type,title,created_at,updated_at)
+				VALUES (3,1,1,'weekly_checkin','旧整周任务',NOW(),NOW())`)
 			checkins := checkin.NewService(checkin.NewMySQLRepository(db))
 			a := &app{
 				db: db, location: time.UTC,

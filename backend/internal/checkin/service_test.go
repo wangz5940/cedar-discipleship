@@ -33,6 +33,20 @@ func TestServiceCreateNewDailyRecord(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRejectsRetiredWeeklyCheckin(t *testing.T) {
+	repo := &fakeRepository{}
+	_, _, err := NewService(repo).Create(context.Background(), &Record{
+		GroupID: 1, UserID: 2, TaskID: 3, WeekID: 4,
+		TaskType: "weekly_checkin", LogicalDate: "2026-09-23",
+	}, 2)
+	if !errors.Is(err, ErrInvalidWeeklyTarget) {
+		t.Fatalf("err=%v, want %v", err, ErrInvalidWeeklyTarget)
+	}
+	if repo.createCalled {
+		t.Fatal("retired weekly check-in must not be persisted")
+	}
+}
+
 func TestServiceCreateDailyConcurrentRetry(t *testing.T) {
 	repo := &fakeRepository{
 		existingDailyErr: sql.ErrNoRows,

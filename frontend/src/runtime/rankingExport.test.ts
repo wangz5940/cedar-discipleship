@@ -24,6 +24,17 @@ describe('rankingChartSVG', () => {
     expect(svg).not.toContain('>28 次</text>');
   });
 
+  it('omits categories without completions from the exported legend', () => {
+    const svg = rankingChartSVG({
+      title: '学习',
+      subtitle: '当月',
+      items: [{ member_name: '成员甲', total: 2, counts: { daily_scripture: 2, weekly_outline: 0 } }],
+    });
+
+    expect(svg).toContain('>读经</text>');
+    expect(svg).not.toContain('>背大纲</text>');
+  });
+
   it('exports an empty chart without non-finite geometry', () => {
     const svg = rankingChartSVG({ title: 'A & B', subtitle: '<空>', items: [] });
     expect(svg).toContain('A &amp; B');

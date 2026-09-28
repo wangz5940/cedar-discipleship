@@ -38,7 +38,7 @@ func (r *simultaneousWeeklyRepository) FindExistingWeeklyBook(ctx context.Contex
 }
 
 func TestConcurrentWeeklyCompletionUsesOneIdentity(t *testing.T) {
-	for _, kind := range []string{"weekly_book", "weekly_verse", "weekly_outline", "weekly_checkin", "weekly_video", "carried_video"} {
+	for _, kind := range []string{"weekly_book", "weekly_verse", "weekly_outline", "weekly_video", "carried_video"} {
 		t.Run(kind, func(t *testing.T) {
 			db := testdb.Open(t)
 			testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
