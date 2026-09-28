@@ -9,10 +9,11 @@ import (
 )
 
 type tenantItem struct {
-	ID     uint64 `json:"id"`
-	Name   string `json:"name"`
-	Role   string `json:"role"`
-	Status int    `json:"status"`
+	ID         uint64 `json:"id"`
+	Name       string `json:"name"`
+	Role       string `json:"role"`
+	Status     int    `json:"status"`
+	GroupCount int    `json:"group_count"`
 }
 
 func (a *app) requireTenantAdmin(next http.HandlerFunc) http.HandlerFunc {
@@ -62,7 +63,8 @@ func (a *app) handleTenantLeader(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleTenants(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
-	query := `SELECT t.id,t.name,COALESCE(tm.role,''),t.status FROM tenants t
+	query := `SELECT t.id,t.name,COALESCE(tm.role,''),t.status,
+		(SELECT COUNT(*) FROM study_groups g WHERE g.tenant_id=t.id AND g.status=1) FROM tenants t
 		LEFT JOIN tenant_members tm ON tm.tenant_id=t.id AND tm.user_id=? AND tm.status=1
 		WHERE t.status=1 AND (tm.user_id IS NOT NULL OR ?) ORDER BY t.id`
 	rows, err := a.db.QueryContext(r.Context(), query, u.ID, u.IsSuperAdmin)
@@ -74,7 +76,7 @@ func (a *app) handleTenants(w http.ResponseWriter, r *http.Request) {
 	items := []tenantItem{}
 	for rows.Next() {
 		var item tenantItem
-		if err := rows.Scan(&item.ID, &item.Name, &item.Role, &item.Status); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Role, &item.Status, &item.GroupCount); err != nil {
 			writeError(w, http.StatusInternalServerError, "tenants_failed")
 			return
 		}
@@ -157,6 +159,165 @@ func (a *app) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": tenantID, "group_id": groupID, "default_password": password})
+}
+
+func (a *app) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" || len([]rune(req.Name)) > 128 {
+		writeError(w, http.StatusBadRequest, "name_required")
+		return
+	}
+	tenantID := pathUint64(r, "tenant_id")
+	res, err := a.db.ExecContext(r.Context(), `UPDATE tenants SET name=?,updated_at=? WHERE id=? AND status=1`, req.Name, time.Now().UTC(), tenantID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_update_failed")
+		return
+	}
+	affected, err := res.RowsAffected()
+	if err != nil || affected == 0 {
+		writeError(w, http.StatusNotFound, "tenant_not_found")
+		return
+	}
+	a.audit(0, mustUser(r).ID, "update_tenant", "tenants", tenantID, nil, map[string]any{"name": req.Name}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
+	tenantID := pathUint64(r, "tenant_id")
+	if tenantID == 1 {
+		writeError(w, http.StatusConflict, "original_tenant_protected")
+		return
+	}
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
+		return
+	}
+	defer tx.Rollback()
+	var lockedID uint64
+	if err := tx.QueryRowContext(r.Context(), `SELECT id FROM tenants WHERE id=? AND status=1 FOR UPDATE`, tenantID).Scan(&lockedID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "tenant_not_found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
+		}
+		return
+	}
+	var hasGroups bool
+	if err := tx.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM study_groups WHERE tenant_id=?)`, tenantID).Scan(&hasGroups); err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
+		return
+	}
+	if hasGroups {
+		writeError(w, http.StatusConflict, "tenant_has_groups")
+		return
+	}
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(r.Context(), `UPDATE tenant_members SET status=0,updated_at=? WHERE tenant_id=?`, now, tenantID); err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `UPDATE tenants SET status=0,updated_at=? WHERE id=?`, now, tenantID); err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
+		return
+	}
+	a.audit(0, mustUser(r).ID, "delete_tenant", "tenants", tenantID, nil, nil, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleMoveGroupTenant(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TenantID uint64 `json:"tenant_id"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if req.TenantID == 0 {
+		writeError(w, http.StatusBadRequest, "tenant_id_required")
+		return
+	}
+	groupID := pathUint64(r, "group_id")
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
+	defer tx.Rollback()
+	var sourceTenantID uint64
+	var groupName string
+	if err := tx.QueryRowContext(r.Context(), `SELECT g.tenant_id,g.name FROM study_groups g
+		JOIN tenants t ON t.id=g.tenant_id AND t.status=1
+		WHERE g.id=? AND g.status=1 FOR UPDATE`, groupID).Scan(&sourceTenantID, &groupName); err != nil {
+		writeError(w, http.StatusNotFound, "group_not_found")
+		return
+	}
+	if sourceTenantID == req.TenantID {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	var targetID uint64
+	if err := tx.QueryRowContext(r.Context(), `SELECT id FROM tenants WHERE id=? AND status=1 FOR UPDATE`, req.TenantID).Scan(&targetID); err != nil {
+		writeError(w, http.StatusNotFound, "tenant_not_found")
+		return
+	}
+	var duplicate bool
+	if err := tx.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM study_groups WHERE tenant_id=? AND name=? AND status=1)`, targetID, groupName).Scan(&duplicate); err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
+	if duplicate {
+		writeError(w, http.StatusConflict, "group_name_exists")
+		return
+	}
+	var linked bool
+	err = tx.QueryRowContext(r.Context(), `SELECT EXISTS(
+		SELECT 1 FROM asset_dependencies WHERE status='active' AND
+			((consumer_group_id=? AND provider_group_id<>?) OR (provider_group_id=? AND consumer_group_id<>?))
+		UNION ALL
+		SELECT 1 FROM asset_share_grants WHERE status='active' AND consumer_group_id IS NOT NULL AND
+			((owner_group_id=? AND consumer_group_id<>?) OR (consumer_group_id=? AND owner_group_id<>?))
+		UNION ALL
+		SELECT 1 FROM asset_bindings b JOIN assets source ON source.id=b.source_asset_id
+			WHERE b.deleted_at IS NULL AND
+			((b.group_id=? AND source.group_id<>?) OR (source.group_id=? AND b.group_id<>?))
+	)`, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID).Scan(&linked)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
+	if linked {
+		writeError(w, http.StatusConflict, "group_has_cross_group_resources")
+		return
+	}
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(r.Context(), `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		SELECT ?,m.user_id,'member',1,?,? FROM group_members m JOIN users u ON u.id=m.user_id AND u.status=1
+		WHERE m.group_id=? AND m.status=1
+		ON DUPLICATE KEY UPDATE role=IF(tenant_members.status=1,tenant_members.role,'member'),status=1,updated_at=VALUES(updated_at)`,
+		targetID, now, now, groupID); err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `UPDATE study_groups SET tenant_id=?,updated_at=? WHERE id=?`, targetID, now, groupID); err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
+	a.audit(groupID, mustUser(r).ID, "move_group_tenant", "study_groups", groupID, map[string]any{"tenant_id": sourceTenantID}, map[string]any{"tenant_id": targetID}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *app) handleTenantGroups(w http.ResponseWriter, r *http.Request) {
