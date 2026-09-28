@@ -431,10 +431,10 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/members", a.auth(a.requireSuper(a.handleSuperAddGroupMember)))
 	mux.HandleFunc("GET /api/super-admin/recite-attempts", a.auth(a.requireSuper(a.handleSuperListReciteAttempts)))
 	mux.HandleFunc("DELETE /api/super-admin/recite-attempts/{id}", a.auth(a.requireSuper(a.handleSuperDeleteReciteAttempt)))
-	mux.HandleFunc("GET /api/super-admin/bot-management", a.auth(a.requireSuper(a.handleBotManagement)))
-	mux.HandleFunc("POST /api/super-admin/bot-robots", a.auth(a.requireSuper(a.handleBotRobot)))
-	mux.HandleFunc("DELETE /api/super-admin/bot-robots/{id}", a.auth(a.requireSuper(a.handleBotRobotDelete)))
-	mux.HandleFunc("PUT /api/super-admin/bot-bindings", a.auth(a.requireSuper(a.handleBotBinding)))
+	mux.HandleFunc("GET /api/super-admin/bot-management", a.auth(a.requireBotAdmin(a.handleBotManagement)))
+	mux.HandleFunc("POST /api/super-admin/bot-robots", a.auth(a.requireBotAdmin(a.handleBotRobot)))
+	mux.HandleFunc("DELETE /api/super-admin/bot-robots/{id}", a.auth(a.requireBotAdmin(a.handleBotRobotDelete)))
+	mux.HandleFunc("PUT /api/super-admin/bot-bindings", a.auth(a.requireBotAdmin(a.handleBotBinding)))
 }
 
 func withCommonHeaders(next http.Handler) http.Handler {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ type fakeBotManager struct {
 	register    notificationdomain.RobotStatus
 	err         error
 }
+
 func (m *fakeBotManager) Remove(string) error { return m.err }
 
 func (m *fakeBotManager) Robots(context.Context) []notificationdomain.RobotStatus {
@@ -126,15 +128,58 @@ func TestBotRobotMapsRegistrationErrors(t *testing.T) {
 	}
 }
 
-func TestBotManagementRequiresSuperAdmin(t *testing.T) {
+func TestBotManagementRequiresPlatformOrTenantAdmin(t *testing.T) {
 	t.Parallel()
 	app := &app{}
 	request := httptest.NewRequest(http.MethodGet, "/api/super-admin/bot-management", nil)
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 2}))
 	response := httptest.NewRecorder()
-	app.requireSuper(app.handleBotManagement).ServeHTTP(response, request)
+	app.requireBotAdmin(app.handleBotManagement).ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestTenantBotManagementShowsAllChatsButOnlyOwnGroups(t *testing.T) {
+	t.Parallel()
+	manager := &fakeBotManager{robots: []notificationdomain.RobotStatus{{
+		ID: "primary", Name: "主机器人", State: "healthy", Authenticated: true,
+		Chats: []notificationdomain.Chat{
+			{ChatID: 20, ChatType: 3, Title: "本小家群", GroupID: 1},
+			{ChatID: 21, ChatType: 3, Title: "其他小家群", GroupID: 2},
+		},
+		Bindings: []notificationdomain.Binding{
+			{Target: notificationdomain.Target{ChatID: 20, ChatType: 3}, GroupID: 1},
+			{Target: notificationdomain.Target{ChatID: 21, ChatType: 3}, GroupID: 2},
+		},
+	}}}
+	app := &app{botManager: manager}
+	request := httptest.NewRequest(http.MethodGet, "/api/super-admin/bot-management", nil)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID: 3, IsTenantAdmin: true, CurrentGroupID: 1, CurrentTenantID: 10,
+		Groups: []userdomain.Group{{ID: 1, TenantID: 10, Name: "本小家小组"}, {ID: 2, TenantID: 20, Name: "其他小家小组"}},
+	}))
+	response := httptest.NewRecorder()
+	app.requireBotAdmin(app.handleBotManagement).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+	var payload struct {
+		Robots      []notificationdomain.RobotStatus `json:"robots"`
+		StudyGroups []userdomain.Group               `json:"study_groups"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Robots) != 1 || len(payload.Robots[0].Chats) != 2 || len(payload.StudyGroups) != 1 || payload.StudyGroups[0].ID != 1 {
+		t.Fatalf("tenant view lost robots/chats or leaked groups: %+v", payload)
+	}
+	robot := payload.Robots[0]
+	if robot.Chats[0].GroupID != 1 || robot.Chats[1].GroupID != 0 || !robot.Chats[1].BoundElsewhere || len(robot.Bindings) != 1 || robot.Bindings[0].GroupID != 1 {
+		t.Fatalf("tenant view leaked foreign binding: %+v", robot)
+	}
+	if manager.robots[0].Chats[1].GroupID != 2 || len(manager.robots[0].Bindings) != 2 {
+		t.Fatal("tenant response mutated shared robot state")
 	}
 }
 
@@ -216,5 +261,31 @@ func TestBotBindingValidatesAndAssigns(t *testing.T) {
 				t.Fatalf("robot ID = %q, want %q", manager.robotIDs[0], tt.wantRobot)
 			}
 		})
+	}
+}
+
+func TestTenantBotBindingOnlyAcceptsCurrentTenantGroup(t *testing.T) {
+	t.Parallel()
+	manager := &fakeBotManager{}
+	app := &app{botManager: manager, audits: auditdomain.NewService(notificationAuditRepository{})}
+	for _, tc := range []struct {
+		groupID uint64
+		want    int
+	}{{1, http.StatusOK}, {2, http.StatusBadRequest}} {
+		request := httptest.NewRequest(http.MethodPut, "/api/super-admin/bot-bindings", strings.NewReader(
+			`{"robot_id":"primary","chat_id":20,"chat_type":3,"group_id":`+strconv.FormatUint(tc.groupID, 10)+`}`,
+		))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+			ID: 3, IsTenantAdmin: true, CurrentGroupID: 1, CurrentTenantID: 10,
+			Groups: []userdomain.Group{{ID: 1, TenantID: 10}, {ID: 2, TenantID: 20}},
+		}))
+		response := httptest.NewRecorder()
+		app.requireBotAdmin(app.handleBotBinding).ServeHTTP(response, request)
+		if response.Code != tc.want {
+			t.Fatalf("group %d: status=%d body=%s", tc.groupID, response.Code, response.Body)
+		}
+	}
+	if len(manager.assignments) != 1 || manager.assignments[0].GroupID != 1 {
+		t.Fatalf("tenant binding calls = %+v", manager.assignments)
 	}
 }

@@ -70,11 +70,12 @@ type deliveryError struct {
 func (e *deliveryError) Error() string { return e.code }
 
 type Chat struct {
-	ChatID   int64  `json:"chat_id"`
-	ChatType int    `json:"chat_type"`
-	Title    string `json:"title"`
-	GroupID  uint64 `json:"group_id,omitempty"`
-	Joined   bool   `json:"joined"`
+	ChatID         int64  `json:"chat_id"`
+	ChatType       int    `json:"chat_type"`
+	Title          string `json:"title"`
+	GroupID        uint64 `json:"group_id,omitempty"`
+	BoundElsewhere bool   `json:"bound_elsewhere,omitempty"`
+	Joined         bool   `json:"joined"`
 }
 
 type RobotIdentity struct {

@@ -6,23 +6,75 @@ import (
 	"time"
 
 	notificationdomain "agp/backend/internal/notification"
+	userdomain "agp/backend/internal/user"
 )
+
+func (a *app) requireBotAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := mustUser(r)
+		if !u.IsSuperAdmin && (!u.IsTenantAdmin || u.CurrentTenantID == 0) {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func botManageableGroups(u currentUser) []userdomain.Group {
+	if u.IsSuperAdmin {
+		return u.Groups
+	}
+	groups := make([]userdomain.Group, 0, len(u.Groups))
+	for _, group := range u.Groups {
+		if group.TenantID == u.CurrentTenantID {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
 
 func (a *app) handleBotManagement(w http.ResponseWriter, r *http.Request) {
 	user := mustUser(r)
+	groups := botManageableGroups(user)
 	if a.botManager == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"configured":   false,
 			"robots":       []any{},
-			"study_groups": user.Groups,
+			"study_groups": groups,
 		})
 		return
 	}
 	robots := a.botManager.Robots(r.Context())
+	if !user.IsSuperAdmin {
+		allowed := make(map[uint64]bool, len(groups))
+		for _, group := range groups {
+			allowed[group.ID] = true
+		}
+		visible := make([]notificationdomain.RobotStatus, len(robots))
+		for i, robot := range robots {
+			visible[i] = robot
+			visible[i].Chats = make([]notificationdomain.Chat, len(robot.Chats))
+			copy(visible[i].Chats, robot.Chats)
+			for j := range visible[i].Chats {
+				chat := &visible[i].Chats[j]
+				if chat.GroupID != 0 && !allowed[chat.GroupID] {
+					chat.GroupID = 0
+					chat.BoundElsewhere = true
+				}
+			}
+			visible[i].Bindings = make([]notificationdomain.Binding, 0, len(robot.Bindings))
+			for _, binding := range robot.Bindings {
+				if binding.GroupID == 0 || allowed[binding.GroupID] {
+					visible[i].Bindings = append(visible[i].Bindings, binding)
+				}
+			}
+		}
+		robots = visible
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"configured":   len(robots) > 0,
 		"robots":       robots,
-		"study_groups": user.Groups,
+		"study_groups": groups,
 	})
 }
 
@@ -67,11 +119,21 @@ func (a *app) handleBotRobot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleBotRobotDelete(w http.ResponseWriter, r *http.Request) {
-	if a.botManager == nil { writeError(w, http.StatusServiceUnavailable, "bot_not_configured"); return }
+	if a.botManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "bot_not_configured")
+		return
+	}
 	if err := a.botManager.Remove(r.PathValue("id")); err != nil {
-		if errors.Is(err, notificationdomain.ErrRobotNotFound) { writeError(w, http.StatusNotFound, err.Error()); return }
-		if errors.Is(err, notificationdomain.ErrRobotCannotRemove) { writeError(w, http.StatusBadRequest, err.Error()); return }
-		writeError(w, http.StatusInternalServerError, "bot_robot_delete_failed"); return
+		if errors.Is(err, notificationdomain.ErrRobotNotFound) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if errors.Is(err, notificationdomain.ErrRobotCannotRemove) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "bot_robot_delete_failed")
+		return
 	}
 	user := mustUser(r)
 	a.audit(0, user.ID, "delete_bot_robot", "potato_robot", 0, nil, map[string]any{"robot_id": r.PathValue("id")}, r)
@@ -102,7 +164,7 @@ func (a *app) handleBotBinding(w http.ResponseWriter, r *http.Request) {
 	user := mustUser(r)
 	if req.GroupID > 0 {
 		found := false
-		for _, group := range user.Groups {
+		for _, group := range botManageableGroups(user) {
 			if group.ID == req.GroupID {
 				found = true
 				break

@@ -68,7 +68,9 @@ function robotStatus(robot) {
 async function assign(robot, chat, event) {
   const groupID = Number(event.target.value || 0);
   const previousGroupID = Number(chat.group_id || 0);
+  const wasBoundElsewhere = chat.bound_elsewhere;
   chat.group_id = groupID;
+  chat.bound_elsewhere = false;
   savingBinding.value = bindingKey(robot, chat);
   try {
     await api('/super-admin/bot-bindings', {
@@ -84,6 +86,7 @@ async function assign(robot, chat, event) {
     await load();
   } catch (error) {
     chat.group_id = previousGroupID;
+    chat.bound_elsewhere = wasBoundElsewhere;
     showToast({
       bot_chat_not_found: '机器人已不在该群聊中',
       chat_not_found: '机器人已不在该群聊中',
@@ -154,10 +157,11 @@ async function assign(robot, chat, event) {
           <label class="admin-field bot-group-binding">
             <span class="admin-field-label">对应学习小组</span>
             <select
-              :value="chat.group_id || 0"
+              :value="chat.bound_elsewhere ? -1 : (chat.group_id || 0)"
               :disabled="savingBinding === bindingKey(robot, chat)"
               @change="assign(robot, chat, $event)"
             >
+              <option v-if="chat.bound_elsewhere" :value="-1" disabled>已绑定其他小家</option>
               <option :value="0">未绑定</option>
               <option v-for="group in studyGroups" :key="group.id" :value="group.id">
                 {{ group.name }}

@@ -477,7 +477,7 @@ async function loadAll(options = {}) {
     if (state.tab === 'admin' && !canAdminAccess()) {
       state.tab = 'home';
     }
-    if (state.adminSection === 'bot' && !state.user?.is_super_admin) {
+    if (state.adminSection === 'bot' && !state.user?.is_super_admin && !state.user?.is_tenant_admin) {
       state.adminSection = 'learning';
     }
     if (!state.user.current_group_id && state.user.study_groups?.length === 1) {

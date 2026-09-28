@@ -611,7 +611,7 @@ async function runLocalBackupImport() {
         专项小组
       </button>
       <button
-        v-if="user?.is_super_admin"
+        v-if="user?.is_super_admin || user?.is_tenant_admin"
         :class="adminSection === 'bot' ? 'primary' : 'quiet'"
         type="button"
         role="tab"
@@ -725,7 +725,7 @@ async function runLocalBackupImport() {
 
     <TenantManagement v-else-if="adminSection === 'tenant' && (user?.is_super_admin || user?.is_tenant_admin)" />
     <MinistryCatalogAdmin v-else-if="adminSection === 'ministry' && canManageMinistryCatalog" />
-    <BotManagementAdmin v-else-if="adminSection === 'bot' && user?.is_super_admin" />
+    <BotManagementAdmin v-else-if="adminSection === 'bot' && (user?.is_super_admin || user?.is_tenant_admin)" />
     <ReciteHistoryAdmin v-else-if="adminSection === 'recite-history' && (user?.is_super_admin || user?.is_tenant_admin)" :group-id="currentGroupID" :members="members" />
 
     <section v-else-if="adminSection === 'learning'">
