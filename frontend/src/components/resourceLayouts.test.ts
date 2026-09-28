@@ -21,4 +21,14 @@ describe('resource layouts', () => {
     expect(component.match(/<MobileCardCollection/g)).toHaveLength(3);
     expect(component.match(/mode="masonry"/g)).toHaveLength(3);
   });
+
+  it('preserves the original resource card width while laying cards out flat', () => {
+    const appStyles = readComponent('app-root.css');
+    const governance = readComponent('ResourceGovernance.vue');
+
+    expect(appStyles).toContain('repeat(auto-fill, minmax(min(100%, 320px), 1fr))');
+    expect(governance).toContain('repeat(auto-fill, minmax(min(100%, 320px), 1fr))');
+    expect(appStyles).not.toContain('.app-resource-masonry .mobile-card-collection__masonry {\n    grid-template-columns: repeat(2');
+    expect(governance).not.toContain('.resource-masonry :deep(.mobile-card-collection__masonry) { grid-template-columns: repeat(2');
+  });
 });

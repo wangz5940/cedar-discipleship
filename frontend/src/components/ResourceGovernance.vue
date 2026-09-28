@@ -755,7 +755,7 @@ onMounted(loadGovernance);
 .resource-dialog h3 { overflow-wrap: anywhere; }
 .resource-dialog footer { position: sticky; bottom: 0; z-index: 2; background: var(--cd-surface, #fff); }
 .resource-dialog footer button { min-height: 44px; }
-.resource-masonry :deep(.mobile-card-collection__masonry) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.resource-masonry :deep(.mobile-card-collection__masonry) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 14px; }
 .resource-masonry :deep(.mobile-card-collection__item) { display: block; margin-bottom: 0; }
 .resource-stack-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 10px; height: 100%; padding: 16px; overflow: hidden; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: var(--cd-shadow-card); }
 .resource-stack-card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -776,7 +776,6 @@ onMounted(loadGovernance);
   .resource-batch-actions button:last-child { grid-column: 1 / -1; }
   .resource-governance-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .resource-governance-tabs button { width: 100%; justify-content: center; white-space: normal; }
-  .resource-masonry :deep(.mobile-card-collection__masonry) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .modal-backdrop { padding: 12px; }
   .resource-dialog { width: 100%; max-height: calc(100dvh - 24px); }
   .resource-dialog footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
