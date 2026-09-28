@@ -124,7 +124,7 @@ async function addExistingGroup() {
   if (!group || !managedTenantID.value) return;
   const confirmed = await confirmDialog({
     title: '调整小组归属',
-    message: `将「${group.name}」及组内学习数据从「${group.tenant_name}」加入「${selectedTenant.value?.name}」？本组成员会加入目标主体；已有跨小组资源关联时无法转移。`,
+    message: `将「${group.name}」及组内学习数据从「${group.tenant_name}」加入「${selectedTenant.value?.name}」？本组成员会加入目标主体；已导入的资料仍可使用，未导入的跨主体资料将不再显示。`,
     tone: 'danger',
   });
   if (!confirmed) return;
@@ -137,7 +137,7 @@ async function addExistingGroup() {
     await load();
     toast('小组归属已更新');
   } catch (error) {
-    toast(error.message === 'group_has_cross_group_resources' ? '请先解除该小组的跨小组资源分享和导入关联' : error.message);
+    toast(error.message);
   }
 }
 

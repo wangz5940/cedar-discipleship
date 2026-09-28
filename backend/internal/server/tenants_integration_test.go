@@ -176,12 +176,12 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	}
 	testdb.Exec(t, db, `INSERT INTO asset_dependencies(consumer_group_id,consumer_asset_id,provider_group_id,provider_asset_id,dependency_type,status,created_at,updated_at)
 		VALUES(?,9001,?,9002,'import','active',NOW(),NOW())`, groupA, groupB)
-	if status, _ := call(http.MethodPut, fmt.Sprintf("/api/super-admin/groups/%d/tenant", groupA), 1, 0, fmt.Sprintf(`{"tenant_id":%d}`, tenantB)); status != http.StatusConflict {
-		t.Fatalf("moved group with cross-group resource dependency: %d", status)
-	}
-	testdb.Exec(t, db, `DELETE FROM asset_dependencies WHERE consumer_asset_id=9001`)
 	if status, _ := call(http.MethodPut, fmt.Sprintf("/api/super-admin/groups/%d/tenant", groupA), 1, 0, fmt.Sprintf(`{"tenant_id":%d}`, tenantB)); status != http.StatusOK {
-		t.Fatalf("move group: %d", status)
+		t.Fatalf("move group with existing import: %d", status)
+	}
+	var dependencyActive bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM asset_dependencies WHERE consumer_group_id=? AND consumer_asset_id=9001 AND status='active')`, groupA).Scan(&dependencyActive); err != nil || !dependencyActive {
+		t.Fatalf("existing import relationship lost after move: active=%v err=%v", dependencyActive, err)
 	}
 	if status, _ := call(http.MethodGet, path(tenantA, "groups"), 2, groupA, ""); status != http.StatusForbidden {
 		t.Fatalf("source admin retained moved group: %d", status)

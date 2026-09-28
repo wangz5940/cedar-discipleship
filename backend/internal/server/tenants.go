@@ -234,26 +234,6 @@ func (a *app) handleMoveGroupTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "group_name_exists")
 		return
 	}
-	var linked bool
-	err = tx.QueryRowContext(r.Context(), `SELECT EXISTS(
-		SELECT 1 FROM asset_dependencies WHERE status='active' AND
-			((consumer_group_id=? AND provider_group_id<>?) OR (provider_group_id=? AND consumer_group_id<>?))
-		UNION ALL
-		SELECT 1 FROM asset_share_grants WHERE status='active' AND consumer_group_id IS NOT NULL AND
-			((owner_group_id=? AND consumer_group_id<>?) OR (consumer_group_id=? AND owner_group_id<>?))
-		UNION ALL
-		SELECT 1 FROM asset_bindings b JOIN assets source ON source.id=b.source_asset_id
-			WHERE b.deleted_at IS NULL AND
-			((b.group_id=? AND source.group_id<>?) OR (source.group_id=? AND b.group_id<>?))
-	)`, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID, groupID).Scan(&linked)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "group_move_failed")
-		return
-	}
-	if linked {
-		writeError(w, http.StatusConflict, "group_has_cross_group_resources")
-		return
-	}
 	now := time.Now().UTC()
 	if _, err := tx.ExecContext(r.Context(), `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
 		SELECT ?,m.user_id,'member',1,?,? FROM group_members m JOIN users u ON u.id=m.user_id AND u.status=1

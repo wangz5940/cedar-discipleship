@@ -407,14 +407,16 @@ func (r *MySQLRepository) importedSource(ctx context.Context, groupID, importedA
 	err := r.db.QueryRowContext(ctx, `SELECT source.id,source.group_id,source.category,source.title,source.original_name,
 	       source.storage_path,source.mime_type,source.file_size,source.checksum_sha256,source.visibility,source.created_at,source.updated_at
 	  FROM asset_dependencies d
-	  JOIN assets source ON source.id=d.provider_asset_id
-	  JOIN asset_bindings source_b ON source_b.asset_id=source.id AND source_b.asset_kind=? AND source_b.deleted_at IS NULL
-	  JOIN asset_share_grants g ON g.asset_id=source.id AND g.owner_group_id=source.group_id AND g.permission=? AND g.status=?
-	   AND (g.consumer_group_id IS NULL OR g.consumer_group_id=d.consumer_group_id)
-	  JOIN study_groups owner_group ON owner_group.id=source.group_id
-	  JOIN study_groups consumer_group ON consumer_group.id=d.consumer_group_id AND consumer_group.tenant_id=owner_group.tenant_id
+	  JOIN assets source ON source.id=d.provider_asset_id AND source.group_id=d.provider_group_id
+	  JOIN asset_bindings imported ON imported.asset_id=d.consumer_asset_id AND imported.group_id=d.consumer_group_id
+	   AND imported.asset_kind=? AND imported.source_asset_id=source.id AND imported.deleted_at IS NULL
+	  JOIN asset_bindings source_b ON source_b.asset_id=source.id AND source_b.group_id=source.group_id
+	   AND source_b.asset_kind=? AND source_b.deleted_at IS NULL
+	  JOIN asset_share_grants g ON g.asset_id=source.id AND g.owner_group_id=source.group_id
+	   AND g.permission=? AND g.status=? AND (g.consumer_group_id IS NULL OR g.consumer_group_id=d.consumer_group_id)
 	 WHERE d.consumer_group_id=? AND d.consumer_asset_id=? AND d.status=? AND source.storage_path LIKE ?`,
-		AssetKindOwned, sharePermissionImport, shareStatusActive, groupID, importedAssetID, shareStatusActive, newResourceStorageSQLPattern).
+		AssetKindImported, AssetKindOwned, sharePermissionImport, shareStatusActive,
+		groupID, importedAssetID, shareStatusActive, newResourceStorageSQLPattern).
 		Scan(&item.ID, &item.GroupID, &item.Category, &item.Title, &item.OriginalName, &item.StoragePath,
 			&item.MimeType, &item.FileSize, &item.ChecksumSHA256, &item.Visibility, &item.CreatedAt, &item.UpdatedAt)
 	return &item, err
