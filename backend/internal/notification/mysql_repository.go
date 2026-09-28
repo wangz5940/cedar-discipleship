@@ -142,12 +142,7 @@ func (s *CheckinSource) initialSnapshot(ctx context.Context, event Event) (Snaps
 		ORDER BY start_date DESC LIMIT 1`, event.GroupID, today, today).
 		Scan(&weekID, &start, &end)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Snapshot{
-			Text:      FormatCheckins(nil, 0, false),
-			ExpiresAt: time.Date(at.Year(), at.Month(), at.Day()+1, 0, 0, 0, 0, s.location),
-			Topic:     "weekly",
-			Version:   "weekly:none:" + today,
-		}, nil
+		return Snapshot{}, nil
 	}
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load initial notification week: %w", err)
@@ -242,11 +237,16 @@ func (s *CheckinSource) periodSnapshot(ctx context.Context, event Event, start, 
 	if daily {
 		topic = "daily"
 	}
+	periodID := ""
+	if !daily {
+		periodID = fmt.Sprintf("week:%d", weekID)
+	}
 	return Snapshot{
 		Text:            FormatCheckins(entries, event.RecordID, daily),
 		ExpiresAt:       endDate.AddDate(0, 0, 1),
 		Topic:           topic,
 		Version:         topic + ":" + end,
+		PeriodID:        periodID,
 		CoveredRecordID: coveredRecordID,
 	}, nil
 }

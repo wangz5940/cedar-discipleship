@@ -48,6 +48,7 @@ type job struct {
 	ErrorCode        string    `json:"error_code,omitempty"`
 	Topic            string    `json:"topic,omitempty"`
 	ContentVersion   string    `json:"content_version,omitempty"`
+	PeriodID         string    `json:"period_id,omitempty"`
 	ContentHash      string    `json:"content_hash,omitempty"`
 	CanonicalContent string    `json:"canonical_content,omitempty"`
 	CoveredRecordID  uint64    `json:"covered_record_id,omitempty"`
@@ -193,6 +194,7 @@ func (q *Queue) rearmInitial(name string, now time.Time) error {
 	item.ErrorCode = ""
 	item.Topic = ""
 	item.ContentVersion = ""
+	item.PeriodID = ""
 	item.ContentHash = ""
 	item.CanonicalContent = ""
 	item.CoveredRecordID = 0
@@ -332,6 +334,7 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 			if item.ContentVersion == "" {
 				item.ContentVersion = legacyContentVersion(*item, item.Topic)
 			}
+			item.PeriodID = snapshot.PeriodID
 			item.CanonicalContent = canonicalNotificationContent(snapshot.Text)
 			item.ContentHash = contentHash(item.CanonicalContent)
 			item.CoveredRecordID = snapshot.CoveredRecordID
@@ -349,6 +352,7 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 				item.ExpiresAt = time.Time{}
 				item.Topic = ""
 				item.ContentVersion = ""
+				item.PeriodID = ""
 				item.ContentHash = ""
 				item.CanonicalContent = ""
 				item.CoveredRecordID = 0

@@ -65,3 +65,71 @@ func TestSentStateStoreBootstrapsCompletedNotifications(t *testing.T) {
 		}
 	}
 }
+
+func TestSentStateStoreUsesStablePeriodID(t *testing.T) {
+	t.Parallel()
+	target := Target{ChatID: 99, ChatType: 3}
+	tests := []struct {
+		name      string
+		previous  sentState
+		candidate sentState
+		wantSend  bool
+	}{
+		{
+			name: "same week allows changed end date",
+			previous: sentState{
+				GroupID: 1, Target: target, Topic: "weekly",
+				Version: "weekly:2026-09-29", PeriodID: "week:7", Hash: contentHash("old"),
+			},
+			candidate: sentState{
+				GroupID: 1, Target: target, Topic: "weekly",
+				Version: "weekly:2026-09-28", PeriodID: "week:7", Hash: contentHash("new"),
+			},
+			wantSend: true,
+		},
+		{
+			name: "different older week stays blocked",
+			previous: sentState{
+				GroupID: 1, Target: target, Topic: "weekly",
+				Version: "weekly:2026-09-29", PeriodID: "week:8", Hash: contentHash("old"),
+			},
+			candidate: sentState{
+				GroupID: 1, Target: target, Topic: "weekly",
+				Version: "weekly:2026-09-28", PeriodID: "week:7", Hash: contentHash("new"),
+			},
+		},
+		{
+			name: "legacy state keeps date ordering",
+			previous: sentState{
+				GroupID: 1, Target: target, Topic: "weekly",
+				Version: "weekly:2026-09-29", Hash: contentHash("old"),
+			},
+			candidate: sentState{
+				GroupID: 1, Target: target, Topic: "weekly",
+				Version: "weekly:2026-09-28", PeriodID: "week:7", Hash: contentHash("new"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(dir, "completed"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			store, err := newSentStateStore(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Record(tt.previous); err != nil {
+				t.Fatal(err)
+			}
+			got, err := store.NeedsSend(tt.candidate, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.wantSend {
+				t.Fatalf("NeedsSend = %v, want %v", got, tt.wantSend)
+			}
+		})
+	}
+}

@@ -18,6 +18,7 @@ type sentState struct {
 	Target          Target    `json:"target"`
 	Topic           string    `json:"topic"`
 	Version         string    `json:"version"`
+	PeriodID        string    `json:"period_id,omitempty"`
 	Hash            string    `json:"hash"`
 	Content         string    `json:"content"`
 	SentAt          time.Time `json:"sent_at"`
@@ -53,7 +54,7 @@ func (s *sentStateStore) NeedsSend(candidate sentState, recordID uint64) (bool, 
 	if err != nil {
 		return false, err
 	}
-	if state.Version == candidate.Version {
+	if state.Version == candidate.Version || sameNotificationPeriod(state, candidate) {
 		if recordID > 0 && recordID <= state.CoveredRecordID {
 			return false, nil
 		}
@@ -82,7 +83,7 @@ func (s *sentStateStore) Record(state sentState) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	previous, err := s.readLocked(state.GroupID, state.Target, state.Topic)
-	if err == nil && previous.Version == state.Version {
+	if err == nil && (previous.Version == state.Version || sameNotificationPeriod(previous, state)) {
 		state.CoveredRecordID = max(state.CoveredRecordID, previous.CoveredRecordID)
 	}
 	return s.writeLocked(state)
@@ -185,11 +186,16 @@ func stateFromJob(item job) sentState {
 		Target:          item.Target,
 		Topic:           topic,
 		Version:         version,
+		PeriodID:        item.PeriodID,
 		Hash:            hash,
 		Content:         content,
 		SentAt:          sentAt,
 		CoveredRecordID: max(item.CoveredRecordID, item.Event.RecordID),
 	}
+}
+
+func sameNotificationPeriod(left, right sentState) bool {
+	return left.PeriodID != "" && left.PeriodID == right.PeriodID
 }
 
 func legacyContentVersion(item job, topic string) string {

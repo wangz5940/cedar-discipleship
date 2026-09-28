@@ -31,6 +31,7 @@ type Snapshot struct {
 	ExpiresAt time.Time
 	Topic     string
 	Version   string
+	PeriodID  string
 	// CoveredRecordID is the largest checkin ID included in this snapshot.
 	CoveredRecordID uint64
 }

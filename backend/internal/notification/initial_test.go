@@ -150,6 +150,7 @@ func TestQueueWakeInitialContentDiff(t *testing.T) {
 		ExpiresAt: now.Add(72 * time.Hour),
 		Topic:     "weekly",
 		Version:   "weekly:2026-09-13",
+		PeriodID:  "week:7",
 	}
 	tests := []struct {
 		name          string
@@ -215,6 +216,12 @@ func TestQueueWakeInitialContentDiff(t *testing.T) {
 			currentWeek:  weekly,
 			want:         []string{daily.Text, weekly.Text},
 		},
+		{
+			name:         "no current week skips weekly summary",
+			currentDaily: daily,
+			currentWeek:  Snapshot{},
+			want:         []string{daily.Text},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -254,13 +261,14 @@ func snapshotWithText(snapshot Snapshot, text string) Snapshot {
 func stateForSnapshot(target Target, snapshot Snapshot, sentAt time.Time) *sentState {
 	content := canonicalNotificationContent(snapshot.Text)
 	return &sentState{
-		GroupID: 1,
-		Target:  target,
-		Topic:   snapshot.Topic,
-		Version: snapshot.Version,
-		Hash:    contentHash(content),
-		Content: content,
-		SentAt:  sentAt,
+		GroupID:  1,
+		Target:   target,
+		Topic:    snapshot.Topic,
+		Version:  snapshot.Version,
+		PeriodID: snapshot.PeriodID,
+		Hash:     contentHash(content),
+		Content:  content,
+		SentAt:   sentAt,
 	}
 }
 
@@ -276,6 +284,7 @@ func TestInitialSnapshot(t *testing.T) {
 		dbError     bool
 		want        string
 		wantVersion string
+		wantPeriod  string
 		wantCovered uint64
 	}{
 		{
@@ -293,7 +302,8 @@ func TestInitialSnapshot(t *testing.T) {
 				{int64(2), int64(1), "张三", "weekly_video", "", "", "", "video/mp4", "lesson.mp4"},
 				{int64(3), int64(2), "李四", "weekly_book", "史剧", "", "", "", ""},
 			},
-			want: "本周任务\n1 张三 基督 视频\n2 李四 史剧", wantVersion: "weekly:2026-09-13", wantCovered: 3,
+			want: "本周任务\n1 张三 基督 视频\n2 李四 史剧", wantVersion: "weekly:2026-09-13",
+			wantPeriod: "week:7", wantCovered: 3,
 		},
 		{
 			name: "carried video and repeated completion merge", kind: "weekly",
@@ -301,11 +311,15 @@ func TestInitialSnapshot(t *testing.T) {
 				{int64(1), int64(1), "张三", "weekly_video", "", "", "", "video/mp4", "lesson.mp4"},
 				{int64(2), int64(1), "张三", "weekly_video", "", "", "", "video/mp4", "lesson.mp4"},
 			},
-			want: "本周任务\n1 张三 视频", wantVersion: "weekly:2026-09-13", wantCovered: 2,
+			want: "本周任务\n1 张三 视频", wantVersion: "weekly:2026-09-13",
+			wantPeriod: "week:7", wantCovered: 2,
 		},
 		{name: "empty daily", kind: "daily", want: "每日灵修\n暂无打卡记录", wantVersion: "daily:2026-09-09"},
-		{name: "empty weekly", kind: "weekly", want: "本周任务\n暂无打卡记录", wantVersion: "weekly:2026-09-13"},
-		{name: "no current week", kind: "weekly", noWeek: true, want: "本周任务\n暂无打卡记录", wantVersion: "weekly:none:2026-09-09"},
+		{
+			name: "empty weekly", kind: "weekly", want: "本周任务\n暂无打卡记录",
+			wantVersion: "weekly:2026-09-13", wantPeriod: "week:7",
+		},
+		{name: "no current week", kind: "weekly", noWeek: true},
 		{name: "database failure is not empty progress", kind: "daily", dbError: true},
 	}
 	for _, tt := range tests {
@@ -357,11 +371,16 @@ func TestInitialSnapshot(t *testing.T) {
 			if snapshot.CoveredRecordID != tt.wantCovered {
 				t.Fatalf("snapshot coverage=%d, want %d", snapshot.CoveredRecordID, tt.wantCovered)
 			}
-			if !tt.dbError && (snapshot.Topic != tt.kind || snapshot.Version != tt.wantVersion) {
-				t.Fatalf("topic/version = %q/%q, want %q/%q",
-					snapshot.Topic, snapshot.Version, tt.kind, tt.wantVersion)
+			wantTopic := tt.kind
+			if tt.noWeek {
+				wantTopic = ""
 			}
-			if !tt.dbError && !snapshot.ExpiresAt.After(now) {
+			if !tt.dbError &&
+				(snapshot.Topic != wantTopic || snapshot.Version != tt.wantVersion || snapshot.PeriodID != tt.wantPeriod) {
+				t.Fatalf("topic/version/period = %q/%q/%q, want %q/%q/%q",
+					snapshot.Topic, snapshot.Version, snapshot.PeriodID, wantTopic, tt.wantVersion, tt.wantPeriod)
+			}
+			if !tt.dbError && !tt.noWeek && !snapshot.ExpiresAt.After(now) {
 				t.Fatal("initial snapshot already expired")
 			}
 			if len(connector.steps) != 0 {
