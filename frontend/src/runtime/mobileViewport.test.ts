@@ -47,4 +47,14 @@ describe('mobile viewport safeguards', () => {
       /@media\s*\(min-width:\s*921px\)[\s\S]*?\.ministry-directory,\s*\n\s*\.ministry-workspace\s*{[\s\S]*?overflow-y:\s*auto;/,
     );
   });
+
+  it('keeps the attendance workspace structured when global styles are consolidated', () => {
+    const component = readFileSync(new URL('../components/CountingAttendance.vue', import.meta.url), 'utf8');
+
+    expect(component).toMatch(/\.attendance-workspace\s*{[^}]*display:\s*grid;/);
+    expect(component).toMatch(/\.attendance-settings\s*{[^}]*border:\s*1px solid var\(--cd-border\);/);
+    expect(component).toMatch(/\.weekday-picker\s*{[^}]*grid-template-columns:\s*repeat\(7,/);
+    expect(component).toMatch(/\.attendance-table th,\s*\n\.attendance-table td\s*{[^}]*border-bottom:/);
+    expect(component).toMatch(/\.attendance-cell\s*{[^}]*width:\s*44px;[^}]*height:\s*44px;/);
+  });
 });
