@@ -18,6 +18,7 @@ func requestRoundFixture(t *testing.T) (*MySQLRepository, *sql.DB) {
 	testdb.Apply(t, db, "003_ministry_groups.sql")
 	testdb.Apply(t, db, "006_ministry_content_deletions.sql")
 	testdb.Apply(t, db, "014_ministry_submission_rounds.sql")
+	testdb.Apply(t, db, "014_ministry_submission_rounds.sql")
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
 		VALUES (1,'a','A',NOW(),NOW());
 		INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
