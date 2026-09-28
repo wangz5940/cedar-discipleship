@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS tenants (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT IGNORE INTO tenants (id,name,status,created_at,updated_at)
-VALUES (1,'原有主体',1,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3));
+VALUES (1,'原有小家',1,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3));
+
+UPDATE tenants SET name='原有小家',updated_at=UTC_TIMESTAMP(3)
+WHERE id=1 AND name='原有主体';
 
 SET @add_tenant_to_groups = IF(
   (SELECT COUNT(*) FROM information_schema.COLUMNS

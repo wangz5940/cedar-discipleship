@@ -517,13 +517,6 @@
   letter-spacing: normal;
 }
 
-.cd-login-hero p {
-  font-size: 15px;
-  color: var(--cd-muted);
-  line-height: 1.8;
-  max-width: 380px;
-}
-
 .cd-login-hero-tree {
   margin-top: 8px;
   opacity: 0.16;
@@ -631,10 +624,6 @@
 
   .cd-login-hero h1 {
     font-size: 26px;
-  }
-
-  .cd-login-hero p {
-    font-size: 14px;
   }
 
   .cd-login-hero-tree {

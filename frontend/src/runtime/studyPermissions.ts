@@ -12,7 +12,7 @@ export function canManageStudyGroup(member?: StudyMember | null): boolean {
 
 export function studyRoleLabel(member?: StudyMember | null): string {
   if (member?.is_super_admin) return '超级管理员';
-  if (member?.is_tenant_admin) return '主体管理员';
+  if (member?.is_tenant_admin) return '小家管理员';
   if (member?.roles?.includes('group_leader')) return '组长';
   if (member?.roles?.includes('group_admin')) return '小组管理员';
   return '';

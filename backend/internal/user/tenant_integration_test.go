@@ -60,3 +60,21 @@ func TestTenantMembershipAndGroupSelection(t *testing.T) {
 		t.Fatalf("other tenant membership after A removal = %+v, err = %v", after, err)
 	}
 }
+
+func TestDefaultTenantNameMigration(t *testing.T) {
+	db := testdb.Open(t)
+	var name string
+	if err := db.QueryRow(`SELECT name FROM tenants WHERE id=1`).Scan(&name); err != nil || name != "原有小家" {
+		t.Fatalf("new default name = %q, err = %v", name, err)
+	}
+	testdb.Exec(t, db, `UPDATE tenants SET name='原有主体' WHERE id=1`)
+	testdb.Apply(t, db, "015_tenants.sql")
+	if err := db.QueryRow(`SELECT name FROM tenants WHERE id=1`).Scan(&name); err != nil || name != "原有小家" {
+		t.Fatalf("legacy name after migration = %q, err = %v", name, err)
+	}
+	testdb.Exec(t, db, `UPDATE tenants SET name='自定义小家' WHERE id=1`)
+	testdb.Apply(t, db, "015_tenants.sql")
+	if err := db.QueryRow(`SELECT name FROM tenants WHERE id=1`).Scan(&name); err != nil || name != "自定义小家" {
+		t.Fatalf("custom name after migration = %q, err = %v", name, err)
+	}
+}

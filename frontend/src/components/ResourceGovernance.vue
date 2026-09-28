@@ -498,7 +498,6 @@ onMounted(loadGovernance);
     <header class="resource-governance-head">
       <div>
         <h2>资源库管理</h2>
-        <p class="muted small">按分类查找资源，并管理本组资源与共享导入。</p>
       </div>
       <div class="resource-governance-actions">
         <button class="ghost resource-icon-button" type="button" :disabled="refreshing || loading" title="刷新资源数据" aria-label="刷新资源数据" @click="refreshResources">

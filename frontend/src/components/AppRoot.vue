@@ -281,7 +281,6 @@ async function refreshResources() {
           </div>
         </div>
         <h1>继续今天的学习</h1>
-        <p>输入账号与密码，进入学习空间。</p>
       </div>
 
         <form class="app-login-form" @submit.prevent="submitLogin">
@@ -360,7 +359,6 @@ async function refreshResources() {
         <section v-if="showGroupPicker" class="panel app-group-picker">
           <div class="app-group-picker__head">
             <h2>选择小组</h2>
-            <p class="muted">你的学习任务、打卡和资料会按所选小组独立显示。</p>
           </div>
           <div class="cd-group-grid">
             <div

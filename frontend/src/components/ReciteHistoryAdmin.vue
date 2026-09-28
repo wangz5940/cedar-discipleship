@@ -83,7 +83,6 @@ watch(() => props.groupId, () => {
     <div class="section-title recite-admin-head">
       <div>
         <h2>默写历史记录</h2>
-        <p class="muted">查看和管理当前小组的默写成绩。切换顶部小组后可管理其他小组。</p>
       </div>
       <button class="secondary icon-button" type="button" title="刷新记录" aria-label="刷新默写记录" :disabled="loading" @click="load(true)">
         <RefreshCw :size="16" :class="{ spinning: loading }" />
@@ -125,7 +124,6 @@ watch(() => props.groupId, () => {
 
 <style scoped>
 .recite-admin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.recite-admin-head p { margin: 6px 0 0; }
 .recite-admin-filter { display: grid; gap: 6px; max-width: 280px; margin-bottom: 18px; }
 .recite-admin-list { display: grid; }
 .recite-admin-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--cd-border); }

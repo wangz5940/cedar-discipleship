@@ -556,7 +556,6 @@ async function runLocalBackupImport() {
     <div class="pagehead spread admin-pagehead">
       <div>
         <h1>管理工作台</h1>
-        <p class="muted">安排学习内容，管理小组资料</p>
       </div>
     </div>
 
@@ -611,7 +610,7 @@ async function runLocalBackupImport() {
         :tabindex="adminSection === 'tenant' ? 0 : -1"
         @click="setAdminSection('tenant')"
       >
-        主体管理
+        小家管理
       </button>
       <button
         v-if="canManageMinistryCatalog"
@@ -652,7 +651,6 @@ async function runLocalBackupImport() {
       <div class="section-title admin-section-title">
         <div>
           <h2>成员与小组</h2>
-          <p class="muted">管理当前小组的人员、权限和基本信息</p>
         </div>
       </div>
 
@@ -1071,7 +1069,6 @@ async function runLocalBackupImport() {
 .admin-wrapper :where(.card, .empty) { border-radius: var(--cd-radius-card); }
 .admin-wrapper .empty { padding: 32px 20px; text-align: center; }
 .admin-section-title { margin-top: 0; }
-.admin-section-title p { margin: 6px 0 0; }
 .admin-member-settings { margin-bottom: 24px; }
 .admin-members-section { min-width: 0; }
 .admin-member-list-title { margin-top: 0; }

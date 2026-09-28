@@ -183,7 +183,6 @@ async function mutate(action) {
       <div class="admin-ministry-catalog-head">
         <div>
           <h2>专项小组目录</h2>
-          <p class="muted">新增、修改名称或停用不再使用的专项小组</p>
         </div>
         <div class="inline-actions">
           <label class="admin-toggle">
