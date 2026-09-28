@@ -1,6 +1,6 @@
 ---
 name: preserve-existing-behavior
-description: "Preserves existing product behavior when extending, refactoring, migrating, or generalizing code. Must be used for changes to existing call paths, routing, defaults, shared helpers, data contracts, frontend content/resource resolution, completion semantics, or cross-group compatibility unless the user explicitly requests a compatibility break."
+description: Preserves existing product behavior when extending, refactoring, migrating, or generalizing code. Use for changes to existing call paths, defaults, data contracts, migrations, or cross-group compatibility.
 ---
 
 # Preserve Existing Behavior
@@ -61,6 +61,15 @@ For cross-group, migration, routing, or content-resolution changes, evaluate all
 | Completion | aggregate completion; per-item completion; mixed or partial completion |
 
 Remove irrelevant rows, but never omit a case merely because the new implementation does not model it.
+
+### Keep orthogonal dimensions independent
+
+A newly introduced hierarchy or metadata dimension is not automatically a new behavior boundary.
+
+- Write the old eligibility predicate and the proposed predicate side by side before adding a condition.
+- For every new condition, cite the explicit requirement that authorizes it. Do not derive business restrictions from data ownership, storage scope, or security terminology alone.
+- Add cross-product tests that vary the old and new dimensions independently. For example, if behavior historically depends on group count and a tenant dimension is added, test both “one group + multiple tenants” and “multiple groups + one tenant”.
+- If the requirement defines only one dimension, preserve that exact predicate and use other dimensions only for their stated responsibilities.
 
 ### 5. Make the narrowest change
 

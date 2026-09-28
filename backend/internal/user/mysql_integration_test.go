@@ -31,6 +31,10 @@ func TestMemberQueriesAndPasswordScope(t *testing.T) {
 		INSERT INTO user_group_roles(group_id,user_id,role,created_at)
 		VALUES (1,4,'group_leader',NOW()),(2,3,'group_admin',NOW())`)
 	testdb.Apply(t, db, "015_tenants.sql")
+	testdb.Exec(t, db, `INSERT INTO tenants(id,name,status,created_at,updated_at)
+		VALUES(2,'Other Tenant',1,NOW(),NOW());
+		INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		VALUES(2,3,'admin',1,NOW(),NOW())`)
 	repo := NewMySQLRepository(db)
 	t.Run("personal settings stay within membership", func(t *testing.T) {
 		settings := PersonalSettings{

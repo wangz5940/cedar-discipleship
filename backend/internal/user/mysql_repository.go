@@ -515,7 +515,6 @@ func (r *MySQLRepository) SetGroupDefaultPassword(ctx context.Context, groupID u
 		WHERE u.is_super_admin=0
 		  AND r.id IS NULL
 		  AND (SELECT COUNT(*) FROM group_members gm WHERE gm.user_id=u.id AND gm.status=1)=1
-		  AND (SELECT COUNT(*) FROM tenant_members tm WHERE tm.user_id=u.id AND tm.status=1)=1
 		ORDER BY u.id FOR UPDATE`, groupID, groupID, RoleGroupLeader)
 	if err != nil {
 		return 0, err
