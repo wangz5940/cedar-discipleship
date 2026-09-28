@@ -268,10 +268,6 @@ func (s *Service) SetRole(ctx context.Context, groupID, memberID, actorID uint64
 	return s.repo.SetRole(ctx, groupID, member.UserID, role, grant, at)
 }
 
-func (s *Service) SetUserRole(ctx context.Context, groupID, userID uint64, role string, grant bool, at time.Time) error {
-	return s.repo.SetRole(ctx, groupID, userID, role, grant, at)
-}
-
 func (s *Service) ResetNonSuperPasswords(ctx context.Context, passwordHash string, at time.Time) (int64, error) {
 	return s.repo.ResetNonSuperPasswords(ctx, passwordHash, at)
 }

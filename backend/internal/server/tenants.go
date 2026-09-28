@@ -40,28 +40,6 @@ func (a *app) requireCurrentTenantAdmin(next http.HandlerFunc) http.HandlerFunc 
 	}
 }
 
-func (a *app) handleTenantLeader(w http.ResponseWriter, r *http.Request) {
-	groupID := a.tenantGroupID(w, r)
-	if groupID == 0 {
-		return
-	}
-	userID := pathUint64(r, "user_id")
-	if userID == 0 {
-		writeError(w, http.StatusBadRequest, "user_id_required")
-		return
-	}
-	var member bool
-	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id=? AND user_id=? AND status=1)`, groupID, userID).Scan(&member); err != nil || !member {
-		writeError(w, http.StatusNotFound, "member_not_found")
-		return
-	}
-	if err := a.users.SetUserRole(r.Context(), groupID, userID, "group_leader", r.Method == http.MethodPut, time.Now().UTC()); err != nil {
-		writeError(w, http.StatusInternalServerError, "role_save_failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
 func (a *app) handleTenants(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	query := `SELECT t.id,t.name,COALESCE(tm.role,''),t.status,

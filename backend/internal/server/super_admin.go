@@ -240,32 +240,3 @@ func (a *app) handleSuperAddGroupMember(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
 }
-
-func (a *app) handleSuperSetLeader(w http.ResponseWriter, r *http.Request) {
-	a.superSetLeaderRole(w, r, true)
-}
-
-func (a *app) handleSuperUnsetLeader(w http.ResponseWriter, r *http.Request) {
-	a.superSetLeaderRole(w, r, false)
-}
-
-func (a *app) superSetLeaderRole(w http.ResponseWriter, r *http.Request, grant bool) {
-	groupID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
-	var userID uint64
-	if grant {
-		var req struct {
-			UserID uint64 `json:"user_id"`
-		}
-		if !readJSON(w, r, &req) {
-			return
-		}
-		userID = req.UserID
-	} else {
-		userID, _ = strconv.ParseUint(r.PathValue("user_id"), 10, 64)
-	}
-	if err := a.users.SetUserRole(r.Context(), groupID, userID, userdomain.RoleGroupLeader, grant, time.Now().UTC()); err != nil {
-		writeError(w, http.StatusInternalServerError, "role_save_failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}

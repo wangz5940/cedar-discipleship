@@ -233,19 +233,6 @@ async function deleteCurrentGroup() {
   }
 }
 
-async function setMemberLeader(member, grant) {
-  const tenantID = Number(user.value?.current_tenant_id || 0);
-  if (!tenantID || !currentGroupID.value) return;
-  try {
-    await api(`/tenants/${tenantID}/groups/${currentGroupID.value}/leaders/${member.user_id}`, {
-      method: grant ? 'PUT' : 'DELETE',
-    });
-    await reloadApp();
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
 async function createMember() {
   const displayName = memberName.value.trim();
   const username = memberUsername.value.trim();
@@ -713,14 +700,6 @@ async function runLocalBackupImport() {
               <span v-if="roleLabel(member)" class="pill role-pill" :class="{ 'role-admin': member.roles?.includes('group_admin') }">
                 {{ roleLabel(member) }}
               </span>
-              <button
-                v-if="user?.is_tenant_admin && member.user_id !== user?.id && !member.is_super_admin"
-                class="quiet"
-                type="button"
-                @click="setMemberLeader(member, !member.roles?.includes('group_leader'))"
-              >
-                {{ member.roles?.includes('group_leader') ? '取消组长' : '设为组长' }}
-              </button>
               <button
                 v-if="canManageRoles && !member.is_super_admin && !member.roles?.includes('group_leader')"
                 :class="member.roles?.includes('group_admin') ? 'secondary' : 'ok'"

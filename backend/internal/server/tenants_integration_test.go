@@ -64,6 +64,12 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	}
 	tenantA, groupA := create("主体 A", "共同组名", 2)
 	tenantB, groupB := create("主体 B", "另一组", 3)
+	if status, _ := call(http.MethodPut, fmt.Sprintf("/api/tenants/%d/groups/%d/leaders/4", tenantA, groupA), 1, 0, ""); status != http.StatusNotFound {
+		t.Fatalf("tenant group leader assignment still available: %d", status)
+	}
+	if status, _ := call(http.MethodPost, fmt.Sprintf("/api/super-admin/groups/%d/leaders", groupA), 1, 0, `{"user_id":4}`); status != http.StatusNotFound {
+		t.Fatalf("super group leader assignment still available: %d", status)
+	}
 	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at) VALUES(4,'membera','Member A','membera',NOW(),NOW())`)
 	testdb.Exec(t, db, `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at) VALUES(?,4,'member',1,NOW(),NOW())`, tenantA)
 	testdb.Exec(t, db, `INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at) VALUES(?,4,'Member A',NOW(),NOW(),NOW())`, groupA)
