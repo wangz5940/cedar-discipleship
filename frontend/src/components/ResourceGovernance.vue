@@ -20,8 +20,8 @@ import { confirmDialog, promptDialog } from '../ui/dialog';
 import { filterSharedResources } from '../runtime/resourceGovernance';
 import { normalizeResourceCategory, resourceCategoryLabel, resourceCategorySort } from '../runtime/resources';
 import { useAppStateStore } from '../stores/appState';
-import StackedWheel from './ui/StackedWheel.vue';
 import DateField from './ui/DateField.vue';
+import MobileCardCollection from './ui/MobileCardCollection.vue';
 
 const app = useAppStateStore();
 const { currentGroupID, resources } = storeToRefs(app);
@@ -66,8 +66,6 @@ const ownedCategories = computed(() => [...new Set(databaseResources.value.map((
 const visibleDatabaseResources = computed(() => ownedCategoryFilter.value
   ? databaseResources.value.filter((item) => normalizeResourceCategory(item.category) === ownedCategoryFilter.value)
   : databaseResources.value);
-const visibleOwnedResources = computed(() => visibleDatabaseResources.value.filter((item) => item.asset_kind !== 'imported'));
-const visibleImportedResources = computed(() => visibleDatabaseResources.value.filter((item) => item.asset_kind === 'imported'));
 const selectedAssets = computed(() => databaseResources.value.filter((item) => selectedAssetIDs.value.includes(Number(item.id))));
 const selectedOwnedAssets = computed(() => ownedResources.value.filter((item) => selectedAssetIDs.value.includes(Number(item.id))));
 const selectedSharedResources = computed(() => sharedResources.value.filter((item) => selectedSharedAssetIDs.value.includes(Number(item.asset_id))));
@@ -544,41 +542,7 @@ onMounted(loadGovernance);
         </div>
       </div>
       <div v-if="batchProgress" class="resource-batch-progress"><RefreshCw :size="15" />{{ batchProgress }}</div>
-      <div class="resource-table-wrap desktop-resource-table">
-        <table class="resource-governance-table">
-          <thead><tr><th class="resource-select-column">选择</th><th>资源</th><th>类型</th><th>归属</th><th>更新时间</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="asset in visibleOwnedResources" :key="asset.id">
-              <td class="resource-select-column"><input type="checkbox" :checked="selectedAssetIDs.includes(Number(asset.id))" @change="setAssetSelected(asset.id, $event.target.checked)" /></td>
-              <td><strong>{{ asset.title }}</strong><small>{{ asset.original_name }}</small></td>
-              <td><span class="pill">{{ categoryLabel(asset.category) }}</span></td>
-              <td>本组自有</td>
-              <td>{{ formatDate(asset.updated_at) }}</td>
-              <td>
-                <div class="inline-actions">
-                  <button class="ghost resource-icon-button" type="button" title="重命名资料" aria-label="重命名资料" :disabled="renamingAssetID === Number(asset.id)" @click="renameAsset(asset)"><Pencil :size="16" /></button>
-                  <button class="ghost" type="button" @click="openShare(asset)"><Share2 :size="15" />共享</button>
-                </div>
-              </td>
-            </tr>
-            <tr v-for="asset in visibleImportedResources" :key="asset.id">
-              <td class="resource-select-column"><input type="checkbox" :checked="selectedAssetIDs.includes(Number(asset.id))" @change="setAssetSelected(asset.id, $event.target.checked)" /></td>
-              <td><strong>{{ asset.title }}</strong><small>{{ asset.original_name }}</small></td>
-              <td><span class="pill">{{ categoryLabel(asset.category) }}</span></td>
-              <td><span class="resource-imported-badge"><Check :size="13" />已导入</span><small>{{ formatDate(asset.imported_at) }}</small></td>
-              <td>{{ formatDate(asset.updated_at) }}</td>
-              <td>
-                <div class="inline-actions">
-                  <button class="ghost resource-icon-button" type="button" title="重命名资料" aria-label="重命名资料" :disabled="renamingAssetID === Number(asset.id)" @click="renameAsset(asset)"><Pencil :size="16" /></button>
-                  <button class="danger resource-icon-button" type="button" title="移除导入" aria-label="移除导入资源" @click="removeImport(asset)"><Trash2 :size="16" /></button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="!visibleDatabaseResources.length" class="empty">当前分类暂无资源。</div>
-      </div>
-      <StackedWheel class="mobile-resource-stack" :items="visibleDatabaseResources" :item-key="(asset) => asset.id" aria-label="本组资源" :card-height="246">
+      <MobileCardCollection class="resource-masonry" :items="visibleDatabaseResources" :item-key="(asset) => asset.id" mode="masonry" aria-label="本组资源">
         <template #default="{ item: asset }">
           <article class="resource-stack-card">
             <header><label><input type="checkbox" :checked="selectedAssetIDs.includes(Number(asset.id))" @change="setAssetSelected(asset.id, $event.target.checked)" /><span>选择</span></label><span class="pill">{{ categoryLabel(asset.category) }}</span></header>
@@ -591,7 +555,8 @@ onMounted(loadGovernance);
             </div>
           </article>
         </template>
-      </StackedWheel>
+        <template #empty>当前分类暂无资源。</template>
+      </MobileCardCollection>
     </template>
 
     <template v-else-if="activeView === 'shared'">
@@ -613,27 +578,7 @@ onMounted(loadGovernance);
         </div>
       </div>
       <div v-if="batchProgress" class="resource-batch-progress"><RefreshCw :size="15" />{{ batchProgress }}</div>
-      <div class="resource-table-wrap desktop-resource-table">
-        <table class="resource-governance-table">
-          <thead><tr><th class="resource-select-column">选择</th><th>资源</th><th>来源小组</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="item in visibleSharedResources" :key="item.asset_id">
-              <td class="resource-select-column"><input type="checkbox" :checked="selectedSharedAssetIDs.includes(Number(item.asset_id))" @change="setSharedSelected(item.asset_id, $event.target.checked)" /></td>
-              <td><strong>{{ item.title }}</strong><small>{{ item.original_name }} · {{ formatSize(item.file_size) }}</small></td>
-              <td>{{ item.owner_group?.name }}</td>
-              <td>{{ formatDate(item.updated_at) }}</td>
-              <td>
-                <span v-if="item.imported" class="resource-imported-badge"><Check :size="13" />已导入</span>
-                <span v-else class="pill">可导入</span>
-                <small v-if="item.imported_at">{{ formatDate(item.imported_at) }}</small>
-              </td>
-              <td><button class="secondary" type="button" @click="openImport(item)">{{ item.imported ? '重新导入' : '导入' }}</button></td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="!visibleSharedResources.length" class="empty">没有符合筛选条件的共享资源。</div>
-      </div>
-      <StackedWheel class="mobile-resource-stack" :items="visibleSharedResources" :item-key="(item) => item.asset_id" aria-label="共享资源" :card-height="258">
+      <MobileCardCollection class="resource-masonry" :items="visibleSharedResources" :item-key="(item) => item.asset_id" mode="masonry" aria-label="共享资源">
         <template #default="{ item }">
           <article class="resource-stack-card">
             <header><label><input type="checkbox" :checked="selectedSharedAssetIDs.includes(Number(item.asset_id))" @change="setSharedSelected(item.asset_id, $event.target.checked)" /><span>选择</span></label><span :class="item.imported ? 'resource-imported-badge' : 'pill'">{{ item.imported ? '已导入' : '可导入' }}</span></header>
@@ -642,22 +587,12 @@ onMounted(loadGovernance);
             <button class="secondary" type="button" @click="openImport(item)">{{ item.imported ? '重新导入' : '导入资源' }}</button>
           </article>
         </template>
-      </StackedWheel>
+        <template #empty>没有符合筛选条件的共享资源。</template>
+      </MobileCardCollection>
     </template>
 
     <template v-else-if="activeView === 'history'">
-      <div class="resource-table-wrap desktop-resource-table">
-        <table class="resource-governance-table">
-          <thead><tr><th>时间</th><th>事件</th><th>来源资源</th><th>导入资源</th></tr></thead>
-          <tbody>
-            <tr v-for="item in historyItems" :key="item.id">
-              <td>{{ formatDate(item.created_at) }}</td><td>{{ item.event_type }}</td><td>#{{ item.source_asset_id }}</td><td>#{{ item.imported_asset_id }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="!historyItems.length" class="empty">暂无导入历史。</div>
-      </div>
-      <StackedWheel class="mobile-resource-stack" :items="historyItems" :item-key="(item) => item.id" aria-label="导入历史" :card-height="220">
+      <MobileCardCollection class="resource-masonry" :items="historyItems" :item-key="(item) => item.id" mode="masonry" aria-label="导入历史">
         <template #default="{ item }">
           <article class="resource-stack-card resource-stack-card--history">
             <span class="pill">{{ item.event_type }}</span>
@@ -665,7 +600,8 @@ onMounted(loadGovernance);
             <dl><div><dt>来源资源</dt><dd>#{{ item.source_asset_id }}</dd></div><div><dt>导入资源</dt><dd>#{{ item.imported_asset_id }}</dd></div></dl>
           </article>
         </template>
-      </StackedWheel>
+        <template #empty>暂无导入历史。</template>
+      </MobileCardCollection>
     </template>
 
     <template v-else>
@@ -805,9 +741,6 @@ onMounted(loadGovernance);
 .resource-governance-tabs { display: flex; max-width: 100%; flex-wrap: wrap; }
 .resource-governance-tabs button { flex: 0 0 auto; min-height: 44px; white-space: nowrap; }
 .resource-icon-button { min-width: 44px; min-height: 44px; }
-.resource-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-.resource-governance-table { width: max-content; min-width: 100%; }
-.resource-governance-table td.resource-select-column { min-width: 58px; }
 .resource-batch-toolbar { position: sticky; left: 0; max-width: 100%; }
 .resource-batch-actions button { min-height: 44px; }
 .resource-dialog {
@@ -822,7 +755,8 @@ onMounted(loadGovernance);
 .resource-dialog h3 { overflow-wrap: anywhere; }
 .resource-dialog footer { position: sticky; bottom: 0; z-index: 2; background: var(--cd-surface, #fff); }
 .resource-dialog footer button { min-height: 44px; }
-.mobile-resource-stack { display: none; }
+.resource-masonry :deep(.mobile-card-collection__masonry) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.resource-masonry :deep(.mobile-card-collection__item) { display: block; margin-bottom: 0; }
 .resource-stack-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 10px; height: 100%; padding: 16px; overflow: hidden; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: var(--cd-shadow-card); }
 .resource-stack-card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .resource-stack-card header label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
@@ -842,27 +776,7 @@ onMounted(loadGovernance);
   .resource-batch-actions button:last-child { grid-column: 1 / -1; }
   .resource-governance-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .resource-governance-tabs button { width: 100%; justify-content: center; white-space: normal; }
-  .desktop-resource-table { display: none; }
-  .mobile-resource-stack { display: block; }
-  .resource-governance-table th:first-child,
-  .resource-governance-table td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    background: var(--cd-surface, #fff);
-    box-shadow: 1px 0 0 var(--cd-border);
-  }
-  .resource-governance-table thead th:first-child { z-index: 3; background: var(--cd-surface-subtle); }
-  .resource-governance-table .resource-select-column + th,
-  .resource-governance-table .resource-select-column + td {
-    position: sticky;
-    left: 54px;
-    z-index: 1;
-    min-width: 180px;
-    background: var(--cd-surface, #fff);
-    box-shadow: 1px 0 0 var(--cd-border);
-  }
-  .resource-governance-table thead .resource-select-column + th { z-index: 2; background: var(--cd-surface-subtle); }
+  .resource-masonry :deep(.mobile-card-collection__masonry) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .modal-backdrop { padding: 12px; }
   .resource-dialog { width: 100%; max-height: calc(100dvh - 24px); }
   .resource-dialog footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

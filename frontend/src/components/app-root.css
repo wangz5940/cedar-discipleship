@@ -268,18 +268,8 @@
 }
 
 .app-resource-card__cta {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
   color: var(--cd-primary);
-  font-size: 13px;
-  white-space: nowrap;
 }
-
-.app-resource-card__actions { position: relative; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.app-resource-card__download { min-height: 36px; padding: 4px 9px; font-size: 12px; }
 
 .app-resource-empty {
   padding: 64px 20px;
@@ -308,7 +298,17 @@
 .app-more-dialog__danger { margin-top: 10px; }
 .app-dialog-full-button { width: 100%; }
 
-.app-resource-grid--mobile { display: none; }
+.app-resource-masonry .mobile-card-collection__masonry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.app-resource-masonry .mobile-card-collection__item {
+  display: block;
+  margin-bottom: 0;
+}
+
 .cd-resource-card.app-resource-stack-card { container: resource-card / inline-size; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100%; padding: 16px; }
 .app-resource-stack-card__actions { display: flex; grid-column: 1 / -1; gap: 8px; }
 .app-resource-stack-card__actions button { display: inline-flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding-inline: 8px; white-space: nowrap; }
@@ -354,8 +354,10 @@
   .app-resource-search { flex-basis: 100%; max-width: none; }
   .app-resource-toolbar > button { flex: 0 0 auto; min-height: 40px; padding-inline: 12px; }
   .app-resource-select-all { align-self: center; }
-  .cd-resource-grid.app-resource-grid--desktop { display: none; }
-  .app-resource-grid--mobile { display: block; }
+  .app-resource-masonry .mobile-card-collection__masonry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
 
   .cd-dialog-backdrop { padding: 12px; }
   .app-more-dialog { max-width: min(100%, 500px); }
@@ -383,5 +385,4 @@
   .app-login-hero h1 { font-size: 24px; }
   .content { padding-inline: 16px; }
   .app-page-header { padding-inline: 16px; }
-  .app-resource-card__cta { display: none; }
 }

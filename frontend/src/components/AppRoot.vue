@@ -97,7 +97,6 @@ watch([authenticated, currentGroupID], async ([isAuthenticated, groupID]) => {
   }
 }, { immediate: true });
 const settings = computed(() => learningConfig.value || {});
-const mobileViewMode = computed(() => user.value?.mobile_view_mode || 'masonry');
 const resourceTypeOptions = computed(() => [...new Set(resources.value
   .map((item) => normalizeResourceCategory(item.category))
   .filter(Boolean))].sort(resourceCategorySort));
@@ -450,59 +449,12 @@ async function refreshResources() {
             </button>
           </div>
 
-          <div v-if="filteredResources.length" class="cd-resource-grid app-resource-grid--desktop">
-            <article
-              v-for="asset in filteredResources"
-              :key="resourceSelectionKey(asset)"
-              class="cd-resource-card app-resource-card"
-            >
-              <div class="app-resource-card__copy">
-                <div class="inline app-resource-card__meta">
-                  <div
-                    class="tile"
-                    :class="{
-                      gold: asset.type === 'video' || asset.category === 'video',
-                      purple: asset.category === 'outline',
-                      blue: asset.type === 'markdown' || asset.category === 'book',
-                    }"
-                  >
-                    <Play v-if="asset.type === 'video' || asset.category === 'video'" :size="16" />
-                    <Book v-else-if="asset.category === 'book'" :size="16" />
-                    <FileText v-else :size="16" />
-                  </div>
-                  <span class="pill app-resource-card__pill">
-                    {{ resourceTypeLabel(asset) }}
-                  </span>
-                  <label class="app-resource-select">
-                    <input type="checkbox" :checked="resourceSelected(asset)" @change="toggleResourceSelection(asset)" />
-                    <span>选择</span>
-                  </label>
-                </div>
-                <h3 class="resource-title app-resource-card__title">
-                  <button type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
-                    {{ optionText(asset) }}
-                  </button>
-                </h3>
-                <p class="muted small app-resource-card__path">
-                  <template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}
-                </p>
-              </div>
-              <div class="app-resource-card__actions">
-                <button class="quiet app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
-                  <Eye :size="15" aria-hidden="true" /> 查看
-                </button>
-                <button class="quiet app-resource-card__download" type="button" @click="downloadResource(asset)">
-                  <Download :size="15" /> 下载
-                </button>
-              </div>
-            </article>
-          </div>
           <MobileCardCollection
             v-if="filteredResources.length"
-            class="app-resource-grid--mobile"
+            class="app-resource-masonry"
             :items="filteredResources"
             :item-key="resourceSelectionKey"
-            :mode="mobileViewMode"
+            mode="masonry"
             aria-label="学习资料"
             :card-height="196"
           >
@@ -529,7 +481,9 @@ async function refreshResources() {
                   <p class="muted small app-resource-card__path"><template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}</p>
                 </div>
                 <div class="app-resource-stack-card__actions">
-                  <button class="quiet" type="button" @click="openAsset(asset)">打开</button>
+                  <button class="quiet app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
+                    <Eye :size="15" aria-hidden="true" /> 查看
+                  </button>
                   <button class="primary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
                     <Download :size="16" aria-hidden="true" />
                     <span class="app-resource-stack-card__download-label">下载</span>
