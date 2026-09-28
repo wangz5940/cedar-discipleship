@@ -31,7 +31,7 @@ async function submit() {
     const messages = {
       member_name_required: '名称不能为空',
       member_name_too_long: '名称最多 128 个字符',
-      invalid_mobile_view_mode: '界面显示设置无效',
+      invalid_mobile_view_mode: '移动端卡片显示设置无效',
       forbidden: '你不是当前小组成员',
     };
     showToast(messages[error.message] || error.message);
@@ -71,7 +71,7 @@ async function submit() {
       <section class="panel personal-settings__section">
         <header>
           <Columns2 :size="20" />
-          <h2>界面显示</h2>
+          <h2>移动端卡片显示</h2>
         </header>
         <div class="personal-settings__layout-options" role="radiogroup" aria-label="移动端卡片显示方式">
           <button
