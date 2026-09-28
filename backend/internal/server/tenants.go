@@ -100,20 +100,24 @@ func (a *app) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	req.GroupName = strings.TrimSpace(req.GroupName)
-	if req.Name == "" || req.GroupName == "" || len([]rune(req.Name)) > 128 || len([]rune(req.GroupName)) > 128 {
+	if req.Name == "" || len([]rune(req.Name)) > 128 || len([]rune(req.GroupName)) > 128 {
 		writeError(w, http.StatusBadRequest, "name_required")
 		return
 	}
-	password := randomPassword(12)
-	hash, err := hashPassword(password)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "password_failed")
-		return
-	}
-	code, err := randomURLToken(12)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "group_code_failed")
-		return
+	var password, hash, code string
+	if req.GroupName != "" {
+		password = randomPassword(12)
+		var err error
+		hash, err = hashPassword(password)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "password_failed")
+			return
+		}
+		code, err = randomURLToken(12)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "group_code_failed")
+			return
+		}
 	}
 	now := time.Now().UTC()
 	tx, err := a.db.BeginTx(r.Context(), nil)
@@ -128,18 +132,23 @@ func (a *app) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tenantID, err := insertedID(res)
-	if err == nil {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_create_failed")
+		return
+	}
+	var groupID uint64
+	if req.GroupName != "" {
 		res, err = tx.ExecContext(r.Context(), `INSERT INTO study_groups(tenant_id,code,name,description,default_password_hash,auto_seed_ministry_catalog,created_by,created_at,updated_at)
 			VALUES(?,?,?,'',?,0,?,?,?)`, tenantID, "group-"+strings.ToLower(code), req.GroupName, hash, mustUser(r).ID, now, now)
-	}
-	if err != nil {
-		writeError(w, http.StatusConflict, "group_create_failed")
-		return
-	}
-	groupID, err := insertedID(res)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "group_create_failed")
-		return
+		if err != nil {
+			writeError(w, http.StatusConflict, "group_create_failed")
+			return
+		}
+		groupID, err = insertedID(res)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "group_create_failed")
+			return
+		}
 	}
 	if req.AdminUserID != 0 {
 		res, err = tx.ExecContext(r.Context(), `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
@@ -158,7 +167,12 @@ func (a *app) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "tenant_create_failed")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": tenantID, "group_id": groupID, "default_password": password})
+	result := map[string]any{"id": tenantID}
+	if groupID != 0 {
+		result["group_id"] = groupID
+		result["default_password"] = password
+	}
+	writeJSON(w, http.StatusCreated, result)
 }
 
 func (a *app) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {

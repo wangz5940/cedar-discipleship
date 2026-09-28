@@ -11,17 +11,16 @@ const managedTenantID = ref(0);
 const selectedTenant = computed(() => tenants.value.find((item) => Number(item.id) === managedTenantID.value));
 const tenantName = ref('');
 const editTenantName = ref('');
-const firstGroupName = ref('');
-const firstAdminID = ref('');
 const adminUsername = ref('');
 const adminDisplayName = ref('');
-const newMemberID = ref('');
-const newMemberRole = ref('member');
+const existingAdminID = ref('');
 const groupName = ref('');
 const tenants = ref([]);
 const groups = ref([]);
 const members = ref([]);
 const users = ref([]);
+const adminMembers = computed(() => members.value.filter((member) => member.role === 'admin'));
+const availableAdminAccounts = computed(() => users.value.filter((account) => !adminMembers.value.some((member) => Number(member.user_id) === Number(account.id))));
 const moveTargets = ref({});
 const loading = ref(false);
 let loadVersion = 0;
@@ -57,26 +56,20 @@ async function load() {
 watch(tenantID, (id) => {
   if (!isSuper.value || !managedTenantID.value) managedTenantID.value = id;
 }, { immediate: true });
+watch(managedTenantID, () => { existingAdminID.value = ''; });
 watch([managedTenantID, isSuper], load, { immediate: true });
 
 async function createTenant() {
-  if (!tenantName.value.trim() || !firstGroupName.value.trim()) return;
+  if (!tenantName.value.trim()) return;
   try {
     const result = await api('/super-admin/tenants', {
       method: 'POST',
-      body: JSON.stringify({
-        name: tenantName.value.trim(),
-        group_name: firstGroupName.value.trim(),
-        admin_user_id: Number(firstAdminID.value || 0),
-      }),
+      body: JSON.stringify({ name: tenantName.value.trim() }),
     });
     tenantName.value = '';
-    firstGroupName.value = '';
-    firstAdminID.value = '';
-    await alertDialog({ title: '主体已创建', message: `首个小组的默认密码：${result.default_password}` });
     managedTenantID.value = Number(result.id);
-    await switchGroup(result.group_id);
     await load();
+    toast('主体已创建');
   } catch (error) {
     toast(error.message);
   }
@@ -98,37 +91,14 @@ async function createGroup() {
   }
 }
 
-async function setRole(member, role) {
+async function assignExistingAdmin() {
+  if (!existingAdminID.value) return;
   try {
     await api(`/tenants/${managedTenantID.value}/members`, {
       method: 'PUT',
-      body: JSON.stringify({ user_id: Number(member.user_id), role }),
+      body: JSON.stringify({ user_id: Number(existingAdminID.value), role: 'admin' }),
     });
-    await reloadApp();
-    await load();
-  } catch (error) {
-    toast(error.message);
-  }
-}
-
-async function addMemberToTenant() {
-  if (!newMemberID.value) return;
-  try {
-    await api(`/tenants/${managedTenantID.value}/members`, {
-      method: 'PUT',
-      body: JSON.stringify({ user_id: Number(newMemberID.value), role: newMemberRole.value }),
-    });
-    newMemberID.value = '';
-    await load();
-  } catch (error) {
-    toast(error.message);
-  }
-}
-
-async function removeMember(member) {
-  if (!await confirmDialog({ title: '移出主体', message: `将 ${member.display_name} 移出当前主体？该账号在其他主体的权限不受影响。`, tone: 'danger' })) return;
-  try {
-    await api(`/tenants/${managedTenantID.value}/members/${member.user_id}`, { method: 'DELETE' });
+    existingAdminID.value = '';
     await load();
   } catch (error) {
     toast(error.message);
@@ -211,7 +181,7 @@ async function createAdmin() {
   } catch (error) {
     if (created) {
       await load();
-      await alertDialog({ title: '账号已创建，管理员授权失败', message: `请使用上方“添加现有账号”重试授权。初始密码：${created.initial_password}` });
+      await alertDialog({ title: '账号已创建，管理员授权失败', message: `请使用“设现有账号为主体管理员”重试授权。初始密码：${created.initial_password}` });
     }
     toast(error.message);
   }
@@ -228,11 +198,6 @@ async function createAdmin() {
       <h2>创建主体</h2>
       <div class="form-stack">
         <input v-model.trim="tenantName" aria-label="主体名称" placeholder="主体名称" />
-        <input v-model.trim="firstGroupName" aria-label="首个学习小组" placeholder="首个学习小组名称" />
-        <select v-model="firstAdminID" aria-label="首位主体管理员">
-          <option value="">稍后指定管理员</option>
-          <option v-for="account in users" :key="account.id" :value="account.id">{{ account.display_name }}（{{ account.username }}）</option>
-        </select>
         <div class="form-actions"><button type="button" @click="createTenant">创建主体</button></div>
       </div>
     </div>
@@ -273,29 +238,22 @@ async function createAdmin() {
     </div>
 
     <div v-if="managedTenantID" class="card">
-      <h2>主体成员与管理员</h2>
+      <h2>主体管理员</h2>
+      <p class="muted">普通成员请在人员管理中维护</p>
       <div v-if="isSuper" class="form-stack">
         <input v-model.trim="adminUsername" aria-label="新管理员用户名" placeholder="新管理员用户名" />
         <input v-model.trim="adminDisplayName" aria-label="新管理员姓名" placeholder="新管理员姓名" />
         <div class="form-actions"><button type="button" @click="createAdmin">创建主体管理员账号</button></div>
-        <select v-model="newMemberID" aria-label="添加现有账号">
-          <option value="">选择要加入本主体的现有账号</option>
-          <option v-for="account in users.filter((item) => !members.some((member) => Number(member.user_id) === Number(item.id)))" :key="account.id" :value="account.id">{{ account.display_name }}（{{ account.username }}）</option>
+        <select v-model="existingAdminID" aria-label="选择现有账号作为主体管理员">
+          <option value="">选择现有账号作为主体管理员</option>
+          <option v-for="account in availableAdminAccounts" :key="account.id" :value="account.id">{{ account.display_name }}（{{ account.username }}）</option>
         </select>
-        <select v-model="newMemberRole" aria-label="主体角色">
-          <option value="member">主体成员</option>
-          <option value="admin">主体管理员</option>
-        </select>
-        <div class="form-actions"><button type="button" @click="addMemberToTenant">添加账号</button></div>
+        <div class="form-actions"><button type="button" @click="assignExistingAdmin">设现有账号为主体管理员</button></div>
       </div>
-      <div v-for="member in members" :key="member.user_id" class="spread">
+      <div v-for="member in adminMembers" :key="member.user_id" class="spread">
         <span>{{ member.display_name }}（{{ member.username }}）</span>
-        <span>
-          <button v-if="member.role !== 'admin'" class="quiet" type="button" @click="setRole(member, 'admin')">设为主体管理员</button>
-          <button v-else-if="Number(member.user_id) !== Number(app.user?.id)" class="quiet" type="button" @click="setRole(member, 'member')">取消主体管理员</button>
-          <button v-if="Number(member.user_id) !== Number(app.user?.id)" class="danger" type="button" @click="removeMember(member)">移出主体</button>
-        </span>
       </div>
+      <p v-if="!loading && !adminMembers.length" class="muted">暂无主体管理员</p>
     </div>
   </section>
 </template>

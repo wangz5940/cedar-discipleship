@@ -187,4 +187,24 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	if status, data := call(http.MethodGet, "/api/tenants", 1, 0, ""); status != http.StatusOK || len(data["tenants"].([]any)) != 3 {
 		t.Fatalf("deleted tenant remains visible: %d %v", status, data)
 	}
+	if status, _ := call(http.MethodPost, "/api/super-admin/tenants", 1, 0, `{"name":"  "}`); status != http.StatusBadRequest {
+		t.Fatalf("created tenant without name: %d", status)
+	}
+	status, emptyTenant := call(http.MethodPost, "/api/super-admin/tenants", 1, 0, `{"name":"仅主体名称"}`)
+	if status != http.StatusCreated || emptyTenant["group_id"] != nil || emptyTenant["default_password"] != nil {
+		t.Fatalf("create tenant without group: %d %v", status, emptyTenant)
+	}
+	emptyTenantID := uint64(emptyTenant["id"].(float64))
+	if status, data := call(http.MethodGet, path(emptyTenantID, "groups"), 1, 0, ""); status != http.StatusOK || len(data["study_groups"].([]any)) != 0 {
+		t.Fatalf("new tenant unexpectedly has a group: %d %v", status, data)
+	}
+	if status, _ := call(http.MethodPut, path(emptyTenantID, "members"), 1, 0, `{"user_id":2,"role":"admin"}`); status != http.StatusOK {
+		t.Fatalf("assign admin before creating group: %d", status)
+	}
+	if status, data := call(http.MethodGet, path(emptyTenantID, "members"), 1, 0, ""); status != http.StatusOK || len(data["members"].([]any)) != 1 || data["members"].([]any)[0].(map[string]any)["role"] != "admin" {
+		t.Fatalf("new tenant admin missing: %d %v", status, data)
+	}
+	if status, data := call(http.MethodPost, path(emptyTenantID, "groups"), 1, 0, `{"name":"稍后创建的小组"}`); status != http.StatusCreated || data["default_password"] == nil {
+		t.Fatalf("create group after tenant: %d %v", status, data)
+	}
 }
