@@ -425,7 +425,9 @@ func (r *MySQLRepository) CreateMember(ctx context.Context, groupID, actorID uin
 		var exists bool
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
 			SELECT 1 FROM tenant_members tm JOIN study_groups g ON g.tenant_id=tm.tenant_id
-			WHERE g.id=? AND tm.user_id=? AND tm.status=1)`, groupID, userID).Scan(&exists); err != nil || !exists {
+			WHERE g.id=? AND tm.user_id=? AND tm.status=1 AND NOT EXISTS (
+				SELECT 1 FROM tenant_members admin WHERE admin.user_id=tm.user_id AND admin.role='admin' AND admin.status=1
+			))`, groupID, userID).Scan(&exists); err != nil || !exists {
 			return 0, ErrMemberAddFailed
 		}
 	}
@@ -652,6 +654,15 @@ func (r *MySQLRepository) AddMember(ctx context.Context, groupID, userID uint64,
 }
 
 func ensureTenantMemberTx(ctx context.Context, tx *sql.Tx, groupID, userID uint64, at time.Time) error {
+	var tenantAdmin bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM tenant_members WHERE user_id=? AND role='admin' AND status=1
+	)`, userID).Scan(&tenantAdmin); err != nil {
+		return err
+	}
+	if tenantAdmin {
+		return ErrMemberAddFailed
+	}
 	res, err := tx.ExecContext(ctx, `INSERT IGNORE INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
 		SELECT g.tenant_id,u.id,'member',1,?,? FROM study_groups g JOIN users u ON u.id=? AND u.status=1
 		WHERE g.id=? AND g.status=1`, at, at, userID, groupID)

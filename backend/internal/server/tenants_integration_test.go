@@ -146,6 +146,12 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM group_members WHERE user_id=?`, newAdminID).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("virtual admin became check-in member: %d %v", count, err)
 		}
+		if status, _ := call(http.MethodPost, "/api/admin/members", 3, groupB, fmt.Sprintf(`{"create_user":false,"user_id":%d,"display_name":"New Admin"}`, newAdminID)); status != http.StatusConflict {
+			t.Fatalf("tenant admin added as check-in member: %d", status)
+		}
+		if status, _ := call(http.MethodPost, fmt.Sprintf("/api/super-admin/groups/%d/members", groupA), 1, 0, fmt.Sprintf(`{"user_id":%d,"member_name":"New Admin"}`, newAdminID)); status != http.StatusConflict {
+			t.Fatalf("super admin added virtual admin as check-in member: %d", status)
+		}
 		if status, data := call(http.MethodGet, path(tenantB, "admins"), 1, 0, ""); status != http.StatusOK || len(data["admins"].([]any)) != 2 {
 			t.Fatalf("admin-only listing: %d %v", status, data)
 		}
