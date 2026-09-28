@@ -664,7 +664,7 @@ async function runLocalBackupImport() {
           </div>
         </div>
 
-        <div v-if="currentGroupID && !user?.is_tenant_admin && (user?.current_tenant_id === 1 || user?.is_super_admin)" class="card">
+        <div v-if="currentGroupID && canManageRoles" class="card">
           <h2>修改本组默认密码</h2>
           <div class="form-stack">
             <input v-model="groupPassword" placeholder="新的默认密码（至少 8 位）" type="password" @keyup.enter="updateGroupPassword(groupPassword)" />

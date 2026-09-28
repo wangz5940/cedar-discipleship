@@ -111,11 +111,39 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	if status, _ := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", tenantA), 2, groupA, `{"username":"forbidden","display_name":"Forbidden"}`); status != http.StatusForbidden {
 		t.Fatalf("tenant admin created another admin: %d", status)
 	}
-	if status, data := call(http.MethodPost, path(tenantA, "groups"), 2, groupA, `{"name":"第二组"}`); status != http.StatusCreated {
-		t.Fatalf("tenant admin create group: %d %v", status, data)
+	status, secondGroup := call(http.MethodPost, path(tenantA, "groups"), 2, groupA, `{"name":"第二组"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("tenant admin create group: %d %v", status, secondGroup)
 	}
+	secondGroupID := uint64(secondGroup["id"].(float64))
 	if status, data := call(http.MethodPost, path(tenantB, "groups"), 3, groupB, `{"name":"第二组"}`); status != http.StatusCreated {
 		t.Fatalf("same group name in other tenant blocked: %d %v", status, data)
+	}
+	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES(6,'adminmember','Admin Member','adminmember',NOW(),NOW())`)
+	testdb.Exec(t, db, `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		VALUES(?,6,'member',1,NOW(),NOW())`, tenantA)
+	testdb.Exec(t, db, `INSERT INTO group_members(group_id,user_id,member_name,status,joined_at,created_at,updated_at)
+		VALUES(?,6,'Admin Member',1,NOW(),NOW(),NOW()),(?,6,'Admin Member',1,NOW(),NOW(),NOW())`, groupA, secondGroupID)
+	testdb.Exec(t, db, `INSERT INTO user_group_roles(group_id,user_id,role,created_at)
+		VALUES(?,6,'group_admin',NOW())`, groupA)
+	for _, tc := range []struct {
+		name   string
+		userID uint64
+	}{
+		{name: "group admin", userID: 6},
+		{name: "tenant admin", userID: 2},
+		{name: "super admin", userID: 1},
+	} {
+		t.Run(tc.name+" changes group password", func(t *testing.T) {
+			status, data := call(http.MethodPut, "/api/admin/group/default-password", tc.userID, groupA, `{"password":"chosen-pass-5"}`)
+			if status != http.StatusOK {
+				t.Fatalf("status=%d response=%v", status, data)
+			}
+		})
+	}
+	if status, _ := call(http.MethodPut, "/api/admin/group/default-password", 4, groupA, `{"password":"chosen-pass-5"}`); status != http.StatusForbidden {
+		t.Fatalf("regular member changed group password: %d", status)
 	}
 	if status, data := call(http.MethodPut, path(tenantA, fmt.Sprintf("groups/%d", groupA)), 2, groupA, `{"name":"另一组"}`); status != http.StatusOK {
 		t.Fatalf("same name in other tenant blocked: %d %v", status, data)
@@ -236,6 +264,31 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	}
 	if moved, err := a.users.CurrentUser(t.Context(), 4, groupA); err != nil || moved.CurrentTenantID != tenantB {
 		t.Fatalf("moved member lost group: %+v %v", moved, err)
+	}
+	for _, tc := range []struct {
+		name     string
+		tenantID uint64
+		userID   uint64
+		want     int
+	}{
+		{name: "moved-only member leaves source", tenantID: tenantA, userID: 4, want: 0},
+		{name: "source tenant admin stays active", tenantID: tenantA, userID: 2, want: 1},
+		{name: "member with another source group stays active", tenantID: tenantA, userID: 6, want: 1},
+		{name: "moved-only member joins target", tenantID: tenantB, userID: 4, want: 1},
+		{name: "multi-group member joins target", tenantID: tenantB, userID: 6, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var status int
+			if err := db.QueryRow(`SELECT status FROM tenant_members WHERE tenant_id=? AND user_id=?`, tc.tenantID, tc.userID).Scan(&status); err != nil {
+				t.Fatal(err)
+			}
+			if status != tc.want {
+				t.Fatalf("tenant membership status=%d, want %d", status, tc.want)
+			}
+		})
+	}
+	if status, data := call(http.MethodPut, "/api/admin/group/default-password", 6, groupA, `{"password":"chosen-pass-6"}`); status != http.StatusOK || data["affected_users"] != float64(1) {
+		t.Fatalf("moved group password reset: status=%d response=%v", status, data)
 	}
 	if status, data := call(http.MethodGet, path(tenantB, "groups"), 3, groupB, ""); status != http.StatusOK || len(data["study_groups"].([]any)) < 2 {
 		t.Fatalf("moved member cannot access target tenant: %d %v", status, data)

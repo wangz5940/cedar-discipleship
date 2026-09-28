@@ -149,10 +149,6 @@ func (a *app) handleAdminRemoveMember(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleAdminSetGroupDefaultPassword(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
-	if (u.IsTenantAdmin || u.CurrentTenantID != 1) && !u.IsSuperAdmin {
-		writeError(w, http.StatusForbidden, "global_account_password")
-		return
-	}
 	groupID := requireGroupID(w, u)
 	if groupID == 0 {
 		return

@@ -225,6 +225,18 @@ func (a *app) handleMoveGroupTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "group_move_failed")
 		return
 	}
+	if _, err := tx.ExecContext(r.Context(), `UPDATE tenant_members tm
+		JOIN group_members moved ON moved.user_id=tm.user_id AND moved.group_id=? AND moved.status=1
+		SET tm.status=0,tm.updated_at=?
+		WHERE tm.tenant_id=? AND tm.role='member' AND tm.status=1
+		  AND NOT EXISTS (
+			SELECT 1 FROM group_members gm
+			JOIN study_groups g ON g.id=gm.group_id AND g.tenant_id=? AND g.status=1
+			WHERE gm.user_id=tm.user_id AND gm.status=1
+		  )`, groupID, now, sourceTenantID, sourceTenantID); err != nil {
+		writeError(w, http.StatusInternalServerError, "group_move_failed")
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "group_move_failed")
 		return
