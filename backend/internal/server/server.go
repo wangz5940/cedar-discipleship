@@ -420,6 +420,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/tenants/{tenant_id}/groups/{group_id}/leaders/{user_id}", a.auth(a.requireTenantAdmin(a.handleTenantLeader)))
 	mux.HandleFunc("GET /api/tenants/{tenant_id}/admins", a.auth(a.requireTenantAdmin(a.handleTenantAdmins)))
 	mux.HandleFunc("POST /api/super-admin/tenants/{tenant_id}/admins", a.auth(a.requireSuper(a.handleCreateTenantAdmin)))
+	mux.HandleFunc("PUT /api/super-admin/tenants/{tenant_id}/admins/{user_id}", a.auth(a.requireSuper(a.handleUpdateTenantAdmin)))
 	mux.HandleFunc("GET /api/tenant-admin/recite-attempts", a.auth(a.requireCurrentTenantAdmin(a.handleSuperListReciteAttempts)))
 	mux.HandleFunc("DELETE /api/tenant-admin/recite-attempts/{id}", a.auth(a.requireCurrentTenantAdmin(a.handleSuperDeleteReciteAttempt)))
 	mux.HandleFunc("POST /api/super-admin/groups", a.auth(a.requireSuper(a.handleSuperCreateGroup)))

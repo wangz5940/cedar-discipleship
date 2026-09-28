@@ -13,6 +13,13 @@ const tenantName = ref('');
 const editTenantName = ref('');
 const adminUsername = ref('');
 const adminDisplayName = ref('');
+const adminPassword = ref('');
+const adminPasswordConfirm = ref('');
+const editingAdminID = ref(0);
+const editAdminName = ref('');
+const editAdminPassword = ref('');
+const editAdminPasswordConfirm = ref('');
+const savingAdmin = ref(false);
 const groupName = ref('');
 const tenants = ref([]);
 const groups = ref([]);
@@ -49,6 +56,7 @@ async function load() {
 watch(tenantID, (id) => {
   if (!isSuper.value || !managedTenantID.value) managedTenantID.value = id;
 }, { immediate: true });
+watch(managedTenantID, () => { editingAdminID.value = 0; });
 watch([managedTenantID, isSuper], load, { immediate: true });
 
 async function createTenant() {
@@ -142,17 +150,49 @@ async function moveGroup(group) {
 
 async function createAdmin() {
   if (!adminUsername.value.trim() || !adminDisplayName.value.trim() || !managedTenantID.value) return;
+  if (adminPassword.value.length < 8) { toast('密码至少需要 8 位'); return; }
+  if (adminPassword.value !== adminPasswordConfirm.value) { toast('两次输入的密码不一致'); return; }
   try {
-    const created = await api(`/super-admin/tenants/${managedTenantID.value}/admins`, {
+    await api(`/super-admin/tenants/${managedTenantID.value}/admins`, {
       method: 'POST',
-      body: JSON.stringify({ username: adminUsername.value.trim(), display_name: adminDisplayName.value.trim() }),
+      body: JSON.stringify({ username: adminUsername.value.trim(), display_name: adminDisplayName.value.trim(), password: adminPassword.value }),
     });
     adminUsername.value = '';
     adminDisplayName.value = '';
+    adminPassword.value = '';
+    adminPasswordConfirm.value = '';
     await load();
-    await alertDialog({ title: '小家管理员已创建', message: `初始密码：${created.initial_password}` });
+    toast('小家管理员已创建');
   } catch (error) {
     toast(error.message);
+  }
+}
+
+function editAdmin(member) {
+  editingAdminID.value = Number(member.user_id);
+  editAdminName.value = member.display_name;
+  editAdminPassword.value = '';
+  editAdminPasswordConfirm.value = '';
+}
+
+async function updateAdmin(member) {
+  if (savingAdmin.value) return;
+  if (!editAdminName.value.trim()) { toast('管理员名称不能为空'); return; }
+  if (editAdminPassword.value && editAdminPassword.value.length < 8) { toast('密码至少需要 8 位'); return; }
+  if (editAdminPassword.value !== editAdminPasswordConfirm.value) { toast('两次输入的密码不一致'); return; }
+  savingAdmin.value = true;
+  try {
+    await api(`/super-admin/tenants/${managedTenantID.value}/admins/${member.user_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ display_name: editAdminName.value.trim(), password: editAdminPassword.value }),
+    });
+    editingAdminID.value = 0;
+    await load();
+    toast('小家管理员已更新');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    savingAdmin.value = false;
   }
 }
 </script>
@@ -210,10 +250,21 @@ async function createAdmin() {
       <div v-if="isSuper" class="form-stack">
         <input v-model.trim="adminUsername" aria-label="新管理员用户名" placeholder="新管理员用户名" />
         <input v-model.trim="adminDisplayName" aria-label="新管理员姓名" placeholder="新管理员姓名" />
+        <input v-model="adminPassword" type="password" minlength="8" autocomplete="new-password" aria-label="新管理员密码" placeholder="密码（至少 8 位）" />
+        <input v-model="adminPasswordConfirm" type="password" minlength="8" autocomplete="new-password" aria-label="确认新管理员密码" placeholder="确认密码" />
         <div class="form-actions"><button type="button" @click="createAdmin">创建小家管理员账号</button></div>
       </div>
-      <div v-for="member in admins" :key="member.user_id" class="spread">
-        <span>{{ member.display_name }}（{{ member.username }}）</span>
+      <div v-for="member in admins" :key="member.user_id" class="home-admin-row">
+        <div class="spread">
+          <span>{{ member.display_name }}（{{ member.username }}）</span>
+          <button v-if="isSuper" class="quiet" type="button" @click="editingAdminID === Number(member.user_id) ? editingAdminID = 0 : editAdmin(member)">{{ editingAdminID === Number(member.user_id) ? '取消' : '修改' }}</button>
+        </div>
+        <div v-if="isSuper && editingAdminID === Number(member.user_id)" class="form-stack home-admin-edit">
+          <input v-model.trim="editAdminName" aria-label="修改管理员名称" placeholder="管理员名称" />
+          <input v-model="editAdminPassword" type="password" minlength="8" autocomplete="new-password" aria-label="修改管理员密码" placeholder="新密码（不修改请留空）" />
+          <input v-model="editAdminPasswordConfirm" type="password" minlength="8" autocomplete="new-password" aria-label="确认修改管理员密码" placeholder="确认新密码" />
+          <div class="form-actions"><button type="button" :disabled="savingAdmin" @click="updateAdmin(member)">保存修改</button></div>
+        </div>
       </div>
       <p v-if="!loading && !admins.length" class="muted">暂无小家管理员</p>
     </div>
@@ -235,6 +286,9 @@ async function createAdmin() {
 .home-group-row strong { min-width: 0; overflow-wrap: anywhere; }
 .home-group-row--readonly { grid-template-columns: 1fr; }
 .home-group-row select { width: 100%; min-width: 0; }
+.home-admin-row { border-top: 1px solid var(--cd-border); padding: 10px 0; }
+.home-admin-row .spread { min-height: 44px; }
+.home-admin-edit { margin-top: 8px; }
 @media (max-width: 560px) {
   .home-group-row { grid-template-columns: minmax(0, 1fr) minmax(130px, 45%); }
 }

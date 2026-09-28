@@ -138,10 +138,49 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	if status, _ := call(http.MethodDelete, "/api/super-admin/tenants/1", 1, 0, ""); status != http.StatusConflict {
 		t.Fatalf("deleted original tenant: %d", status)
 	}
-	if status, data := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", tenantB), 1, 0, `{"username":"newadmin","display_name":"New Admin"}`); status != http.StatusCreated || data["initial_password"] == nil {
+	if status, _ := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", tenantB), 1, 0, `{"username":"newadmin","display_name":"New Admin"}`); status != http.StatusBadRequest {
+		t.Fatal("created admin without chosen password")
+	}
+	if status, data := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", tenantB), 1, 0, `{"username":"newadmin","display_name":"New Admin","password":"chosen-pass-1"}`); status != http.StatusCreated || data["initial_password"] != nil {
 		t.Fatalf("create virtual tenant admin: %d %v", status, data)
 	} else {
 		newAdminID := uint64(data["id"].(float64))
+		var passwordHash string
+		if err := db.QueryRow(`SELECT password_hash FROM users WHERE id=?`, newAdminID).Scan(&passwordHash); err != nil || !verifyPassword("chosen-pass-1", passwordHash) {
+			t.Fatalf("chosen password not saved: %v", err)
+		}
+		testdb.Exec(t, db, `INSERT INTO refresh_sessions(user_id,token_hash,csrf_hash,expires_at,created_at,updated_at)
+			VALUES(?,?,?,DATE_ADD(NOW(),INTERVAL 1 DAY),NOW(),NOW())`, newAdminID, tokenHash("admin-token"), tokenHash("admin-csrf"))
+		updatePath := fmt.Sprintf("/api/super-admin/tenants/%d/admins/%d", tenantB, newAdminID)
+		if status, _ := call(http.MethodPut, updatePath, 3, groupB, `{"display_name":"Hacked","password":"hacked-pass"}`); status != http.StatusForbidden {
+			t.Fatalf("tenant admin edited account: %d", status)
+		}
+		if status, _ := call(http.MethodPut, fmt.Sprintf("/api/super-admin/tenants/%d/admins/%d", tenantA, newAdminID), 1, 0, `{"display_name":"Hacked"}`); status != http.StatusNotFound {
+			t.Fatalf("edited admin through other tenant: %d", status)
+		}
+		if status, _ := call(http.MethodPut, fmt.Sprintf("/api/super-admin/tenants/%d/admins/4", tenantA), 1, 0, `{"display_name":"Hacked"}`); status != http.StatusNotFound {
+			t.Fatalf("edited ordinary member as admin: %d", status)
+		}
+		if status, _ := call(http.MethodPut, updatePath, 1, 0, `{"display_name":"Renamed Admin"}`); status != http.StatusOK {
+			t.Fatalf("rename admin: %d", status)
+		}
+		var revoked bool
+		if err := db.QueryRow(`SELECT revoked_at IS NOT NULL FROM refresh_sessions WHERE user_id=?`, newAdminID).Scan(&revoked); err != nil || revoked {
+			t.Fatalf("name-only edit revoked session: %v %v", revoked, err)
+		}
+		if status, _ := call(http.MethodPut, updatePath, 1, 0, `{"display_name":"Renamed Admin","password":"short"}`); status != http.StatusBadRequest {
+			t.Fatalf("accepted short admin password: %d", status)
+		}
+		if status, _ := call(http.MethodPut, updatePath, 1, 0, `{"display_name":"Renamed Admin","password":"chosen-pass-2"}`); status != http.StatusOK {
+			t.Fatalf("update admin password: %d", status)
+		}
+		var displayName string
+		if err := db.QueryRow(`SELECT display_name,password_hash FROM users WHERE id=?`, newAdminID).Scan(&displayName, &passwordHash); err != nil || displayName != "Renamed Admin" || !verifyPassword("chosen-pass-2", passwordHash) || verifyPassword("chosen-pass-1", passwordHash) {
+			t.Fatalf("admin update not saved: %q %v", displayName, err)
+		}
+		if err := db.QueryRow(`SELECT revoked_at IS NOT NULL FROM refresh_sessions WHERE user_id=?`, newAdminID).Scan(&revoked); err != nil || !revoked {
+			t.Fatalf("password edit did not revoke session: %v %v", revoked, err)
+		}
 		var count int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM group_members WHERE user_id=?`, newAdminID).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("virtual admin became check-in member: %d %v", count, err)
@@ -161,7 +200,7 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 		if current, err := a.users.CurrentUser(t.Context(), newAdminID, groupB); err != nil || !current.IsTenantAdmin || current.CurrentTenantID != tenantB {
 			t.Fatalf("virtual admin cannot manage own tenant: %+v %v", current, err)
 		}
-		if status, _ := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", tenantA), 1, 0, `{"username":"newadmin","display_name":"Duplicate"}`); status != http.StatusConflict {
+		if status, _ := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", tenantA), 1, 0, `{"username":"newadmin","display_name":"Duplicate","password":"chosen-pass-3"}`); status != http.StatusConflict {
 			t.Fatalf("existing account promoted through create endpoint: %d", status)
 		}
 	}
@@ -219,7 +258,7 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	if status, data := call(http.MethodGet, path(emptyTenantID, "groups"), 1, 0, ""); status != http.StatusOK || len(data["study_groups"].([]any)) != 0 {
 		t.Fatalf("new tenant unexpectedly has a group: %d %v", status, data)
 	}
-	if status, data := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", emptyTenantID), 1, 0, `{"username":"emptyadmin","display_name":"Empty Admin"}`); status != http.StatusCreated || data["initial_password"] == nil {
+	if status, data := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", emptyTenantID), 1, 0, `{"username":"emptyadmin","display_name":"Empty Admin","password":"chosen-pass-4"}`); status != http.StatusCreated || data["initial_password"] != nil {
 		t.Fatalf("create admin before group: %d %v", status, data)
 	}
 	if status, data := call(http.MethodGet, path(emptyTenantID, "admins"), 1, 0, ""); status != http.StatusOK || len(data["admins"].([]any)) != 1 {

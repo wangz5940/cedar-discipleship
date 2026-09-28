@@ -408,6 +408,7 @@ func (a *app) handleCreateTenantAdmin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username    string `json:"username"`
 		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -418,14 +419,17 @@ func (a *app) handleCreateTenantAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "username_display_name_required")
 		return
 	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password_too_short")
+		return
+	}
 	for _, char := range req.Username {
 		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '_' && char != '-' && char != '.' {
 			writeError(w, http.StatusBadRequest, "invalid_username")
 			return
 		}
 	}
-	password := randomPassword(8)
-	hash, err := hashPassword(password)
+	hash, err := hashPassword(req.Password)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "password_failed")
 		return
@@ -468,5 +472,75 @@ func (a *app) handleCreateTenantAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.audit(0, mustUser(r).ID, "create_tenant_admin", "users", adminID, nil, map[string]any{"tenant_id": tenantID}, r)
-	writeJSON(w, http.StatusCreated, map[string]any{"id": adminID, "initial_password": password})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": adminID})
+}
+
+func (a *app) handleUpdateTenantAdmin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	req.DisplayName = strings.TrimSpace(req.DisplayName)
+	if req.DisplayName == "" || len([]rune(req.DisplayName)) > 128 {
+		writeError(w, http.StatusBadRequest, "display_name_required")
+		return
+	}
+	if req.Password != "" && len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password_too_short")
+		return
+	}
+	var hash string
+	if req.Password != "" {
+		var err error
+		hash, err = hashPassword(req.Password)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "password_failed")
+			return
+		}
+	}
+	tenantID, adminID := pathUint64(r, "tenant_id"), pathUint64(r, "user_id")
+	now := time.Now().UTC()
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_admin_update_failed")
+		return
+	}
+	defer tx.Rollback()
+	var lockedID uint64
+	err = tx.QueryRowContext(r.Context(), `SELECT u.id FROM users u
+		JOIN tenant_members tm ON tm.user_id=u.id
+		WHERE u.id=? AND u.status=1 AND u.is_super_admin=0
+		AND tm.tenant_id=? AND tm.role='admin' AND tm.status=1 FOR UPDATE`, adminID, tenantID).Scan(&lockedID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "tenant_admin_not_found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "tenant_admin_update_failed")
+		}
+		return
+	}
+	if hash == "" {
+		_, err = tx.ExecContext(r.Context(), `UPDATE users SET display_name=?,updated_at=? WHERE id=?`, req.DisplayName, now, adminID)
+	} else {
+		_, err = tx.ExecContext(r.Context(), `UPDATE users SET display_name=?,password_hash=?,must_change_password=0,updated_at=? WHERE id=?`, req.DisplayName, hash, now, adminID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_admin_update_failed")
+		return
+	}
+	if hash != "" {
+		if _, err := tx.ExecContext(r.Context(), `UPDATE refresh_sessions SET revoked_at=?,updated_at=? WHERE user_id=? AND revoked_at IS NULL`, now, now, adminID); err != nil {
+			writeError(w, http.StatusInternalServerError, "tenant_admin_update_failed")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "tenant_admin_update_failed")
+		return
+	}
+	a.audit(0, mustUser(r).ID, "update_tenant_admin", "users", adminID, nil, map[string]any{"tenant_id": tenantID, "display_name": req.DisplayName, "password_changed": hash != ""}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
