@@ -11,11 +11,21 @@ describe('mobile navigation ministry entry', () => {
     expect(html).toMatch(/--mobile-nav-count:\s*4/);
   });
 
-  it('shows the ministry button when ministry groups are available', async () => {
-    const html = await renderToString(createSSRApp(AppMobileNav, { tab: 'groups', showGroups: true }));
+  it('shows the ministry button when the entry is enabled and ministry groups are available', async () => {
+    const html = await renderToString(createSSRApp(AppMobileNav, {
+      tab: 'groups',
+      showGroups: true,
+      entrySetting: true,
+    }));
     expect(html).toContain('>小组</span>');
     expect((html.match(/<button/g) || []).length).toBe(5);
     expect(html).toMatch(/--mobile-nav-count:\s*5/);
+  });
+
+  it('keeps the ministry button hidden when the entry setting is unset', async () => {
+    const html = await renderToString(createSSRApp(AppMobileNav, { tab: 'home', showGroups: true }));
+    expect(html).not.toContain('>小组</span>');
+    expect(html).toMatch(/--mobile-nav-count:\s*4/);
   });
 
   it('uses four equal slots when the entry setting is on but the group is empty', async () => {

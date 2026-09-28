@@ -5,7 +5,7 @@ import { BarChart2, Book, Folder, MoreHorizontal, Settings, Users } from '@lucid
 const props = defineProps({ tab: { type: String, required: true }, moreOpen: Boolean, canAdmin: Boolean, showGroups: Boolean, entrySetting: { type: Boolean, default: undefined } });
 defineEmits(['navigate', 'more']);
 
-const groupsVisible = computed(() => props.showGroups && props.entrySetting !== false);
+const groupsVisible = computed(() => props.showGroups && props.entrySetting === true);
 
 const items = [
   ['home', '学习', Book],

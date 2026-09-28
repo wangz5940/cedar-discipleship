@@ -6,6 +6,7 @@ import {
   logout,
   savePersonalSettings,
   setTab,
+  updateLearningValue,
 } from '../legacy-app';
 import { useAppStateStore } from '../stores/appState';
 
@@ -114,6 +115,13 @@ describe('learning content permissions', () => {
     const app = useAppStateStore();
     expect(app.navItems.map((item) => item[0])).toContain('settings');
     expect(app.navItems.map((item) => item[0])).not.toContain('admin');
+    expect(app.navItems.map((item) => item[0])).not.toContain('groups');
+
+    updateLearningValue(['ministry', 'show_entry'], true);
+    expect(app.navItems.map((item) => item[0])).toContain('groups');
+
+    updateLearningValue(['ministry', 'show_entry'], false);
+    expect(app.navItems.map((item) => item[0])).not.toContain('groups');
 
     setTab('settings');
     expect(app.tab).toBe('settings');

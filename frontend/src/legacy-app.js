@@ -142,7 +142,7 @@ function canAdminAccess() {
 }
 
 function visibleNavItems() {
-  const showMinistryEntry = currentLearningSettings().ministry?.show_entry !== false;
+  const showMinistryEntry = currentLearningSettings().ministry?.show_entry === true;
   return navItems.filter(([id]) => (
     (id !== 'admin' || canAdminAccess()) && (id !== 'groups' || showMinistryEntry)
   ));

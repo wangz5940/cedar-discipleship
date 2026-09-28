@@ -1051,6 +1051,26 @@ async function runLocalBackupImport() {
 .admin-member-settings { margin-bottom: 24px; }
 .admin-members-section { min-width: 0; }
 .admin-member-list-title { margin-top: 0; }
+.admin-member-card .member-main { flex: 1 1 auto; }
+.admin-member-card .member-main > div:last-child { flex: 1 1 auto; }
+.admin-member-card .member-main b {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  text-overflow: clip;
+  white-space: normal;
+}
+.admin-member-card .member-actions { min-width: 94px; }
+.admin-member-card .member-actions button {
+  min-width: 90px;
+  padding-inline: 8px;
+}
+.admin-member-card .role-pill {
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
 .admin-group-actions { justify-content: flex-start; }
 .member-conflict-details { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; margin: 16px 0; }
 .member-conflict-details dt { color: var(--cd-muted); }
