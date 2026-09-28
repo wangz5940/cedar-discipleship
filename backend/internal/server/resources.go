@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	assetPlaybackTTL    = 12 * time.Hour
-	assetPlaybackSuffix = ".playback.mp4"
+	assetPlaybackTTL           = 12 * time.Hour
+	assetPlaybackSuffix        = ".playback.mp4"
+	assetUploadMemoryThreshold = 8 << 20
 )
 
 func (a *app) handleListAssets(w http.ResponseWriter, r *http.Request) {
@@ -440,10 +441,11 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	if err := r.ParseMultipartForm(512 << 20); err != nil {
+	if err := r.ParseMultipartForm(assetUploadMemoryThreshold); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_upload_form")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	category := strings.TrimSpace(r.FormValue("category"))
 	if category == "" {
 		category = "uploaded"
