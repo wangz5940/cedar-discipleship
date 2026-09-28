@@ -50,7 +50,7 @@ const {
 } = storeToRefs(store);
 const mobileViewMode = computed(() => appUser.value?.mobile_view_mode || 'masonry');
 
-const statsView = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'table' : 'chart');
+const statsView = ref('chart');
 const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
@@ -388,34 +388,25 @@ async function exportRankingChart() {
                 type="button"
                 @click="setActiveStat(item.key)"
               >
+                <span
+                  class="stat-swatch"
+                  :style="{ backgroundColor: item.color }"
+                  aria-hidden="true"
+                ></span>
                 {{ item.label }}
               </button>
             </div>
           </div>
           <RankingChart
-            class="desktop-stack-content"
             :items="rankedItems"
+            :segments="visibleLegend"
             :get-key="(member) => member.user_id || member.member_name"
             :get-total="rankingItemTotal"
             :get-height="stackHeight"
             :get-label="chartMemberLabel"
+            :get-accessible-label="(member) => member.member_name || member.display_name || member.username || '未命名成员'"
+            :get-segment-value="segmentCount"
           />
-          <MobileCardCollection
-            class="mobile-stack-content"
-            :items="rankedItems"
-            :item-key="(member) => member.user_id || member.member_name"
-            :mode="mobileViewMode"
-            aria-label="成员完成排行"
-            :card-height="190"
-          >
-            <template #default="{ item: member }">
-              <div class="ranking-stack-card">
-                <header><span class="avatar">{{ chartMemberLabel(member) }}</span><div><b>{{ member.member_name || member.display_name || member.username }}</b><small>{{ activeScopeLabel }}</small></div><strong>{{ rankingItemTotal(member) }} 次</strong></header>
-                <div class="ranking-stack-bar"><span :style="{ width: `${stackHeight(member)}%` }"></span></div>
-                <div class="ranking-stack-parts"><span v-for="part in visibleLegend" :key="part.key">{{ part.label }} {{ segmentCount(member, part.key) }}</span></div>
-              </div>
-            </template>
-          </MobileCardCollection>
         </div>
 
         <div v-else>
@@ -537,6 +528,7 @@ async function exportRankingChart() {
 .view-toggle { gap: 4px; padding: 2px; }
 .compact-control, .filter-chip { min-height: 36px; padding: 4px 12px; font-size: 12px; }
 .filter-chip { border: 1px solid var(--cd-border); }
+.stat-swatch { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 2px; }
 .filter-list { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; gap: 6px; }
 .chart-head { min-width: 0; max-width: 100%; }
 .chart-head > .filter-list { overflow-x: auto; }
@@ -549,18 +541,14 @@ async function exportRankingChart() {
 .username { display: block; font-size: 11px; }
 .totals-row { background: var(--cd-surface-subtle); font-weight: 600; }
 .mobile-stack-content { display: none; }
-.member-stack-card, .ranking-stack-card, .matrix-stack-card { height: 100%; padding: 16px; overflow: hidden; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: var(--cd-shadow-card); }
-.member-stack-card header, .ranking-stack-card header, .matrix-stack-card header { display: flex; min-width: 0; align-items: center; gap: 10px; }
-.member-stack-card header > div, .ranking-stack-card header > div, .matrix-stack-card header > div { display: grid; min-width: 0; gap: 2px; }
-.member-stack-card header small, .ranking-stack-card header small, .matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
+.member-stack-card, .matrix-stack-card { height: 100%; padding: 16px; overflow: hidden; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: var(--cd-shadow-card); }
+.member-stack-card header, .matrix-stack-card header { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.member-stack-card header > div, .matrix-stack-card header > div { display: grid; min-width: 0; gap: 2px; }
+.member-stack-card header small, .matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
 .member-stack-tasks { display: grid; gap: 8px; margin-top: 14px; }
 .member-stack-tasks > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid var(--cd-border); font-size: 13px; }
 .member-stack-tasks button { min-height: 36px; padding: 4px 10px; }
-.ranking-stack-card header > strong, .matrix-stack-card header > strong { margin-left: auto; color: var(--cd-primary); font-size: 20px; white-space: nowrap; }
-.ranking-stack-bar { height: 12px; margin: 22px 0 16px; overflow: hidden; border-radius: 999px; background: var(--cd-surface-subtle); }
-.ranking-stack-bar span { display: block; height: 100%; border-radius: inherit; background: var(--cd-primary); }
-.ranking-stack-parts { display: flex; flex-wrap: wrap; gap: 6px; }
-.ranking-stack-parts span { padding: 5px 8px; border-radius: 999px; background: var(--cd-primary-soft); color: var(--cd-primary); font-size: 11px; }
+.matrix-stack-card header > strong { margin-left: auto; color: var(--cd-primary); font-size: 20px; white-space: nowrap; }
 .matrix-stack-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0 0; }
 .matrix-stack-card dl > div { padding: 10px; border-radius: 8px; background: var(--cd-surface-subtle); }
 .matrix-stack-card dt { color: var(--cd-muted); font-size: 11px; }
@@ -577,7 +565,6 @@ async function exportRankingChart() {
   .date-range :deep(.date-field) { flex: 1; width: 0; }
   .view-toggle { width: 100%; }
   .view-toggle button { flex: 1; min-height: 44px; }
-  .view-toggle button:first-child { display: none; }
   .progress-panel { display: none; }
   .filter-chip, .sort-button, .export-row button { min-height: 44px; }
   .desktop-stack-content { display: none; }

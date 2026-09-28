@@ -1,21 +1,44 @@
 <script setup>
-defineProps({
+const props = defineProps({
   items: { type: Array, default: () => [] },
+  segments: { type: Array, default: () => [] },
   getKey: { type: Function, required: true },
   getTotal: { type: Function, required: true },
   getHeight: { type: Function, required: true },
   getLabel: { type: Function, required: true },
+  getAccessibleLabel: { type: Function, default: null },
+  getSegmentValue: { type: Function, default: () => 0 },
   emptyLabel: { type: String, default: '暂无打卡数据' },
 });
+
+function visibleSegments(item) {
+  return props.segments
+    .map((segment) => ({ ...segment, value: Number(props.getSegmentValue(item, segment.key) || 0) }))
+    .filter((segment) => segment.value > 0);
+}
 </script>
 
 <template>
   <div v-if="items.length" class="ranking-chart-scroll" role="region" aria-label="成员完成数柱状图，可横向滚动" tabindex="0">
     <div class="ranking-chart" role="list">
-      <div v-for="item in items" :key="getKey(item)" class="ranking-chart__item" role="listitem">
+      <div
+        v-for="item in items"
+        :key="getKey(item)"
+        class="ranking-chart__item"
+        role="listitem"
+        :aria-label="getAccessibleLabel ? getAccessibleLabel(item) : getLabel(item)"
+      >
         <small class="ranking-chart__total">{{ getTotal(item) }}</small>
         <div class="ranking-chart__track">
-          <span class="ranking-chart__bar" :style="{ height: `${getHeight(item)}%` }"></span>
+          <div class="ranking-chart__bar" :style="{ height: `${getHeight(item)}%` }">
+            <span
+              v-for="segment in visibleSegments(item)"
+              :key="segment.key"
+              class="ranking-chart__segment"
+              :style="{ flexGrow: segment.value, backgroundColor: segment.color }"
+              :title="`${segment.label} ${segment.value} 次`"
+            ></span>
+          </div>
         </div>
         <span class="ranking-chart__label">{{ getLabel(item) }}</span>
       </div>
@@ -68,11 +91,20 @@ defineProps({
   background: var(--cd-surface-subtle);
 }
 .ranking-chart__bar {
+  display: flex;
   width: 100%;
   min-height: 4px;
+  flex-direction: column-reverse;
+  overflow: hidden;
   border-radius: 5px 5px 3px 3px;
-  background: var(--cd-primary);
+  background: var(--cd-surface-subtle);
+  background: color-mix(in srgb, var(--cd-primary) 16%, transparent);
   transition: height 0.2s ease;
+}
+.ranking-chart__segment {
+  width: 100%;
+  min-height: 2px;
+  flex-basis: 0;
 }
 .ranking-chart__label {
   max-width: 48px;
