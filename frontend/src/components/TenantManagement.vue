@@ -13,15 +13,13 @@ const tenantName = ref('');
 const editTenantName = ref('');
 const adminUsername = ref('');
 const adminDisplayName = ref('');
-const existingAdminID = ref('');
+const existingGroupID = ref('');
 const groupName = ref('');
 const tenants = ref([]);
 const groups = ref([]);
-const members = ref([]);
-const users = ref([]);
-const adminMembers = computed(() => members.value.filter((member) => member.role === 'admin'));
-const availableAdminAccounts = computed(() => users.value.filter((account) => !adminMembers.value.some((member) => Number(member.user_id) === Number(account.id))));
-const moveTargets = ref({});
+const admins = ref([]);
+const allGroups = ref([]);
+const availableGroups = computed(() => allGroups.value.filter((group) => Number(group.tenant_id) !== managedTenantID.value));
 const loading = ref(false);
 let loadVersion = 0;
 
@@ -31,20 +29,19 @@ async function load() {
   const selectedSuper = isSuper.value;
   loading.value = true;
   groups.value = [];
-  members.value = [];
+  admins.value = [];
   try {
-    const [tenantResult, groupResult, memberResult, userResult] = await Promise.all([
+    const [tenantResult, groupResult, adminResult, allGroupResult] = await Promise.all([
       api('/tenants'),
       selectedTenantID ? api(`/tenants/${selectedTenantID}/groups`) : Promise.resolve({ study_groups: [] }),
-      selectedTenantID ? api(`/tenants/${selectedTenantID}/members`) : Promise.resolve({ members: [] }),
-      selectedSuper ? api('/super-admin/users') : Promise.resolve({ users: [] }),
+      selectedTenantID ? api(`/tenants/${selectedTenantID}/admins`) : Promise.resolve({ admins: [] }),
+      selectedSuper ? api('/super-admin/groups') : Promise.resolve({ study_groups: [] }),
     ]);
     if (version !== loadVersion || selectedTenantID !== managedTenantID.value) return;
     tenants.value = tenantResult.tenants || [];
     groups.value = groupResult.study_groups || [];
-    members.value = memberResult.members || [];
-    users.value = userResult.users || [];
-    moveTargets.value = Object.fromEntries(groups.value.map((group) => [group.id, selectedTenantID]));
+    admins.value = adminResult.admins || [];
+    allGroups.value = allGroupResult.study_groups || [];
     editTenantName.value = selectedTenant.value?.name || '';
   } catch (error) {
     if (version === loadVersion) toast(error.message);
@@ -56,7 +53,7 @@ async function load() {
 watch(tenantID, (id) => {
   if (!isSuper.value || !managedTenantID.value) managedTenantID.value = id;
 }, { immediate: true });
-watch(managedTenantID, () => { existingAdminID.value = ''; });
+watch(managedTenantID, () => { existingGroupID.value = ''; });
 watch([managedTenantID, isSuper], load, { immediate: true });
 
 async function createTenant() {
@@ -85,20 +82,6 @@ async function createGroup() {
     groupName.value = '';
     await alertDialog({ title: '小组已创建', message: `新小组的默认密码：${result.default_password}` });
     await switchGroup(result.id);
-    await load();
-  } catch (error) {
-    toast(error.message);
-  }
-}
-
-async function assignExistingAdmin() {
-  if (!existingAdminID.value) return;
-  try {
-    await api(`/tenants/${managedTenantID.value}/members`, {
-      method: 'PUT',
-      body: JSON.stringify({ user_id: Number(existingAdminID.value), role: 'admin' }),
-    });
-    existingAdminID.value = '';
     await load();
   } catch (error) {
     toast(error.message);
@@ -136,53 +119,40 @@ async function deleteTenant() {
   }
 }
 
-async function moveGroup(group) {
-  const targetID = Number(moveTargets.value[group.id]);
-  if (!targetID || targetID === managedTenantID.value) return;
-  const target = tenants.value.find((item) => Number(item.id) === targetID);
+async function addExistingGroup() {
+  const group = availableGroups.value.find((item) => Number(item.id) === Number(existingGroupID.value));
+  if (!group || !managedTenantID.value) return;
   const confirmed = await confirmDialog({
     title: '调整小组归属',
-    message: `将「${group.name}」及组内学习数据转至「${target?.name}」？本组成员会加入目标主体；已有跨小组资源关联时无法转移。`,
+    message: `将「${group.name}」及组内学习数据从「${group.tenant_name}」加入「${selectedTenant.value?.name}」？本组成员会加入目标主体；已有跨小组资源关联时无法转移。`,
     tone: 'danger',
   });
-  if (!confirmed) {
-    moveTargets.value[group.id] = managedTenantID.value;
-    return;
-  }
+  if (!confirmed) return;
   try {
     await api(`/super-admin/groups/${group.id}/tenant`, {
-      method: 'PUT', body: JSON.stringify({ tenant_id: targetID }),
+      method: 'PUT', body: JSON.stringify({ tenant_id: managedTenantID.value }),
     });
-    managedTenantID.value = targetID;
+    existingGroupID.value = '';
     await reloadApp();
     await load();
     toast('小组归属已更新');
   } catch (error) {
-    moveTargets.value[group.id] = managedTenantID.value;
     toast(error.message === 'group_has_cross_group_resources' ? '请先解除该小组的跨小组资源分享和导入关联' : error.message);
   }
 }
 
 async function createAdmin() {
   if (!adminUsername.value.trim() || !adminDisplayName.value.trim() || !managedTenantID.value) return;
-  let created;
   try {
-    created = await api('/super-admin/users', {
+    const created = await api(`/super-admin/tenants/${managedTenantID.value}/admins`, {
       method: 'POST',
       body: JSON.stringify({ username: adminUsername.value.trim(), display_name: adminDisplayName.value.trim() }),
-    });
-    await api(`/tenants/${managedTenantID.value}/members`, {
-      method: 'PUT', body: JSON.stringify({ user_id: Number(created.id), role: 'admin' }),
     });
     adminUsername.value = '';
     adminDisplayName.value = '';
     await load();
     await alertDialog({ title: '主体管理员已创建', message: `初始密码：${created.initial_password}` });
   } catch (error) {
-    if (created) {
-      await load();
-      await alertDialog({ title: '账号已创建，管理员授权失败', message: `请使用“设现有账号为主体管理员”重试授权。初始密码：${created.initial_password}` });
-    }
     toast(error.message);
   }
 }
@@ -226,13 +196,17 @@ async function createAdmin() {
         <input v-model.trim="groupName" aria-label="新学习小组名称" placeholder="新学习小组名称" @keyup.enter="createGroup" />
         <div class="form-actions"><button type="button" @click="createGroup">创建学习小组</button></div>
       </div>
+      <div v-if="isSuper" class="form-stack">
+        <select v-model="existingGroupID" aria-label="选择已有小组加入主体">
+          <option value="">选择已有小组加入主体</option>
+          <option v-for="group in availableGroups" :key="group.id" :value="String(group.id)">{{ group.name }}（{{ group.tenant_name }}）</option>
+        </select>
+        <div class="form-actions"><button type="button" :disabled="!existingGroupID" @click="addExistingGroup">加入当前主体</button></div>
+      </div>
       <div v-for="group in groups" :key="group.id" class="spread">
         <span>{{ group.name }}</span>
         <span>
           <button v-if="Number(group.id) !== Number(app.user?.current_group_id)" class="quiet" type="button" @click="switchGroup(group.id)">进入</button>
-          <select v-if="isSuper" v-model.number="moveTargets[group.id]" :aria-label="`设置 ${group.name} 所属主体`" @change="moveGroup(group)">
-            <option v-for="tenant in tenants" :key="tenant.id" :value="Number(tenant.id)">{{ tenant.name }}</option>
-          </select>
         </span>
       </div>
     </div>
@@ -244,16 +218,11 @@ async function createAdmin() {
         <input v-model.trim="adminUsername" aria-label="新管理员用户名" placeholder="新管理员用户名" />
         <input v-model.trim="adminDisplayName" aria-label="新管理员姓名" placeholder="新管理员姓名" />
         <div class="form-actions"><button type="button" @click="createAdmin">创建主体管理员账号</button></div>
-        <select v-model="existingAdminID" aria-label="选择现有账号作为主体管理员">
-          <option value="">选择现有账号作为主体管理员</option>
-          <option v-for="account in availableAdminAccounts" :key="account.id" :value="account.id">{{ account.display_name }}（{{ account.username }}）</option>
-        </select>
-        <div class="form-actions"><button type="button" @click="assignExistingAdmin">设现有账号为主体管理员</button></div>
       </div>
-      <div v-for="member in adminMembers" :key="member.user_id" class="spread">
+      <div v-for="member in admins" :key="member.user_id" class="spread">
         <span>{{ member.display_name }}（{{ member.username }}）</span>
       </div>
-      <p v-if="!loading && !adminMembers.length" class="muted">暂无主体管理员</p>
+      <p v-if="!loading && !admins.length" class="muted">暂无主体管理员</p>
     </div>
   </section>
 </template>
