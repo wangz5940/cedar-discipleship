@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import {
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Download,
   LoaderCircle,
   Plus,
@@ -177,9 +179,13 @@ function currentMonth() {
         <h3>月度考勤表</h3>
       </div>
       <div class="attendance-month">
-        <button class="secondary icon-button" type="button" title="上个月" aria-label="查看上个月" @click="shiftMonth(-1)">‹</button>
+        <button class="secondary icon-button" type="button" title="上个月" aria-label="查看上个月" @click="shiftMonth(-1)">
+          <ChevronLeft :size="18" aria-hidden="true" />
+        </button>
         <DateField v-model="month" mode="month" label="选择考勤月份" @change="loadAttendance" />
-        <button class="secondary icon-button" type="button" title="下个月" aria-label="查看下个月" @click="shiftMonth(1)">›</button>
+        <button class="secondary icon-button" type="button" title="下个月" aria-label="查看下个月" @click="shiftMonth(1)">
+          <ChevronRight :size="18" aria-hidden="true" />
+        </button>
         <button class="secondary icon-text-button" type="button" @click="exportAttendance">
           <Download :size="16" /> 导出 CSV
         </button>
@@ -201,7 +207,7 @@ function currentMonth() {
           </button>
         </div>
         <div class="weekday-picker">
-          <label v-for="weekday in weekdayOptions" :key="weekday.value">
+          <label v-for="weekday in weekdayOptions" :key="weekday.value" :class="{ active: weekdays.includes(weekday.value) }">
             <input
               type="checkbox"
               :checked="weekdays.includes(weekday.value)"
@@ -285,35 +291,187 @@ function currentMonth() {
 </template>
 
 <style scoped>
-.attendance-workspace { min-width: 0; }
-.attendance-toolbar, .attendance-month, .attendance-settings-head, .attendance-table-tools { gap: 12px; }
+.attendance-workspace { display: grid; gap: 18px; min-width: 0; }
+.attendance-toolbar,
+.attendance-settings-head,
+.attendance-table-tools { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.attendance-toolbar .eyebrow { margin-bottom: 3px; }
+.attendance-toolbar h3, .attendance-settings h4 { margin: 0; }
+.attendance-toolbar h3 { font-size: 18px; }
+.attendance-month { display: grid; grid-template-columns: 44px minmax(154px, 180px) 44px auto; align-items: center; gap: 8px; }
+.attendance-month :deep(.date-field) { min-width: 0; }
 .attendance-month :where(button, input),
-.attendance-settings button,
+.attendance-settings-head > button,
 .attendance-sort :where(button, select) { min-height: 44px; }
-.attendance-month .icon-button, .extra-date-input .icon-button { min-width: 44px; }
-.extra-date-list button { display: inline-grid; place-items: center; width: 44px; min-width: 44px; height: 44px; padding: 0; }
-.attendance-table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-gutter: stable; }
-.attendance-table { width: max-content; min-width: 100%; }
-.attendance-cell { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; }
+.attendance-month .icon-button, .extra-date-input .icon-button { width: 44px; min-width: 44px; padding: 0; }
+.attendance-settings { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-surface-subtle); }
+.attendance-settings-head > button { border-color: var(--cd-primary); background: var(--cd-primary); color: #fff; }
+.weekday-picker { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.weekday-picker label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 7px 8px;
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
+  color: var(--cd-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.weekday-picker label.active { border-color: #b9ccbf; background: var(--cd-primary-soft); color: var(--cd-primary); }
+.weekday-picker input { width: 16px; height: 16px; flex: 0 0 16px; }
+.extra-date-editor {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  align-items: end;
+  gap: 16px;
+}
+.extra-date-editor > div:first-child { display: grid; gap: 6px; color: var(--cd-text-secondary); font-size: 13px; }
+.extra-date-input { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; }
+.extra-date-list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.extra-date-list > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
+  color: var(--cd-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.extra-date-list button {
+  display: inline-grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cd-muted);
+  place-items: center;
+}
+.attendance-table-tools { padding-top: 2px; }
+.attendance-table-tools > div:first-child { display: grid; gap: 2px; }
+.attendance-table-tools span { color: var(--cd-muted); font-size: 12px; }
+.attendance-sort { display: flex; align-items: center; gap: 8px; }
+.attendance-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+.attendance-table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; }
+.attendance-table th,
+.attendance-table td {
+  min-width: 78px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--cd-border);
+  border-bottom: 1px solid var(--cd-border);
+  text-align: center;
+}
+.attendance-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--cd-surface-subtle);
+  color: var(--cd-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.attendance-table th:first-child,
+.attendance-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 148px;
+  text-align: left;
+}
+.attendance-table th:last-child,
+.attendance-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  min-width: 66px;
+  border-right: 0;
+  background: var(--cd-surface);
+}
+.attendance-table th:first-child,
+.attendance-table th:last-child { z-index: 3; background: var(--cd-surface-subtle); }
+.attendance-table td:first-child { background: var(--cd-surface); }
+.attendance-table td:first-child b,
+.attendance-table td:first-child small { display: block; }
+.attendance-table td:first-child small { margin-top: 2px; color: var(--cd-muted); font-size: 12px; }
+.attendance-table td:last-child strong { color: var(--cd-primary); font-variant-numeric: tabular-nums; }
+.attendance-table tr:last-child td { border-bottom: 0; }
+.attendance-cell {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
+  color: #fff;
+  box-shadow: none;
+  place-items: center;
+}
+.attendance-cell span { width: 8px; height: 8px; border-radius: 50%; background: var(--cd-border-strong); }
+.attendance-cell.present { border-color: var(--cd-primary); background: var(--cd-primary); }
+.attendance-cell:disabled { cursor: default; }
 .ministry-loading, .empty { padding: 32px 20px; text-align: center; }
-@media (max-width: 767px) {
-  .attendance-toolbar, .attendance-settings-head, .attendance-table-tools { align-items: stretch; flex-direction: column; }
-  .attendance-month { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; width: 100%; }
-  .attendance-month .icon-text-button { grid-column: 1 / -1; justify-content: center; }
+
+@media (hover: hover) {
+  .attendance-table tbody tr:hover td,
+  .attendance-table tbody tr:hover td:first-child,
+  .attendance-table tbody tr:hover td:last-child { background: #f7f9f6; }
+}
+
+@media (max-width: 600px) {
+  .attendance-toolbar,
+  .attendance-settings-head,
+  .attendance-table-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .attendance-toolbar { gap: 12px; }
+  .attendance-month { grid-template-columns: 44px minmax(0, 1fr) 44px; width: 100%; }
+  .attendance-month .icon-text-button { grid-column: 1 / -1; }
+  .attendance-settings { padding: 14px; }
+  .attendance-settings-head { gap: 10px; }
+  .attendance-settings-head > button { width: 100%; }
   .weekday-picker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .weekday-picker label { min-height: 44px; }
-  .extra-date-input { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
-  .attendance-sort { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
-  .attendance-table-scroll { margin-inline: -16px; padding-inline: 16px; }
-  .attendance-table th:first-child,
-  .attendance-table td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 1;
-    min-width: 136px;
-    background: var(--cd-surface, #fff);
-    box-shadow: 1px 0 0 var(--cd-border);
+  .extra-date-editor {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 12px;
   }
-  .attendance-table thead th:first-child { z-index: 2; background: var(--cd-surface-subtle); }
+  .attendance-sort { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
+  .attendance-table-scroll {
+    width: calc(100% + 24px);
+    max-width: none;
+    margin-inline: -12px;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+  .attendance-table th:first-child,
+  .attendance-table td:first-child { min-width: 124px; }
+  .attendance-table th:last-child,
+  .attendance-table td:last-child { position: static; }
 }
 </style>
