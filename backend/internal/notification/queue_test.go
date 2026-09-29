@@ -188,6 +188,82 @@ func TestQueueRetryFreezesNewMarker(t *testing.T) {
 	}
 }
 
+func TestQueueCapsRetryAfter(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		expiresIn   time.Duration
+		wantDelay   time.Duration
+		wantRetries int
+	}{
+		{name: "maximum delay", expiresIn: time.Hour, wantDelay: 5 * time.Minute, wantRetries: 1},
+		{name: "expiration boundary", expiresIn: 2 * time.Minute, wantDelay: 2 * time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue, source, sender, event, now := queueFixture(t)
+			source.snapshot.ExpiresAt = now.Add(tt.expiresIn)
+			sender.err = &deliveryError{code: "http_429", retry: true, retryAfter: 24 * time.Hour}
+			if err := queue.Enqueue(event); err != nil {
+				t.Fatal(err)
+			}
+			queue.processNext(t.Context(), now)
+
+			files, err := os.ReadDir(filepath.Join(queue.dir, "pending"))
+			if err != nil || len(files) != 1 {
+				t.Fatalf("pending files = %d, err=%v", len(files), err)
+			}
+			data, err := os.ReadFile(filepath.Join(queue.dir, "pending", files[0].Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var pending job
+			if err := json.Unmarshal(data, &pending); err != nil {
+				t.Fatal(err)
+			}
+			if want := now.Add(tt.wantDelay); !pending.NextTry.Equal(want) {
+				t.Fatalf("next try = %v, want %v", pending.NextTry, want)
+			}
+
+			sender.err = nil
+			queue.processNext(t.Context(), now.Add(tt.wantDelay))
+			if got := len(sender.messages) - 1; got != tt.wantRetries {
+				t.Fatalf("retries = %d, want %d", got, tt.wantRetries)
+			}
+		})
+	}
+}
+
+func TestQueueExpiredRetryDoesNotBlockTarget(t *testing.T) {
+	t.Parallel()
+	queue, source, sender, event, now := queueFixture(t)
+	sender.err = &deliveryError{code: "http_429", retry: true, retryAfter: 24 * time.Hour}
+	if err := queue.Enqueue(event); err != nil {
+		t.Fatal(err)
+	}
+	event.RecordID++
+	if err := queue.Enqueue(event); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now)
+
+	sender.err = nil
+	queue.processNext(t.Context(), now.Add(4*time.Minute))
+	if len(sender.messages) != 1 || stateFiles(t, queue, "pending") != 2 {
+		t.Fatal("unexpired retry did not preserve target ordering")
+	}
+
+	source.snapshot.ExpiresAt = now.Add(3 * time.Hour)
+	queue.processNext(t.Context(), now.Add(2*time.Hour))
+	if len(sender.messages) != 2 {
+		t.Fatalf("expired retry blocked later notification: %#v", sender.messages)
+	}
+	if stateFiles(t, queue, "pending") != 0 || stateFiles(t, queue, "completed") != 2 {
+		t.Fatalf("queue states after expired head: pending=%d completed=%d",
+			stateFiles(t, queue, "pending"), stateFiles(t, queue, "completed"))
+	}
+}
+
 func TestQueueFailurePolicies(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

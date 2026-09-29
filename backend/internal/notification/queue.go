@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const maxRetryDelay = 5 * time.Minute
+
 type SnapshotSource interface {
 	Snapshot(context.Context, Event) (Snapshot, error)
 	Enabled(context.Context, Event) (bool, error)
@@ -269,6 +271,13 @@ func (q *Queue) processNext(ctx context.Context, now time.Time) {
 			}
 			return
 		}
+		refreshPending := item.Event.Initial != "" && !item.RefreshAt.IsZero()
+		if item.Status == "pending" && !refreshPending &&
+			!item.ExpiresAt.IsZero() && !now.Before(item.ExpiresAt) {
+			item.Status, item.ErrorCode = "skipped", "period_expired"
+			q.finish(ctx, path, &item, time.Now())
+			continue
+		}
 		if blocked[item.Target] {
 			continue
 		}
@@ -406,7 +415,13 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 				if failure.retryAfter > delay {
 					delay = failure.retryAfter
 				}
+				if delay > maxRetryDelay {
+					delay = maxRetryDelay
+				}
 				item.NextTry = now.Add(delay)
+				if !item.ExpiresAt.IsZero() && item.NextTry.After(item.ExpiresAt) {
+					item.NextTry = item.ExpiresAt
+				}
 			}
 		}
 	}
