@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { ChevronRight, Plus, Trash2 } from '@lucide/vue';
+import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from '@lucide/vue';
 import { alertDialog, promptDialog } from '../ui/dialog';
 import { useAppStateStore } from '../stores/appState';
 import { lazyPage } from '../ui/lazyPage';
@@ -94,6 +94,7 @@ const studyWeeksImportInput = ref(null);
 const localBackupImportInput = ref(null);
 const notificationSaving = ref(false);
 const dailyPlanDate = ref(todayString());
+const dailyPlansExpanded = ref(false);
 
 function navigateTabs(event) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -136,6 +137,11 @@ const scripture = computed(() => daily.value.scripture || {});
 const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const devotionPlanMode = computed(() => dailyDevotionPlanMode(devotion.value));
 const configuredDailyPlans = computed(() => dailyDevotionPlans(devotion.value));
+const visibleConfiguredDailyPlans = computed(() => (
+  dailyPlansExpanded.value
+    ? configuredDailyPlans.value
+    : configuredDailyPlans.value.slice(-3)
+));
 const selectedDailyPlan = computed(() => {
   const existing = dailyDevotionPlanForDate(
     { ...devotion.value, plan_mode: 'custom' },
@@ -159,6 +165,9 @@ const selectedDailyPlanExists = computed(() => configuredDailyPlans.value.some(
 watch(activeGroup, (group) => {
   groupEditName.value = group?.name || '';
 }, { immediate: true });
+watch(currentGroupID, () => {
+  dailyPlansExpanded.value = false;
+});
 
 function groupSaveErrorMessage(message) {
   return {
@@ -765,8 +774,10 @@ async function runLocalBackupImport() {
                   <div class="card">
                     <h2>每日学习配置</h2>
                     <div class="form-stack admin-form-grid">
-                      <label class="admin-toggle"><input type="checkbox" :checked="daily.checkin_mode === 'separate'" @change="updateLearning(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修入口</span></label>
+                      <div class="admin-checkbox-row daily-config-toggle-row">
+                        <label class="admin-toggle"><input type="checkbox" :checked="daily.checkin_mode === 'separate'" @change="updateLearning(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
+                        <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修</span></label>
+                      </div>
                       <div class="admin-field">
                         <span class="admin-field-label">灵修计划方式</span>
                         <div class="segmented-control daily-plan-mode" role="group" aria-label="灵修计划方式">
@@ -826,8 +837,21 @@ async function runLocalBackupImport() {
                           <button class="danger" :disabled="!canEditLearning || !selectedDailyPlanExists" type="button" @click="deleteDailyPlan">删除当天计划</button>
                         </div>
                         <div v-if="configuredDailyPlans.length" class="daily-plan-list">
-                          <span class="admin-field-label">已配置日期</span>
-                          <button v-for="plan in configuredDailyPlans" :key="plan.date" :class="{ active: plan.date === dailyPlanDate }" type="button" @click="selectDailyPlanDate(plan.date)">
+                          <div class="daily-plan-list-header">
+                            <span class="admin-field-label">已配置日期</span>
+                            <button
+                              v-if="configuredDailyPlans.length > 3"
+                              class="ghost daily-plan-list-toggle"
+                              type="button"
+                              :aria-expanded="dailyPlansExpanded"
+                              @click="dailyPlansExpanded = !dailyPlansExpanded"
+                            >
+                              <ChevronUp v-if="dailyPlansExpanded" :size="15" />
+                              <ChevronDown v-else :size="15" />
+                              {{ dailyPlansExpanded ? '收起' : `展开全部（${configuredDailyPlans.length}）` }}
+                            </button>
+                          </div>
+                          <button v-for="plan in visibleConfiguredDailyPlans" :key="plan.date" :class="{ active: plan.date === dailyPlanDate }" type="button" @click="selectDailyPlanDate(plan.date)">
                             <span><b>{{ plan.date }}</b><small>{{ plan.title || toChineseMonthDay(plan.date) }}</small></span>
                             <ChevronRight :size="16" />
                           </button>
@@ -1088,6 +1112,26 @@ async function runLocalBackupImport() {
 .admin-learning-stack { display: flex; flex-direction: column; align-items: stretch; }
 .admin-learning-stack > .week-planner-card { order: -1; }
 .week-planner-card { min-width: 0; }
+.admin-checkbox-row.daily-config-toggle-row {
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+}
+.daily-plan-list-header {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 2px;
+}
+.daily-plan-list-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
 @media (max-width: 767px) {
   .admin-pagehead { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
   .admin-wrapper .admin-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: 0; padding: 6px; }
