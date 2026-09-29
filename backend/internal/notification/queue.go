@@ -30,6 +30,11 @@ type Queue struct {
 	sender  TextSender
 	sent    *sentStateStore
 	mu      sync.Mutex
+
+	// Target leases serialize binding publication with only that target's external send.
+	targetUpdates  sync.Mutex
+	targetVersions map[Target]uint64
+	targetLeases   map[Target]*sync.RWMutex
 }
 
 type QueueStats struct {
@@ -68,7 +73,16 @@ func NewQueue(dir string, targets map[uint64][]Target, source SnapshotSource, se
 	if err != nil {
 		return nil, err
 	}
-	return &Queue{dir: dir, targets: cloneTargets(targets), source: source, sender: sender, sent: sent}, nil
+	versions := make(map[Target]uint64)
+	for _, targets := range targets {
+		for _, target := range targets {
+			versions[target] = 1
+		}
+	}
+	return &Queue{
+		dir: dir, targets: cloneTargets(targets), source: source, sender: sender, sent: sent,
+		targetVersions: versions, targetLeases: make(map[Target]*sync.RWMutex),
+	}, nil
 }
 
 func (q *Queue) Enqueue(event Event) error {
@@ -114,9 +128,38 @@ func (q *Queue) EnqueueInitialBinding(groupID uint64, target Target, now time.Ti
 }
 
 func (q *Queue) SetTargets(targets map[uint64][]Target) {
+	q.targetUpdates.Lock()
+	defer q.targetUpdates.Unlock()
+
+	targets = cloneTargets(targets)
 	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.targets = cloneTargets(targets)
+	previous := groupsByTarget(q.targets)
+	next := groupsByTarget(targets)
+	changed := changedTargets(previous, next)
+	leases := make([]*sync.RWMutex, len(changed))
+	for index, target := range changed {
+		leases[index] = q.targetLeaseLocked(target)
+	}
+	q.mu.Unlock()
+
+	for _, lease := range leases {
+		lease.Lock()
+	}
+	defer func() {
+		for index := len(leases) - 1; index >= 0; index-- {
+			leases[index].Unlock()
+		}
+	}()
+
+	q.mu.Lock()
+	for _, target := range changed {
+		q.targetVersions[target]++
+		if q.targetVersions[target] == 0 {
+			q.targetVersions[target] = 1
+		}
+	}
+	q.targets = targets
+	q.mu.Unlock()
 }
 
 func (q *Queue) Stats() (QueueStats, error) {
@@ -307,7 +350,8 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		slog.ErrorContext(ctx, "initial notification refresh failed", "error", err)
 		return
 	}
-	if !q.targetEnabled(item.Event.GroupID, item.Target) {
+	targetVersion, targetEnabled := q.targetVersion(item.Event.GroupID, item.Target)
+	if !targetEnabled {
 		item.Status = "skipped"
 		item.ErrorCode = "target_changed"
 		q.finish(ctx, path, item, start)
@@ -391,9 +435,19 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		q.finish(ctx, path, item, start)
 		return
 	}
-	item.Attempts++
 	if err == nil {
+		releaseTarget, current := q.acquireTargetLease(item.Event.GroupID, item.Target, targetVersion)
+		if !current {
+			item.Status = "skipped"
+			item.ErrorCode = "target_changed"
+			q.finish(ctx, path, item, start)
+			return
+		}
+		item.Attempts++
 		err = q.sender.SendText(ctx, item.Target, item.Messages[item.NextPart])
+		releaseTarget()
+	} else {
+		item.Attempts++
 	}
 	if ctx.Err() != nil && errors.Is(ctx.Err(), context.Canceled) {
 		return
@@ -440,15 +494,63 @@ func (q *Queue) targetsSnapshot() map[uint64][]Target {
 	return cloneTargets(q.targets)
 }
 
-func (q *Queue) targetEnabled(groupID uint64, target Target) bool {
+func (q *Queue) targetVersion(groupID uint64, target Target) (uint64, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for _, current := range q.targets[groupID] {
 		if current == target {
-			return true
+			return q.targetVersions[target], true
 		}
 	}
-	return false
+	return 0, false
+}
+
+func (q *Queue) acquireTargetLease(groupID uint64, target Target, version uint64) (func(), bool) {
+	q.mu.Lock()
+	lease := q.targetLeaseLocked(target)
+	q.mu.Unlock()
+
+	lease.RLock()
+	currentVersion, enabled := q.targetVersion(groupID, target)
+	if !enabled || currentVersion != version {
+		lease.RUnlock()
+		return nil, false
+	}
+	return lease.RUnlock, true
+}
+
+func (q *Queue) targetLeaseLocked(target Target) *sync.RWMutex {
+	lease := q.targetLeases[target]
+	if lease == nil {
+		lease = &sync.RWMutex{}
+		q.targetLeases[target] = lease
+	}
+	return lease
+}
+
+func groupsByTarget(targets map[uint64][]Target) map[Target]uint64 {
+	groups := make(map[Target]uint64)
+	for groupID, groupTargets := range targets {
+		for _, target := range groupTargets {
+			groups[target] = groupID
+		}
+	}
+	return groups
+}
+
+func changedTargets(previous, next map[Target]uint64) []Target {
+	changed := make([]Target, 0)
+	for target, previousGroupID := range previous {
+		if next[target] != previousGroupID {
+			changed = append(changed, target)
+		}
+	}
+	for target, nextGroupID := range next {
+		if previous[target] == 0 && nextGroupID != 0 {
+			changed = append(changed, target)
+		}
+	}
+	return changed
 }
 
 func cloneTargets(targets map[uint64][]Target) map[uint64][]Target {

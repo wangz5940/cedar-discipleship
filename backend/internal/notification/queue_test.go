@@ -160,6 +160,59 @@ func TestQueueSendsToEveryBoundChat(t *testing.T) {
 	}
 }
 
+func TestQueueTargetUpdateDoesNotWaitForOtherTargetSend(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	sendingTarget := Target{ChatID: 10, ChatType: 3}
+	updatedTarget := Target{ChatID: 20, ChatType: 3}
+	source := &fakeSource{snapshot: Snapshot{
+		Text:      "每日灵修\n1 张三",
+		ExpiresAt: now.Add(time.Hour),
+		Topic:     "daily",
+		Version:   "daily:2026-09-29",
+	}}
+	sender := &blockingSender{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{
+		1: {sendingTarget},
+		2: {updatedTarget},
+	}, source, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(Event{
+		RecordID: 1, GroupID: 1, LogicalDate: "2026-09-29", OccurredAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	processed := make(chan struct{})
+	go func() {
+		defer close(processed)
+		queue.processNext(t.Context(), now)
+	}()
+	<-sender.started
+	updated := make(chan struct{})
+	go func() {
+		defer close(updated)
+		queue.SetTargets(map[uint64][]Target{
+			1: {sendingTarget},
+			3: {updatedTarget},
+		})
+	}()
+	select {
+	case <-updated:
+	case <-time.After(time.Second):
+		close(sender.release)
+		<-processed
+		t.Fatal("unrelated target update waited for active send")
+	}
+	close(sender.release)
+	<-processed
+}
+
 func TestQueueRetryFreezesNewMarker(t *testing.T) {
 	t.Parallel()
 	queue, source, sender, event, now := queueFixture(t)
