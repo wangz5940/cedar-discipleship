@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import {
   AlertCircle,
   Book,
+  BookOpen,
   Download,
   Eye,
   FileText,
@@ -51,6 +52,7 @@ import {
 
 const AdminConsole = lazyPage(() => import('./AdminConsole.vue'));
 const PersonalSettings = lazyPage(() => import('./PersonalSettings.vue'));
+const UserGuide = lazyPage(() => import('./UserGuide.vue'));
 const app = useAppStateStore();
 const downloadManager = useDownloadManagerStore();
 const {
@@ -500,6 +502,7 @@ async function refreshResources() {
         </section>
 
         <PersonalSettings v-else-if="!showGroupPicker && tab === 'settings'" />
+        <UserGuide v-else-if="!showGroupPicker && tab === 'guide'" />
 
         <!-- Admin Console -->
         <AdminConsole v-else-if="tab === 'admin'" />
@@ -538,6 +541,14 @@ async function refreshResources() {
           </button>
         </header>
         <div class="cd-dialog-body app-more-dialog__body">
+          <button
+            class="quiet app-more-dialog__action"
+            type="button"
+            @click="setTab('guide'); showMobileMoreMenu = false;"
+          >
+            <BookOpen :size="18" class="app-more-dialog__icon" />
+            <span>使用文档</span>
+          </button>
           <button
             class="quiet app-more-dialog__action"
             type="button"
