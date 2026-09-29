@@ -109,6 +109,43 @@ describe('video learning related resources', () => {
     expect(entries[1].contentLinks[0].url).toBe('/api/assets/998/download');
   });
 
+  it('associates an imported legacy markdown PDF with a same-title audio task', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });
+    const [entry] = buildWeeklyVideoEntries([{
+      id: 1298,
+      title: 'DS10p-KX1-1-罪',
+      assets: [{
+        id: 1051,
+        title: 'DS10p-KX1-1-罪',
+        original_name: 'DS10p-KX1-1-罪.mp3',
+        category: 'video',
+        mime_type: 'audio/mpeg',
+      }],
+    }], null, [
+      {
+        id: 1049,
+        title: 'DS10p-KX1-1-罪',
+        original_name: 'DS10p-KX1-1-罪.pdf',
+        url: '/api/assets/1049/download',
+        category: 'markdown',
+        mime_type: 'application/pdf',
+      },
+      {
+        id: 1051,
+        title: 'DS10p-KX1-1-罪',
+        original_name: 'DS10p-KX1-1-罪.mp3',
+        url: '/api/assets/1051/download',
+        category: 'video',
+        mime_type: 'audio/mpeg',
+      },
+    ]);
+
+    expect(entry.contentLinks).toEqual([
+      expect.objectContaining({ url: '/api/assets/1051/download', type: 'audio' }),
+      expect.objectContaining({ url: '/api/assets/1049/download', type: 'pdf', label: '文字稿' }),
+    ]);
+  });
+
   it.each(['audio', 'video'])('opens a bound %s asset with its matching player', async (type) => {
     setActivePinia(createPinia());
     vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });

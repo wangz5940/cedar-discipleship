@@ -20,11 +20,18 @@ describe('resource runtime helpers', () => {
     expect(RESOURCE_UPLOAD_CATEGORIES.map((item) => item.key)).toEqual([
       'mentor',
       'book',
+      'passage',
       'markdown',
+      'audio',
       'video',
       'handout',
       'outline',
     ]);
+    expect(Object.fromEntries(RESOURCE_UPLOAD_CATEGORIES.map((item) => [item.key, item.label]))).toMatchObject({
+      passage: '文字稿 / 读物 PDF',
+      audio: '音频文件',
+      video: '视频文件',
+    });
   });
 
   it('builds stable selection values for persisted task bindings', () => {

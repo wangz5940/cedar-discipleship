@@ -947,7 +947,8 @@ function normalizeResourceSeriesKey(value) {
 }
 
 function classifyViewerResource(item) {
-  const type = String(item?.type || inferResourceType(item?.url || item?.original_name || item?.title || '')).toLowerCase();
+  const fallbackType = inferResourceType(item?.original_name || item?.title || item?.url || '');
+  const type = String(item?.type || inferResourceTypeFromMime(item?.mime_type, fallbackType)).toLowerCase();
   const category = normalizeResourceCategory(item?.category);
   const text = `${item?.title || ''} ${item?.original_name || ''} ${category}`.toLowerCase();
   if (isMediaResourceType(type)) return 'video';
@@ -991,6 +992,7 @@ function viewerResourceLink(item, fallbackTitle = '') {
       url: `/api/assets/${assetID}/download`,
       type: item.type || inferResourceType(item.original_name || item.title || '', 'iframe'),
       category: classifyViewerResource(item),
+      sourceCategory: normalizeResourceCategory(item.category),
     };
   }
   return {
@@ -999,6 +1001,7 @@ function viewerResourceLink(item, fallbackTitle = '') {
     url: item?.url || '',
     type: item?.type || inferResourceType(item?.url || '', 'iframe'),
     category: classifyViewerResource(item),
+    sourceCategory: normalizeResourceCategory(item?.category),
   };
 }
 
@@ -1769,7 +1772,10 @@ function weeklyMediaTaskLink(task) {
 function mediaCompanionLabel(item) {
   const title = String(item?.title || '');
   if (item?.category === 'handout') return '配套讲义';
-  if (item?.category === 'passage' && /(文字稿|逐字稿|录音稿|讲稿)/.test(title)) return '文字稿';
+  if (item?.category === 'passage' && (
+    item?.sourceCategory === 'markdown'
+    || /(文字稿|逐字稿|录音稿|讲稿)/.test(title)
+  )) return '文字稿';
   if (item?.category === 'passage') return '配套读物';
   return title || '相关音视频';
 }

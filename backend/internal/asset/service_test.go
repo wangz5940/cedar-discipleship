@@ -302,6 +302,42 @@ func TestResourceLibraryLabelsMentorResources(t *testing.T) {
 	}
 }
 
+func TestResourceLibraryLabelsAudioAndPassageResources(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(&fakeRepository{list: []Asset{
+		{
+			ID:           19,
+			Category:     "passage",
+			Title:        "课程文字稿",
+			OriginalName: "transcript.pdf",
+			StoragePath:  "team-demo-resources/objects/00000000000000000000000000000013/transcript.pdf",
+			MimeType:     "application/pdf",
+		},
+		{
+			ID:           20,
+			Category:     "audio",
+			Title:        "课程音频",
+			OriginalName: "lesson.mp3",
+			StoragePath:  "team-demo-resources/objects/00000000000000000000000000000014/lesson.mp3",
+			MimeType:     "audio/mpeg",
+		},
+	}}, &fakeStorage{}, "")
+	sections, err := service.ResourceLibrary(context.Background(), 6)
+	if err != nil {
+		t.Fatalf("ResourceLibrary() error = %v", err)
+	}
+	if len(sections) != 2 {
+		t.Fatalf("ResourceLibrary() returned %d sections, want 2", len(sections))
+	}
+	if sections[0].Key != "uploaded_passage" || sections[0].Label != "上传文字稿 / 读物" {
+		t.Fatalf("passage section = %+v", sections[0])
+	}
+	if sections[1].Key != "uploaded_audio" || sections[1].Label != "上传音频" {
+		t.Fatalf("audio section = %+v", sections[1])
+	}
+}
+
 func TestResourceLibraryDeduplicatesSameFileAndPrefersCanonicalTitle(t *testing.T) {
 	t.Parallel()
 
