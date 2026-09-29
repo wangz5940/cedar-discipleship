@@ -750,7 +750,7 @@ export async function openCalendarMonth(member, month) {
 }
 
 function pageTitle() {
-  const titles = { home: '今日学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', settings: '个人设置', admin: '管理后台' };
+  const titles = { home: '今日学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', settings: '个人设置', admin: '管理后台', guide: '使用文档' };
   if (state.tab === 'admin' && !canAdminAccess()) return titles.home;
   return titles[state.tab] || 'Cedar Discipleship';
 }

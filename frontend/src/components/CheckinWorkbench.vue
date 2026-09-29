@@ -184,7 +184,7 @@ async function exportStatsChart() {
           <div class="sectiontitle spread">
             <h2>{{ isToday ? '今日任务' : '所选日期任务' }}</h2>
             <span v-if="isFuture" class="small future-note">
-              未来日期仅供预览，暂不可打卡
+              未来日期不能查看或打卡
             </span>
           </div>
 

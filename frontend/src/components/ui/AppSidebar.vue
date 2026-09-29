@@ -1,5 +1,5 @@
 <script setup>
-import { BarChart2, Book, Download, Folder, LogOut, Settings, User, Users } from '@lucide/vue';
+import { BarChart2, Book, BookOpen, Download, Folder, LogOut, Settings, User, Users } from '@lucide/vue';
 
 defineProps({
   navItems: { type: Array, default: () => [] },
@@ -59,6 +59,17 @@ function navIcon(id) {
           <span>管理工作台</span>
         </button>
       </template>
+      <div v-if="!canAdmin" class="separator" />
+      <button
+        :class="{ active: tab === 'guide' }"
+        :aria-current="tab === 'guide' ? 'page' : undefined"
+        title="使用文档"
+        type="button"
+        @click="$emit('navigate', 'guide')"
+      >
+        <BookOpen :size="20" stroke-width="1.8" />
+        <span>使用文档</span>
+      </button>
     </nav>
 
     <div class="sidefoot app-sidebar__footer">
