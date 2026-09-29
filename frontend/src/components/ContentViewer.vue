@@ -310,6 +310,7 @@ function openAdjacentItem(item) {
       {
         'viewer-body-split': hasRelatedSidebar,
         'viewer-body-video': isMediaViewer,
+        'viewer-body-pdf': viewer?.type === 'pdf',
       },
     ]"
     @close="closeViewer"
@@ -559,9 +560,14 @@ function openAdjacentItem(item) {
   grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
   align-items: stretch;
 }
+:global(.viewer-modal .viewer-body.viewer-body-pdf) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
 .viewer-main { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-.viewer-main-pdf { display: flex; overflow: hidden; }
-.viewer-main-pdf > :deep(*) { flex: 1; min-width: 0; min-height: 0; }
+.viewer-main-pdf { display: flex; flex-direction: column; width: 100%; overflow: hidden; }
+.viewer-main-pdf > .viewer-main-toolbar { flex: 0 0 auto; }
+.viewer-main-pdf > :deep(.pdf-viewer) { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; }
 .viewer-sidebar { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .viewer-related-mobile { display: none; }
 .reader-settings-toggle { display: inline-flex; min-height: 44px; }

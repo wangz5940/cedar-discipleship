@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PDF desktop scroll fixture</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { createApp } from 'vue';
+    import { createPinia } from 'pinia';
+    import ContentViewer from '/src/components/ContentViewer.vue';
+    import { useContentViewerStore } from '/src/stores/contentViewer.js';
+    import '/src/styles.css';
+    import '/src/styles/fonts.css';
+    import '/src/styles/tokens.css';
+    import '/src/styles/base.css';
+    import '/src/styles/layout.css';
+    import '/src/styles/composition.css';
+
+    const pinia = createPinia();
+    createApp(ContentViewer).use(pinia).mount('#app');
+
+    const item = {
+      id: 1,
+      title: '桌面端 PDF 阅读测试',
+      type: 'pdf',
+      url: '/tests/fixtures/pdf-layout.pdf',
+    };
+    const withSidebar = new URLSearchParams(location.search).has('sidebar');
+    useContentViewerStore(pinia).setViewer({
+      ...item,
+      relatedSections: withSidebar
+        ? [{ key: 'reading', label: '读物', actionLabel: '查看', items: [item] }]
+        : [],
+    });
+  </script>
+</body>
+</html>
