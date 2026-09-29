@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -17,6 +18,8 @@ import (
 )
 
 type localBackupPayload = backupdomain.Payload
+
+const backupRestoreConfirmationHeader = "X-Backup-Restore-Confirmation"
 
 func writeAttachmentHeaders(w http.ResponseWriter, filename, contentType string) {
 	w.Header().Set("Content-Type", contentType)
@@ -416,17 +419,7 @@ func (a *app) handleAdminExportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 	if groupID == 0 {
 		return
 	}
-	settings, err := a.groupLearningConfig(r.Context(), groupID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "export_backup_failed")
-		return
-	}
-	weeks, err := a.listStudyWeekInputs(r.Context(), groupID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "export_backup_failed")
-		return
-	}
-	payload, err := a.backups.LocalBackup(r.Context(), groupID, settings, weeks, time.Now().In(a.location).Format(time.RFC3339))
+	payload, err := a.backups.LocalBackup(r.Context(), groupID, time.Now().In(a.location).Format(time.RFC3339))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "export_backup_failed")
 		return
@@ -455,8 +448,21 @@ func (a *app) handleAdminImportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 		return
 	}
 	nowTime := time.Now().In(a.location)
-	if err := a.backups.ImportLocalBackup(r.Context(), groupID, u.ID, payload, nowTime); err != nil {
-		writeError(w, http.StatusInternalServerError, "backup_import_failed")
+	confirmation := strings.TrimSpace(r.Header.Get(backupRestoreConfirmationHeader))
+	if confirmation == "" {
+		value, err := a.backups.PrepareLocalBackupImport(r.Context(), groupID, u.ID, payload, nowTime)
+		if err != nil {
+			writeBackupImportError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":        backupdomain.ErrBackupConfirmationRequired.Error(),
+			"confirmation": value,
+		})
+		return
+	}
+	if err := a.backups.ImportLocalBackup(r.Context(), groupID, u.ID, payload, confirmation, nowTime); err != nil {
+		writeBackupImportError(w, err)
 		return
 	}
 	a.refreshTodayContent(groupID)
@@ -467,4 +473,17 @@ func (a *app) handleAdminImportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 		"feedbacks": len(payload.Feedbacks),
 	}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func writeBackupImportError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, backupdomain.ErrBackupVersionUnsupported),
+		errors.Is(err, backupdomain.ErrBackupGroupMismatch),
+		errors.Is(err, backupdomain.ErrBackupContentRequired):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, backupdomain.ErrBackupConfirmationRequired):
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "backup_import_failed")
+	}
 }

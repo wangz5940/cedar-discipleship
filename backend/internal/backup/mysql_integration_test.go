@@ -4,10 +4,12 @@ package backup
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
 	"agp/backend/internal/asset"
+	"agp/backend/internal/learning"
 	"agp/backend/internal/testdb"
 )
 
@@ -106,8 +108,56 @@ func TestBackupMembersSingleConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(members) != 1 || len(members[0].Roles) != 1 || members[0].Roles[0] != "group_leader" {
+	if len(members) != 1 || members[0].Active == nil || !*members[0].Active ||
+		len(members[0].Roles) != 1 || members[0].Roles[0] != "group_leader" {
 		t.Fatalf("backup roles changed: %+v", members)
+	}
+}
+
+func TestLocalBackupSnapshotPreservesLearningData(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
+		VALUES (1,'a','A',NOW(),NOW());
+		INSERT INTO group_settings(group_id,settings,created_at,updated_at)
+		VALUES (1,'{"task_sections":{"daily":{"mode":"automatic"}}}',NOW(),NOW())`)
+	repo := NewMySQLRepository(db)
+	input := learning.WeekInput{
+		StartDate:      "2026-09-21",
+		EndDate:        "2026-09-27",
+		Title:          "整周学习",
+		VerseRef:       "约 1:1",
+		ReciteText:     "太初有道",
+		BookEnabled:    true,
+		WeeklyCheckin:  true,
+		VideoEnabled:   true,
+		VerseEnabled:   true,
+		OutlineEnabled: true,
+		Readings:       []learning.TaskBinding{{Title: "本周读物", URL: "https://example.org/book.pdf"}},
+		Videos:         []learning.TaskBinding{{Title: "本周视频", URL: "https://example.org/video.mp4"}},
+		Outline:        learning.TaskBinding{Title: "本周讲义", URL: "https://example.org/outline.pdf"},
+	}
+	if err := repo.ReplaceStudyWeeks(t.Context(), 1, []learning.WeekInput{input}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	wantWeeks, err := learning.NewService(learning.NewMySQLRepository(db)).ListWeekInputs(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := NewService(repo).LocalBackup(t.Context(), 1, time.Now().Format(time.RFC3339))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(payload.Weeks, wantWeeks) {
+		t.Fatalf("backup weeks = %+v, want %+v", payload.Weeks, wantWeeks)
+	}
+	sections, ok := payload.Settings["task_sections"].(map[string]any)
+	if !ok {
+		t.Fatalf("backup settings changed: %+v", payload.Settings)
+	}
+	daily, ok := sections["daily"].(map[string]any)
+	if !ok || daily["mode"] != "automatic" {
+		t.Fatalf("backup settings changed: %+v", payload.Settings)
 	}
 }
 

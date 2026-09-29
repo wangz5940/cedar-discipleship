@@ -29,6 +29,11 @@ type MySQLRepository struct {
 	db *sql.DB
 }
 
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
@@ -84,9 +89,13 @@ func (r *MySQLRepository) FeedbackExports(ctx context.Context, groupID uint64, l
 }
 
 func (r *MySQLRepository) GroupInfo(ctx context.Context, groupID uint64) (*GroupInfo, error) {
+	return backupGroupInfo(ctx, r.db, groupID)
+}
+
+func backupGroupInfo(ctx context.Context, q queryer, groupID uint64) (*GroupInfo, error) {
 	var item GroupInfo
 	item.ID = groupID
-	err := r.db.QueryRowContext(ctx, `SELECT code,name,description FROM study_groups WHERE id=?`, groupID).Scan(&item.Code, &item.Name, &item.Description)
+	err := q.QueryRowContext(ctx, `SELECT code,name,description FROM study_groups WHERE id=?`, groupID).Scan(&item.Code, &item.Name, &item.Description)
 	if err != nil {
 		return nil, err
 	}
@@ -94,14 +103,23 @@ func (r *MySQLRepository) GroupInfo(ctx context.Context, groupID uint64) (*Group
 }
 
 func (r *MySQLRepository) BackupMembers(ctx context.Context, groupID uint64) ([]Member, error) {
-	roleMap, err := r.memberRoleMap(ctx, groupID)
+	return backupMembers(ctx, r.db, groupID)
+}
+
+func backupMembers(ctx context.Context, q queryer, groupID uint64) ([]Member, error) {
+	roleMap, err := memberRoleMap(ctx, q, groupID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT u.username,u.display_name,u.name_pinyin,m.member_name
+	rows, err := q.QueryContext(ctx, `SELECT u.username,u.display_name,u.name_pinyin,m.member_name,m.status
 		FROM group_members m JOIN users u ON u.id=m.user_id
-		WHERE m.group_id=? AND m.status=1
-		ORDER BY m.member_name,u.username`, groupID)
+		WHERE m.group_id=? AND (
+			m.status=1 OR EXISTS (
+				SELECT 1 FROM checkin_records c
+				WHERE c.group_id=m.group_id AND c.user_id=m.user_id AND c.deleted_at IS NULL
+			)
+		)
+		ORDER BY m.status DESC,m.member_name,u.username`, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,17 +127,26 @@ func (r *MySQLRepository) BackupMembers(ctx context.Context, groupID uint64) ([]
 	var items []Member
 	for rows.Next() {
 		var item Member
-		if err := rows.Scan(&item.Username, &item.DisplayName, &item.NamePinyin, &item.MemberName); err != nil {
+		var status int
+		if err := rows.Scan(&item.Username, &item.DisplayName, &item.NamePinyin, &item.MemberName, &status); err != nil {
 			return nil, err
 		}
-		item.Roles = roleMap[item.Username]
+		active := status == 1
+		item.Active = &active
+		if active {
+			item.Roles = roleMap[item.Username]
+		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
 func (r *MySQLRepository) BackupCheckins(ctx context.Context, groupID uint64) ([]Checkin, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT u.username,c.task_id,c.week_id,c.logical_date,c.checkin_time,c.task_type,c.part,c.detail,COALESCE(c.note,''),c.is_retro
+	return backupCheckins(ctx, r.db, groupID)
+}
+
+func backupCheckins(ctx context.Context, q queryer, groupID uint64) ([]Checkin, error) {
+	rows, err := q.QueryContext(ctx, `SELECT u.username,c.task_id,c.week_id,c.logical_date,c.checkin_time,c.task_type,c.part,c.detail,COALESCE(c.note,''),c.is_retro
 		FROM checkin_records c JOIN users u ON u.id=c.user_id
 		WHERE c.group_id=? AND c.deleted_at IS NULL
 		ORDER BY c.logical_date,c.id`, groupID)
@@ -149,7 +176,11 @@ func (r *MySQLRepository) BackupCheckins(ctx context.Context, groupID uint64) ([
 }
 
 func (r *MySQLRepository) BackupFeedbacks(ctx context.Context, groupID uint64) ([]Feedback, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT COALESCE(u.username,''),f.name,f.contact,f.message,f.page,f.user_agent,f.created_at
+	return backupFeedbacks(ctx, r.db, groupID)
+}
+
+func backupFeedbacks(ctx context.Context, q queryer, groupID uint64) ([]Feedback, error) {
+	rows, err := q.QueryContext(ctx, `SELECT COALESCE(u.username,''),f.name,f.contact,f.message,f.page,f.user_agent,f.created_at
 		FROM feedbacks f
 		LEFT JOIN users u ON u.id=f.user_id
 		LEFT JOIN group_members gm ON gm.user_id=f.user_id AND gm.group_id=? AND gm.status=1
@@ -173,7 +204,11 @@ func (r *MySQLRepository) BackupFeedbacks(ctx context.Context, groupID uint64) (
 }
 
 func (r *MySQLRepository) BackupAssets(ctx context.Context, groupID uint64) ([]Asset, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT a.id,a.category,a.title,a.original_name,a.storage_path,a.mime_type,a.file_size
+	return backupAssets(ctx, r.db, groupID)
+}
+
+func backupAssets(ctx context.Context, q queryer, groupID uint64) ([]Asset, error) {
+	rows, err := q.QueryContext(ctx, `SELECT a.id,a.category,a.title,a.original_name,a.storage_path,a.mime_type,a.file_size
 		FROM assets a JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id
 		WHERE a.group_id=? AND b.deleted_at IS NULL ORDER BY a.category,a.title,a.id`, groupID)
 	if err != nil {
@@ -189,6 +224,54 @@ func (r *MySQLRepository) BackupAssets(ctx context.Context, groupID uint64) ([]A
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *MySQLRepository) LocalBackupSnapshot(ctx context.Context, groupID uint64) (Snapshot, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelRepeatableRead,
+		ReadOnly:  true,
+	})
+	if err != nil {
+		return Snapshot{}, err
+	}
+	defer tx.Rollback()
+
+	group, err := backupGroupInfo(ctx, tx, groupID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	settings, weeks, err := learning.BackupLearningDataTx(ctx, tx, groupID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	members, err := backupMembers(ctx, tx, groupID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	checkins, err := backupCheckins(ctx, tx, groupID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	feedbacks, err := backupFeedbacks(ctx, tx, groupID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	assets, err := backupAssets(ctx, tx, groupID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Snapshot{}, err
+	}
+	return Snapshot{
+		Group:     *group,
+		Settings:  settings,
+		Members:   members,
+		Weeks:     weeks,
+		Checkins:  checkins,
+		Feedbacks: feedbacks,
+		Assets:    assets,
+	}, nil
 }
 
 func (r *MySQLRepository) ReplaceStudyWeeks(ctx context.Context, groupID uint64, weeks []learning.WeekInput, now time.Time) error {
@@ -229,10 +312,8 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 	if err != nil {
 		return err
 	}
-	for _, checkin := range payload.Checkins {
-		if userIDs[normalizeUsername(checkin.Username)] == 0 {
-			return fmt.Errorf("backup checkin user %q has no group identity", checkin.Username)
-		}
+	if err := ensureHistoricalCheckinUsersTx(ctx, tx, groupID, actorID, userIDs, payload.Checkins); err != nil {
+		return err
 	}
 	assetIDs, err := r.importBackupAssetsTx(ctx, tx, groupID, actorID, payload.Assets, now)
 	if err != nil {
@@ -855,8 +936,8 @@ func maxInt(left, right int) int {
 	return right
 }
 
-func (r *MySQLRepository) memberRoleMap(ctx context.Context, groupID uint64) (map[string][]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT u.username,r.role
+func memberRoleMap(ctx context.Context, q queryer, groupID uint64) (map[string][]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT u.username,r.role
 		FROM user_group_roles r JOIN users u ON u.id=r.user_id
 		WHERE r.group_id=? AND r.role IN (?,?)
 		ORDER BY u.username,r.role`, groupID, roleGroupAdmin, roleGroupLeader)
@@ -878,11 +959,21 @@ func (r *MySQLRepository) memberRoleMap(ctx context.Context, groupID uint64) (ma
 func (r *MySQLRepository) importBackupMembersTx(ctx context.Context, tx *sql.Tx, groupID, actorID uint64, members []Member) (map[uint64][]string, error) {
 	roleAssignments := map[uint64][]string{}
 	for _, member := range members {
-		userID, err := ensureGroupMemberUserTx(ctx, tx, groupID, member, actorID)
+		var (
+			userID uint64
+			err    error
+		)
+		if member.Active == nil || *member.Active {
+			userID, err = ensureGroupMemberUserTx(ctx, tx, groupID, member, actorID)
+		} else {
+			userID, err = ensureHistoricalGroupMemberUserTx(ctx, tx, groupID, member, actorID)
+		}
 		if err != nil {
 			return nil, err
 		}
-		roleAssignments[userID] = append([]string{}, member.Roles...)
+		if member.Active == nil || *member.Active {
+			roleAssignments[userID] = append([]string{}, member.Roles...)
+		}
 	}
 	return roleAssignments, nil
 }
@@ -976,6 +1067,97 @@ func backupUsernamesTx(ctx context.Context, tx *sql.Tx, groupID uint64) (map[str
 		userIDs[normalizeUsername(username)] = userID
 	}
 	return userIDs, rows.Err()
+}
+
+func ensureHistoricalCheckinUsersTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, actorID uint64,
+	userIDs map[string]uint64,
+	checkins []Checkin,
+) error {
+	for _, checkin := range checkins {
+		username := normalizeUsername(checkin.Username)
+		if username == "" {
+			return errors.New("username_required")
+		}
+		if userIDs[username] > 0 {
+			continue
+		}
+		userID, err := ensureHistoricalGroupMemberUserTx(ctx, tx, groupID, Member{
+			Username:    username,
+			DisplayName: username,
+			NamePinyin:  username,
+			MemberName:  username,
+		}, actorID)
+		if err != nil {
+			return fmt.Errorf("restore historical member %q: %w", checkin.Username, err)
+		}
+		userIDs[username] = userID
+	}
+	return nil
+}
+
+func ensureHistoricalGroupMemberUserTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID uint64,
+	member Member,
+	actorID uint64,
+) (uint64, error) {
+	username := normalizeUsername(member.Username)
+	if username == "" {
+		return 0, errors.New("username_required")
+	}
+	displayName := firstNonEmpty(strings.TrimSpace(member.DisplayName), username)
+	namePinyin := firstNonEmpty(strings.TrimSpace(member.NamePinyin), username)
+	memberName := firstNonEmpty(strings.TrimSpace(member.MemberName), displayName)
+	var userID uint64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE username=?`, username).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		hash, hashErr := groupDefaultPasswordHashTx(ctx, tx, groupID)
+		if hashErr != nil {
+			return 0, hashErr
+		}
+		result, insertErr := tx.ExecContext(ctx, `INSERT INTO users
+			(username,display_name,name_pinyin,password_hash,created_by,created_at,updated_at)
+			VALUES (?,?,?,?,?,?,?)`,
+			username, displayName, namePinyin, hash, actorID, nowSQL(), nowSQL())
+		if insertErr != nil {
+			return 0, insertErr
+		}
+		id, idErr := result.LastInsertId()
+		if idErr != nil {
+			return 0, idErr
+		}
+		if id <= 0 {
+			return 0, errors.New("invalid_insert_id")
+		}
+		userID = uint64(id)
+	} else if err != nil {
+		return 0, err
+	} else {
+		var allowed bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+			SELECT 1 FROM group_members WHERE group_id=? AND user_id=?
+			UNION ALL
+			SELECT 1 FROM tenant_members tm
+			JOIN study_groups g ON g.tenant_id=tm.tenant_id
+			WHERE g.id=? AND tm.user_id=?
+		)`, groupID, userID, groupID, userID).Scan(&allowed); err != nil {
+			return 0, err
+		}
+		if !allowed {
+			return 0, errors.New("backup_member_outside_tenant")
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO group_members
+		(group_id,user_id,member_name,status,joined_at,created_by,created_at,updated_at)
+		VALUES (?,?,?,0,?,?,?,?)`,
+		groupID, userID, memberName, nowSQL(), actorID, nowSQL(), nowSQL()); err != nil {
+		return 0, err
+	}
+	return userID, nil
 }
 
 func (r *MySQLRepository) replaceCheckinsTx(

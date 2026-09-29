@@ -192,7 +192,7 @@ EXECUTE_IMPORT=false \
 ./scripts/migrate-legacy-project.sh
 ```
 
-确认 dry-run 报告后，将 `EXECUTE_IMPORT=true` 重新执行。`GROUP_CODE` 是迁移和资源路径使用的内部稳定标识；管理后台只展示和维护小组名称。
+确认 dry-run 报告后，将 `EXECUTE_IMPORT=true` 重新执行。`GROUP_CODE` 是迁移、自动生成成员用户名和资源路径使用的内部稳定标识；管理后台只展示和维护小组名称。官方脚本默认以 `{GROUP_CODE}-memberNNN` 隔离无法映射的成员账号。
 
 ## 跨组资源治理
 

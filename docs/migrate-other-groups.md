@@ -22,7 +22,8 @@ zw1-checkin/
 - `GROUP_NAME` 是后台展示和维护的小组名称。
 - `GROUP_CODE` 是迁移和资源目录使用的内部稳定标识，迁入后后台不再修改。
 - `GROUP_CODE` 已存在时复用原小组；可同步展示名称，但不会修改该小组的启停状态。
-- 成员只以中文姓名导入，系统生成拼音账号。
+- 成员只以中文姓名导入；已配置的显式用户名保持不变，其余账号默认按 `{GROUP_CODE}-memberNNN` 生成，避免不同小组或 tenant 复用同一账号。
+- 显式用户名只允许在同一 tenant 内复用；关闭自动用户名命名空间时，旧 `memberNNN` 也只能用于目标小组的兼容重跑。
 - 周任务、任务资源绑定和历史打卡按小组隔离写入。
 - 文件唯一性只由 `SHA-256 + 文件字节长度` 判断；文件名、标题、目录和分类不参与判重。
 - 当前小组已有相同指纹时复用当前记录；其他小组已有相同指纹时，只允许从启用小组的有效自有资源导入，且必须存在面向当前小组或所有小组的有效导入授权。
@@ -85,6 +86,7 @@ EXECUTE_IMPORT=true \
 ```bash
 ALLOW_DUPLICATE_AS_DELETED=false
 FAIL_ON_GENERATED_USERNAMES=false
+NAMESPACE_GENERATED_USERNAMES=true
 RESOURCE_MIGRATION_DRY_RUN_ONLY=false
 RESOURCE_LEGACY_ASSETS_ROOT=/volume1/docker/zw1-checkin/data/assets
 ```
@@ -93,6 +95,7 @@ RESOURCE_LEGACY_ASSETS_ROOT=/volume1/docker/zw1-checkin/data/assets
 
 - `ALLOW_DUPLICATE_AS_DELETED=true`：重复打卡以软删除历史保留。
 - `FAIL_ON_GENERATED_USERNAMES=true`：需要自动生成账号时直接失败。
+- `NAMESPACE_GENERATED_USERNAMES=true`：默认使用稳定的 `GROUP_CODE` 隔离自动生成账号；仅兼容旧迁移重跑时可显式设为 `false`。
 - `RESOURCE_MIGRATION_DRY_RUN_ONLY=true`：只写入数据，不复制资源文件。
 - `RESOURCE_LEGACY_ASSETS_ROOT`：旧项目存在额外上传目录时指定。
 

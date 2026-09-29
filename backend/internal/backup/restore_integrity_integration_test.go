@@ -65,27 +65,50 @@ func TestImportLocalBackupIntegrity(t *testing.T) {
 		}
 	})
 	t.Run("former member history round trip", func(t *testing.T) {
-		db := testdb.Open(t)
-		testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
+		sourceDB := testdb.Open(t)
+		testdb.Exec(t, sourceDB, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
 			VALUES (1,'a','A',NOW(),NOW());
 			INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
-			VALUES (1,'former','Former','former',NOW(),NOW());
+			VALUES (1,'admin','Admin','admin',NOW(),NOW()),
+			       (2,'former','Former','former',NOW(),NOW());
 			INSERT INTO group_members(group_id,user_id,member_name,status,joined_at,created_at,updated_at)
-			VALUES (1,1,'Former',0,NOW(),NOW(),NOW());
+			VALUES (1,1,'Admin',1,NOW(),NOW(),NOW()),
+			       (1,2,'Former',0,NOW(),NOW(),NOW());
 			INSERT INTO checkin_records(group_id,user_id,logical_date,checkin_time,task_type,detail,note,created_by,created_at,updated_at)
-			VALUES (1,1,'2026-09-01',NOW(),'daily_devotion','History','Keep me',1,NOW(),NOW())`)
-		repo := NewMySQLRepository(db)
-		payload, err := NewService(repo).LocalBackup(t.Context(), 1, nil, nil, time.Now().Format(time.RFC3339))
+			VALUES (1,2,'2026-09-01',NOW(),'daily_devotion','History','Keep me',1,NOW(),NOW())`)
+		sourceRepo := NewMySQLRepository(sourceDB)
+		payload, err := NewService(sourceRepo).LocalBackup(t.Context(), 1, time.Now().Format(time.RFC3339))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(payload.Members) != 0 || len(payload.Checkins) != 1 {
+		if len(payload.Members) != 2 || len(payload.Checkins) != 1 {
 			t.Fatalf("invalid fixture export: %+v", payload)
 		}
-		if err := repo.ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err != nil {
+		var former Member
+		for _, member := range payload.Members {
+			if member.Username == "former" {
+				former = member
+				break
+			}
+		}
+		if former.Active == nil || *former.Active || former.DisplayName != "Former" || former.MemberName != "Former" {
+			t.Fatalf("former member identity not exported: %+v", former)
+		}
+
+		targetDB := testdb.Open(t)
+		testdb.Exec(t, targetDB, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
+			VALUES (1,'a','A',NOW(),NOW());
+			INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+			VALUES (1,'admin','Admin','admin',NOW(),NOW());
+			INSERT INTO group_members(group_id,user_id,member_name,status,joined_at,created_at,updated_at)
+			VALUES (1,1,'Admin',1,NOW(),NOW(),NOW());
+			INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+			VALUES (1,1,'member',1,NOW(),NOW())`)
+		targetRepo := NewMySQLRepository(targetDB)
+		if err := targetRepo.ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		checkins, err := repo.BackupCheckins(t.Context(), 1)
+		checkins, err := targetRepo.BackupCheckins(t.Context(), 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -93,11 +116,30 @@ func TestImportLocalBackupIntegrity(t *testing.T) {
 			t.Fatalf("history lost: %+v", checkins)
 		}
 		var status int
-		if err := db.QueryRow(`SELECT status FROM group_members WHERE group_id=1 AND user_id=1`).Scan(&status); err != nil {
+		if err := targetDB.QueryRow(`SELECT m.status
+			FROM group_members m JOIN users u ON u.id=m.user_id
+			WHERE m.group_id=1 AND u.username='former'`).Scan(&status); err != nil {
 			t.Fatal(err)
 		}
 		if status != 0 {
 			t.Fatal("historical identity was reactivated")
+		}
+		var displayName, memberName string
+		if err := targetDB.QueryRow(`SELECT u.display_name,m.member_name
+			FROM group_members m JOIN users u ON u.id=m.user_id
+			WHERE m.group_id=1 AND u.username='former'`).Scan(&displayName, &memberName); err != nil {
+			t.Fatal(err)
+		}
+		if displayName != "Former" || memberName != "Former" {
+			t.Fatalf("historical identity changed: display=%q member=%q", displayName, memberName)
+		}
+		var tenantMemberships int
+		if err := targetDB.QueryRow(`SELECT COUNT(*) FROM tenant_members tm
+			JOIN users u ON u.id=tm.user_id WHERE u.username='former' AND tm.status=1`).Scan(&tenantMemberships); err != nil {
+			t.Fatal(err)
+		}
+		if tenantMemberships != 0 {
+			t.Fatal("historical identity was reactivated in tenant membership")
 		}
 	})
 	t.Run("unresolved identity rolls back entire restore", func(t *testing.T) {
@@ -112,28 +154,26 @@ func TestImportLocalBackupIntegrity(t *testing.T) {
 			VALUES (1,1,'2026-09-01',NOW(),'daily_devotion','Original',1,NOW(),NOW())`)
 		testdb.Apply(t, db, "015_tenants.sql")
 		repo := NewMySQLRepository(db)
-		for _, username := range []string{"missing", "unrelated"} {
-			payload := Payload{
-				Members:  []Member{{Username: "admin", DisplayName: "Changed"}},
-				Checkins: []Checkin{{Username: username, LogicalDate: "2026-09-01", TaskType: "daily_devotion"}},
-			}
-			if err := repo.ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err == nil {
-				t.Errorf("accepted unresolved identity %q", username)
-			}
-			checkins, err := repo.BackupCheckins(t.Context(), 1)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(checkins) != 1 || checkins[0].Detail != "Original" {
-				t.Fatalf("failed import changed history: %+v", checkins)
-			}
-			var local string
-			if err := db.QueryRow(`SELECT member_name FROM group_members WHERE group_id=1 AND user_id=1`).Scan(&local); err != nil {
-				t.Fatal(err)
-			}
-			if local != "Admin" {
-				t.Fatalf("member change escaped rollback: %q", local)
-			}
+		payload := Payload{
+			Members:  []Member{{Username: "admin", DisplayName: "Changed"}},
+			Checkins: []Checkin{{Username: "unrelated", LogicalDate: "2026-09-01", TaskType: "daily_devotion"}},
+		}
+		if err := repo.ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err == nil {
+			t.Fatal("accepted cross-tenant historical identity")
+		}
+		checkins, err := repo.BackupCheckins(t.Context(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(checkins) != 1 || checkins[0].Detail != "Original" {
+			t.Fatalf("failed import changed history: %+v", checkins)
+		}
+		var local string
+		if err := db.QueryRow(`SELECT member_name FROM group_members WHERE group_id=1 AND user_id=1`).Scan(&local); err != nil {
+			t.Fatal(err)
+		}
+		if local != "Admin" {
+			t.Fatalf("member change escaped rollback: %q", local)
 		}
 	})
 }

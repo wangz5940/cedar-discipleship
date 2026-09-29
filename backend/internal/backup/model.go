@@ -2,12 +2,15 @@ package backup
 
 import "agp/backend/internal/learning"
 
+const CurrentVersion = 1
+
 type Member struct {
 	Username    string   `json:"username"`
 	DisplayName string   `json:"display_name"`
 	NamePinyin  string   `json:"name_pinyin"`
 	MemberName  string   `json:"member_name,omitempty"`
 	Roles       []string `json:"roles"`
+	Active      *bool    `json:"active,omitempty"`
 }
 
 type Checkin struct {
@@ -60,6 +63,16 @@ type GroupInfo struct {
 	Code        string
 	Name        string
 	Description string
+}
+
+type Snapshot struct {
+	Group     GroupInfo
+	Settings  map[string]any
+	Members   []Member
+	Weeks     []learning.WeekInput
+	Checkins  []Checkin
+	Feedbacks []Feedback
+	Assets    []Asset
 }
 
 type CheckinDetail struct {

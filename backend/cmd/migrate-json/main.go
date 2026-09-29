@@ -62,6 +62,10 @@ type options struct {
 	devotionMode                string
 }
 
+func defaultOptions() options {
+	return options{namespaceGeneratedUsernames: true}
+}
+
 type oldConfig struct {
 	SiteInfo             siteInfo        `json:"site_info"`
 	Members              []string        `json:"members"`
@@ -299,7 +303,7 @@ var bibleBooks = []scriptureBook{
 var assetDownloadURLPattern = regexp.MustCompile(`^/api/assets/[1-9][0-9]*/download$`)
 
 func main() {
-	var opt options
+	opt := defaultOptions()
 	flag.StringVar(&opt.dsn, "dsn", env("AGP_DSN", ""), "MySQL DSN")
 	flag.StringVar(&opt.groupCode, "group-code", "", "target study group code")
 	flag.StringVar(&opt.groupName, "group-name", "", "target study group name")
@@ -311,7 +315,7 @@ func main() {
 	flag.BoolVar(&opt.allowDuplicateAsDeleted, "allow-duplicate-as-deleted", false, "import duplicate checkins as soft-deleted rows with non-zero active_key")
 	flag.BoolVar(&opt.allowUnmatchedWeeklyRecords, "allow-unmatched-weekly-records", false, "preserve weekly checkins without a matching configured task as unbound history")
 	flag.BoolVar(&opt.reuseGroupMembersByName, "reuse-group-members-by-name", false, "reuse an existing group's unique active member with the same member name")
-	flag.BoolVar(&opt.namespaceGeneratedUsernames, "namespace-generated-usernames", false, "prefix auto-generated usernames with the group code")
+	flag.BoolVar(&opt.namespaceGeneratedUsernames, "namespace-generated-usernames", opt.namespaceGeneratedUsernames, "prefix auto-generated usernames with the group code")
 	flag.BoolVar(&opt.skipConfig, "skip-config", false, "skip config import")
 	flag.BoolVar(&opt.skipRecords, "skip-records", false, "skip records import")
 	flag.BoolVar(&opt.failOnGeneratedUsernames, "fail-on-generated-usernames", false, "fail members whose usernames must be auto-generated")
@@ -530,6 +534,9 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 			continue
 		}
 		if reusedByName {
+			if err := ensureTenantMember(ctx, tx, groupID, userID, now); err != nil {
+				return err
+			}
 			if err := ensureRole(ctx, tx, groupID, userID, roleMember, now); err != nil {
 				return err
 			}
@@ -547,7 +554,7 @@ func importConfig(ctx context.Context, tx *sql.Tx, cfg oldConfig, usernameMap ma
 				continue
 			}
 		}
-		userID, userCreated, err := ensureUser(ctx, tx, username, name, hash, now)
+		userID, userCreated, err := ensureUser(ctx, tx, groupID, username, name, hash, now, generated)
 		if err != nil {
 			report.Members.Failed++
 			report.Failures = append(report.Failures, failure{Scope: "member", Key: name, Message: err.Error()})
@@ -890,11 +897,17 @@ func upsertGroupSettings(ctx context.Context, tx *sql.Tx, groupID uint64, info s
 	return err
 }
 
-func ensureUser(ctx context.Context, tx *sql.Tx, username, displayName, hash, now string) (uint64, bool, error) {
+func ensureUser(ctx context.Context, tx *sql.Tx, groupID uint64, username, displayName, hash, now string, generated bool) (uint64, bool, error) {
 	var id uint64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM users WHERE username=?", username).Scan(&id)
 	if err == nil {
+		if err := validateUserReuse(ctx, tx, groupID, id, generated); err != nil {
+			return 0, false, err
+		}
 		if _, err := tx.ExecContext(ctx, "UPDATE users SET display_name=?, name_pinyin=?, updated_at=? WHERE id=?", displayName, username, now, id); err != nil {
+			return 0, false, err
+		}
+		if err := ensureTenantMember(ctx, tx, groupID, id, now); err != nil {
 			return 0, false, err
 		}
 		return id, false, nil
@@ -909,7 +922,47 @@ func ensureUser(ctx context.Context, tx *sql.Tx, username, displayName, hash, no
 		return 0, false, err
 	}
 	newID, err := insertedID(res)
-	return newID, true, err
+	if err != nil {
+		return 0, false, err
+	}
+	if err := ensureTenantMember(ctx, tx, groupID, newID, now); err != nil {
+		return 0, false, err
+	}
+	return newID, true, nil
+}
+
+func validateUserReuse(ctx context.Context, tx *sql.Tx, groupID, userID uint64, generated bool) error {
+	var targetGroupMember bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM group_members
+		WHERE group_id=? AND user_id=? AND status=1)`, groupID, userID).Scan(&targetGroupMember); err != nil {
+		return err
+	}
+	if targetGroupMember {
+		return nil
+	}
+	if generated {
+		return errors.New("generated_username_conflict")
+	}
+	var targetTenantMember bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tenant_members tm
+		JOIN study_groups g ON g.tenant_id=tm.tenant_id
+		WHERE g.id=? AND tm.user_id=? AND tm.status=1)`, groupID, userID).Scan(&targetTenantMember); err != nil {
+		return err
+	}
+	if !targetTenantMember {
+		return errors.New("username_outside_tenant")
+	}
+	return nil
+}
+
+func ensureTenantMember(ctx context.Context, tx *sql.Tx, groupID, userID uint64, now string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		SELECT tenant_id,?,'member',1,?,? FROM study_groups WHERE id=?
+		ON DUPLICATE KEY UPDATE
+			role=IF(tenant_members.status=1,tenant_members.role,VALUES(role)),
+			status=1,updated_at=VALUES(updated_at)`,
+		userID, now, now, groupID)
+	return err
 }
 
 func reuseGroupMemberByName(ctx context.Context, tx *sql.Tx, groupID uint64, name string, enabled bool) (uint64, bool, error) {

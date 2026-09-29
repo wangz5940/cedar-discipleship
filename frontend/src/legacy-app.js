@@ -3,7 +3,7 @@ import { useContentViewerStore } from './stores/contentViewer';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useDashboardStore } from './stores/dashboard';
 import { useAppStateStore } from './stores/appState';
-import { confirmDialog } from './ui/dialog';
+import { confirmDialog, promptDialog } from './ui/dialog';
 import {
   currentCalendarWeekRange,
   currentMonthString,
@@ -424,13 +424,36 @@ export async function importLocalBackupJSON(fileInput) {
     toast('请先选择 JSON 文件');
     return;
   }
+  fileInput.value = '';
   const text = await file.text();
   const payload = JSON.parse(text);
-  await api('/admin/imports/local-backup', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-  fileInput.value = '';
+  const body = JSON.stringify(payload);
+  let confirmation = '';
+  try {
+    await api('/admin/imports/local-backup', { method: 'POST', body });
+  } catch (error) {
+    if (error.code !== 'backup_confirmation_required' || !error.payload?.confirmation) throw error;
+    confirmation = String(error.payload.confirmation);
+  }
+  if (confirmation) {
+    const input = await promptDialog({
+      title: '确认恢复本地备份',
+      message: `此操作会覆盖当前小组数据。请输入一次性确认值 ${confirmation}：`,
+      placeholder: confirmation,
+      confirmLabel: '确认恢复',
+      tone: 'danger',
+    });
+    if (input === null) return;
+    if (input !== confirmation) {
+      toast('确认值不匹配，未执行恢复');
+      return;
+    }
+    await api('/admin/imports/local-backup', {
+      method: 'POST',
+      headers: { 'X-Backup-Restore-Confirmation': confirmation },
+      body,
+    });
+  }
   await Promise.all([loadAll(), loadAdminData(true)]);
   toast('本地备份 JSON 已导入');
 }

@@ -280,6 +280,17 @@ func TestDiscoverLegacyResourceFilesScansKnownDirectories(t *testing.T) {
 	if strings.Join(values, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("legacy files = %v, want %v", values, want)
 	}
+
+	outsidePath := filepath.Join(t.TempDir(), "outside.pdf")
+	if err := os.WriteFile(outsidePath, []byte("outside"), 0o644); err != nil {
+		t.Fatalf("WriteFile() outside error = %v", err)
+	}
+	if err := os.Symlink(outsidePath, filepath.Join(root, "Book", "linked.pdf")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	if _, err := discoverLegacyResourceFiles(root); err == nil {
+		t.Fatal("discoverLegacyResourceFiles() accepted a symbolic link")
+	}
 }
 
 func TestConfigResourceFileNameExtractsURLPath(t *testing.T) {
@@ -340,6 +351,82 @@ func TestResolveLegacySourcePathUsesConfiguredAssetsRoot(t *testing.T) {
 	if got != assetPath {
 		t.Fatalf("resolveLegacySourcePath() = %q, want %q", got, assetPath)
 	}
+
+	outsideRoot := t.TempDir()
+	outsidePath := filepath.Join(outsideRoot, "outside.pdf")
+	if err := os.WriteFile(outsidePath, []byte("outside"), 0o644); err != nil {
+		t.Fatalf("WriteFile() outside error = %v", err)
+	}
+	if err := os.Symlink(outsideRoot, filepath.Join(assetsRoot, "linked")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	if _, _, err := resolveLegacySourcePath(root, assetsRoot, filepath.Join("linked", "outside.pdf")); err == nil {
+		t.Fatal("resolveLegacySourcePath() accepted a path resolving outside the configured assets root")
+	}
+}
+
+func TestCopyResourceFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("copies regular file inside resource root", func(t *testing.T) {
+		resourceRoot := t.TempDir()
+		sourcePath := filepath.Join(t.TempDir(), "source.pdf")
+		if err := os.WriteFile(sourcePath, []byte("resource"), 0o644); err != nil {
+			t.Fatalf("WriteFile() source error = %v", err)
+		}
+
+		storagePath := filepath.Join("team-a-resources", "objects", "key", "source.pdf")
+		stored, err := copyResourceFile(resourceRoot, storagePath, sourcePath)
+		if err != nil {
+			t.Fatalf("copyResourceFile() error = %v", err)
+		}
+		if stored.StoragePath != filepath.ToSlash(storagePath) {
+			t.Fatalf("copyResourceFile() storage path = %q, want %q", stored.StoragePath, filepath.ToSlash(storagePath))
+		}
+		content, err := os.ReadFile(filepath.Join(resourceRoot, storagePath))
+		if err != nil {
+			t.Fatalf("ReadFile() copied file error = %v", err)
+		}
+		if string(content) != "resource" {
+			t.Fatalf("copied content = %q, want resource", content)
+		}
+	})
+
+	t.Run("rejects symbolic source file", func(t *testing.T) {
+		resourceRoot := t.TempDir()
+		outsidePath := filepath.Join(t.TempDir(), "outside.pdf")
+		if err := os.WriteFile(outsidePath, []byte("outside"), 0o644); err != nil {
+			t.Fatalf("WriteFile() outside error = %v", err)
+		}
+		sourcePath := filepath.Join(t.TempDir(), "source.pdf")
+		if err := os.Symlink(outsidePath, sourcePath); err != nil {
+			t.Fatalf("Symlink() source error = %v", err)
+		}
+
+		if _, err := copyResourceFile(resourceRoot, filepath.Join("team-a-resources", "objects", "key", "source.pdf"), sourcePath); err == nil {
+			t.Fatal("copyResourceFile() accepted a symbolic source file")
+		}
+	})
+
+	t.Run("rejects symbolic target directory", func(t *testing.T) {
+		resourceRoot := t.TempDir()
+		outsideRoot := t.TempDir()
+		if err := os.Symlink(outsideRoot, filepath.Join(resourceRoot, "team-a-resources")); err != nil {
+			t.Fatalf("Symlink() target directory error = %v", err)
+		}
+		sourcePath := filepath.Join(t.TempDir(), "source.pdf")
+		if err := os.WriteFile(sourcePath, []byte("resource"), 0o644); err != nil {
+			t.Fatalf("WriteFile() source error = %v", err)
+		}
+		storagePath := filepath.Join("team-a-resources", "objects", "key", "source.pdf")
+
+		if _, err := copyResourceFile(resourceRoot, storagePath, sourcePath); err == nil {
+			t.Fatal("copyResourceFile() accepted a symbolic target directory")
+		}
+		if _, err := os.Stat(filepath.Join(outsideRoot, "objects", "key", "source.pdf")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("outside target exists or stat failed: %v", err)
+		}
+	})
 }
 
 func TestPreferCleanupAssetUsesCanonicalFileTitle(t *testing.T) {

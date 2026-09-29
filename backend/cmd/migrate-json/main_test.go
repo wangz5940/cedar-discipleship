@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -173,6 +174,8 @@ func TestReuseGroupMemberByNameOnlyWhenEnabledAndUnique(t *testing.T) {
 }
 
 func TestNamespacedGeneratedUsernameKeepsExplicitMappings(t *testing.T) {
+	defaultOpt := defaultOptions()
+	defaultOpt.groupCode = "ZW1"
 	for _, tc := range []struct {
 		name string
 		opt  options
@@ -180,14 +183,51 @@ func TestNamespacedGeneratedUsernameKeepsExplicitMappings(t *testing.T) {
 		want string
 		gen  bool
 	}{
-		{name: "legacy default", want: "member003", gen: true},
-		{name: "opted in", opt: options{groupCode: "ZW1", namespaceGeneratedUsernames: true}, want: "zw1-member003", gen: true},
-		{name: "explicit map", opt: options{groupCode: "zw1", namespaceGeneratedUsernames: true}, mapa: map[string]string{"张三": "Existing_123"}, want: "existing_123"},
+		{name: "default namespace", opt: defaultOpt, want: "zw1-member003", gen: true},
+		{name: "legacy opt out", want: "member003", gen: true},
+		{name: "explicit map", opt: defaultOpt, mapa: map[string]string{"张三": "Existing_123"}, want: "existing_123"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, generated := usernameForImport("张三", 3, tc.mapa, tc.opt)
 			if got != tc.want || generated != tc.gen {
 				t.Fatalf("usernameForImport() = (%q,%v)", got, generated)
+			}
+		})
+	}
+}
+
+func TestOfficialMigrationScriptsEnableGeneratedUsernameNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		path     string
+		expected []string
+	}{
+		{
+			name: "group migration",
+			path: "../../../scripts/migrate-group.sh",
+			expected: []string{
+				`NAMESPACE_GENERATED_USERNAMES="${NAMESPACE_GENERATED_USERNAMES:-true}"`,
+				`"--namespace-generated-usernames=${NAMESPACE_GENERATED_USERNAMES}"`,
+			},
+		},
+		{
+			name: "one click deployment",
+			path: "../../../scripts/deploy-oneclick.sh",
+			expected: []string{
+				`PRIMARY_NAMESPACE_GENERATED_USERNAMES="${PRIMARY_NAMESPACE_GENERATED_USERNAMES:-true}"`,
+				`"--namespace-generated-usernames=${PRIMARY_NAMESPACE_GENERATED_USERNAMES}"`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, expected := range tc.expected {
+				if !strings.Contains(string(data), expected) {
+					t.Errorf("%s does not contain %q", tc.path, expected)
+				}
 			}
 		})
 	}

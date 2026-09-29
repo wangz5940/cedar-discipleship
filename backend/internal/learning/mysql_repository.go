@@ -13,6 +13,11 @@ type MySQLRepository struct {
 	db *sql.DB
 }
 
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
@@ -35,7 +40,11 @@ func (r *MySQLRepository) CurrentWeek(ctx context.Context, groupID uint64, date 
 }
 
 func (r *MySQLRepository) ListWeeks(ctx context.Context, groupID uint64) ([]Week, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled
+	return listWeeks(ctx, r.db, groupID)
+}
+
+func listWeeks(ctx context.Context, q queryer, groupID uint64) ([]Week, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled
 		FROM study_weeks WHERE group_id=? ORDER BY start_date,id`, groupID)
 	if err != nil {
 		return nil, err
@@ -64,6 +73,10 @@ func (r *MySQLRepository) ListTasks(ctx context.Context, groupID, weekID uint64)
 }
 
 func (r *MySQLRepository) ListTasksForWeeks(ctx context.Context, groupID uint64, weekIDs []uint64) ([]Task, error) {
+	return listTasksForWeeks(ctx, r.db, groupID, weekIDs)
+}
+
+func listTasksForWeeks(ctx context.Context, q queryer, groupID uint64, weekIDs []uint64) ([]Task, error) {
 	if len(weekIDs) == 0 {
 		return []Task{}, nil
 	}
@@ -72,7 +85,7 @@ func (r *MySQLRepository) ListTasksForWeeks(ctx context.Context, groupID uint64,
 		args = append(args, id)
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(weekIDs)), ",")
-	rows, err := r.db.QueryContext(ctx, `SELECT id,week_id,task_type,title,COALESCE(content,''),required,enabled
+	rows, err := q.QueryContext(ctx, `SELECT id,week_id,task_type,title,COALESCE(content,''),required,enabled
 		FROM study_tasks WHERE group_id=? AND week_id IN (`+placeholders+`)
 		AND enabled=1 ORDER BY week_id,sort_order,id`, args...)
 	if err != nil {
@@ -98,7 +111,7 @@ func (r *MySQLRepository) ListTasksForWeeks(ctx context.Context, groupID uint64,
 	if len(tasks) == 0 {
 		return tasks, nil
 	}
-	assets, err := r.weekTaskAssets(ctx, groupID, weekIDs)
+	assets, err := weekTaskAssets(ctx, q, groupID, weekIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +203,12 @@ func (r *MySQLRepository) ListCompletionRecords(ctx context.Context, groupID, us
 }
 
 func (r *MySQLRepository) LearningConfig(ctx context.Context, groupID uint64) (map[string]any, error) {
+	return learningConfig(ctx, r.db, groupID)
+}
+
+func learningConfig(ctx context.Context, q queryer, groupID uint64) (map[string]any, error) {
 	var raw sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=?`, groupID).Scan(&raw)
+	err := q.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=?`, groupID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return map[string]any{}, nil
 	}
@@ -209,6 +226,51 @@ func (r *MySQLRepository) LearningConfig(ctx context.Context, groupID uint64) (m
 		settings = map[string]any{}
 	}
 	return settings, nil
+}
+
+func BackupLearningDataTx(ctx context.Context, tx *sql.Tx, groupID uint64) (map[string]any, []WeekInput, error) {
+	settings, err := learningConfig(ctx, tx, groupID)
+	if err != nil {
+		return nil, nil, err
+	}
+	weeks, err := listWeeks(ctx, tx, groupID)
+	if err != nil {
+		return nil, nil, err
+	}
+	weekIDs := make([]uint64, 0, len(weeks))
+	for _, week := range weeks {
+		weekIDs = append(weekIDs, week.ID)
+	}
+	tasks, err := listTasksForWeeks(ctx, tx, groupID, weekIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	tasksByWeek := make(map[uint64][]Task)
+	for _, task := range tasks {
+		tasksByWeek[task.WeekID] = append(tasksByWeek[task.WeekID], task)
+	}
+	inputs := make([]WeekInput, 0, len(weeks))
+	for _, week := range weeks {
+		taskMaps := TaskMaps(tasksByWeek[week.ID])
+		readings, videos, outline := SplitWeekTaskBindings(taskMaps)
+		inputs = append(inputs, WeekInput{
+			ID:             week.ID,
+			StartDate:      week.StartDate,
+			EndDate:        week.EndDate,
+			Title:          week.Title,
+			VerseRef:       week.VerseRef,
+			ReciteText:     week.ReciteText,
+			BookEnabled:    week.BookEnabled,
+			WeeklyCheckin:  hasAggregateWeeklyTask(taskMaps),
+			VideoEnabled:   week.VideoEnabled,
+			VerseEnabled:   week.VerseEnabled,
+			OutlineEnabled: week.OutlineEnabled,
+			Readings:       readings,
+			Videos:         videos,
+			Outline:        outline,
+		})
+	}
+	return settings, inputs, nil
 }
 
 func (r *MySQLRepository) SaveLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
@@ -320,12 +382,16 @@ func InsertWeekTx(ctx context.Context, tx *sql.Tx, groupID uint64, input WeekInp
 }
 
 func (r *MySQLRepository) weekTaskAssets(ctx context.Context, groupID uint64, weekIDs []uint64) (map[uint64][]TaskAsset, error) {
+	return weekTaskAssets(ctx, r.db, groupID, weekIDs)
+}
+
+func weekTaskAssets(ctx context.Context, q queryer, groupID uint64, weekIDs []uint64) (map[uint64][]TaskAsset, error) {
 	args := []any{groupID}
 	for _, id := range weekIDs {
 		args = append(args, id)
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(weekIDs)), ",")
-	rows, err := r.db.QueryContext(ctx, `SELECT ta.task_id,a.id,a.category,a.title,a.original_name,a.mime_type,ta.usage_type
+	rows, err := q.QueryContext(ctx, `SELECT ta.task_id,a.id,a.category,a.title,a.original_name,a.mime_type,ta.usage_type
 		FROM task_assets ta JOIN assets a ON a.id=ta.asset_id
 		JOIN study_tasks t ON t.id=ta.task_id AND t.group_id=ta.group_id
 		WHERE ta.group_id=? AND t.week_id IN (`+placeholders+`) AND t.enabled=1 AND a.group_id=ta.group_id

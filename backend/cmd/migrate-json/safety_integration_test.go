@@ -12,6 +12,7 @@ import (
 
 	"agp/backend/internal/learning"
 	"agp/backend/internal/testdb"
+	userdomain "agp/backend/internal/user"
 )
 
 func migrationOptions(t *testing.T, db *sql.DB, config string) options {
@@ -25,11 +26,15 @@ func migrationOptions(t *testing.T, db *sql.DB, config string) options {
 	if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return options{
-		dsn:       fmt.Sprintf("root@tcp(%s)/%s?parseTime=true", os.Getenv("CEDAR_TEST_MYSQL_ADDR"), name),
-		groupCode: "review", groupName: "Review", defaultPassword: "test-password",
-		configPath: configPath, skipRecords: true, reportDir: filepath.Join(dir, "reports"),
-	}
+	opt := defaultOptions()
+	opt.dsn = fmt.Sprintf("root@tcp(%s)/%s?parseTime=true", os.Getenv("CEDAR_TEST_MYSQL_ADDR"), name)
+	opt.groupCode = "review"
+	opt.groupName = "Review"
+	opt.defaultPassword = "test-password"
+	opt.configPath = configPath
+	opt.skipRecords = true
+	opt.reportDir = filepath.Join(dir, "reports")
+	return opt
 }
 
 func TestMigrationFailuresDoNotPersistPartialResults(t *testing.T) {
@@ -87,6 +92,153 @@ func TestMigrationFailuresDoNotPersistPartialResults(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestMigrationMembersRespectTenantIdentity(t *testing.T) {
+	t.Run("generated usernames are isolated and immediately visible", func(t *testing.T) {
+		db := testdb.Open(t)
+		testdb.Exec(t, db, `INSERT INTO tenants(id,name,status,created_at,updated_at)
+			VALUES(2,'Second',1,NOW(),NOW());
+			INSERT INTO study_groups(id,code,name,tenant_id,created_at,updated_at)
+			VALUES(2,'review-b','Review B',2,NOW(),NOW())`)
+
+		first := migrationOptions(t, db, `{"members":["未映射甲"],"task_sections":{}}`)
+		first.groupCode, first.groupName = "review-a", "Review A"
+		if err := run(first); err != nil {
+			t.Fatal(err)
+		}
+		second := migrationOptions(t, db, `{"members":["未映射乙"],"task_sections":{}}`)
+		second.groupCode, second.groupName = "review-b", "Review B"
+		if err := run(second); err != nil {
+			t.Fatal(err)
+		}
+		if err := run(second); err != nil {
+			t.Fatalf("repeat migration: %v", err)
+		}
+
+		for _, expected := range []struct {
+			username string
+			tenantID uint64
+		}{
+			{username: "review-a-member001", tenantID: 1},
+			{username: "review-b-member001", tenantID: 2},
+		} {
+			var userID uint64
+			if err := db.QueryRow("SELECT id FROM users WHERE username=?", expected.username).Scan(&userID); err != nil {
+				t.Fatalf("find %s: %v", expected.username, err)
+			}
+			groups, err := userdomain.NewMySQLRepository(db).ListMembershipGroups(t.Context(), userID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(groups) != 1 || groups[0].TenantID != expected.tenantID {
+				t.Errorf("%s groups = %+v, want tenant %d", expected.username, groups, expected.tenantID)
+			}
+			var memberships int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM tenant_members
+				WHERE tenant_id=? AND user_id=? AND status=1`, expected.tenantID, userID).Scan(&memberships); err != nil {
+				t.Fatal(err)
+			}
+			if memberships != 1 {
+				t.Errorf("%s active tenant memberships = %d, want 1", expected.username, memberships)
+			}
+		}
+	})
+
+	t.Run("legacy generated username can only reuse target group", func(t *testing.T) {
+		t.Run("target group rerun repairs tenant membership", func(t *testing.T) {
+			db := testdb.Open(t)
+			testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,tenant_id,created_at,updated_at)
+				VALUES(1,'review','Review',1,NOW(),NOW());
+				INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+				VALUES(10,'member001','Legacy','member001',NOW(),NOW());
+				INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
+				VALUES(1,10,'未映射测试成员',NOW(),NOW(),NOW())`)
+			opt := migrationOptions(t, db, `{"members":["未映射测试成员"],"task_sections":{}}`)
+			opt.namespaceGeneratedUsernames = false
+			if err := run(opt); err != nil {
+				t.Fatal(err)
+			}
+			var count int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM tenant_members
+				WHERE tenant_id=1 AND user_id=10 AND status=1`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("repaired tenant memberships = %d, want 1", count)
+			}
+		})
+
+		t.Run("another group collision is rejected", func(t *testing.T) {
+			db := testdb.Open(t)
+			testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,tenant_id,created_at,updated_at)
+				VALUES(1,'other','Other',1,NOW(),NOW()),(2,'review','Review',1,NOW(),NOW());
+				INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+				VALUES(10,'member001','Existing','member001',NOW(),NOW());
+				INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+				VALUES(1,10,'member',1,NOW(),NOW());
+				INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
+				VALUES(1,10,'Other Member',NOW(),NOW(),NOW())`)
+			opt := migrationOptions(t, db, `{"members":["未映射测试成员"],"task_sections":{}}`)
+			opt.namespaceGeneratedUsernames = false
+			if err := run(opt); err == nil {
+				t.Fatal("generated username from another group was reused")
+			}
+			var count int
+			if err := db.QueryRow("SELECT COUNT(*) FROM group_members WHERE group_id=2").Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("failed migration added %d target group members", count)
+			}
+		})
+	})
+
+	t.Run("explicit username reuse is tenant scoped", func(t *testing.T) {
+		for _, tc := range []struct {
+			name             string
+			existingTenantID uint64
+			wantErr          bool
+		}{
+			{name: "same tenant multiple groups", existingTenantID: 2},
+			{name: "different tenant", existingTenantID: 1, wantErr: true},
+			{name: "unknown tenant", wantErr: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				db := testdb.Open(t)
+				testdb.Exec(t, db, `INSERT INTO tenants(id,name,status,created_at,updated_at)
+					VALUES(2,'Second',1,NOW(),NOW())`)
+				testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,tenant_id,created_at,updated_at)
+					VALUES(1,'other','Other',?,NOW(),NOW()),(2,'review','Review',2,NOW(),NOW())`,
+					tc.existingTenantID)
+				testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+					VALUES(10,'zhangjiale','Existing','zhangjiale',NOW(),NOW());
+					INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
+					VALUES(1,10,'Existing',NOW(),NOW(),NOW())`)
+				if tc.existingTenantID > 0 {
+					testdb.Exec(t, db, `INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+						VALUES(?,10,'member',1,NOW(),NOW())`, tc.existingTenantID)
+				}
+
+				opt := migrationOptions(t, db, `{"members":["张迦勒"],"task_sections":{}}`)
+				err := run(opt)
+				if (err != nil) != tc.wantErr {
+					t.Fatalf("run error = %v, want error = %v", err, tc.wantErr)
+				}
+				var count int
+				if err := db.QueryRow("SELECT COUNT(*) FROM group_members WHERE group_id=2 AND user_id=10").Scan(&count); err != nil {
+					t.Fatal(err)
+				}
+				wantCount := 1
+				if tc.wantErr {
+					wantCount = 0
+				}
+				if count != wantCount {
+					t.Fatalf("target group memberships = %d, want %d", count, wantCount)
+				}
+			})
+		}
+	})
 }
 
 func TestForceMigrationPreservesReferencedVideoHistory(t *testing.T) {

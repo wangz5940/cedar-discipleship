@@ -397,11 +397,14 @@ func discoverLegacyResourceFiles(legacyRoot string) ([]legacyResourceFile, error
 	}
 	var files []legacyResourceFile
 	for _, legacyFile := range legacyRootResourceFiles {
-		filePath, err := safeJoin(root, legacyFile.Name)
+		filePath, err := pathWithinRoot(root, legacyFile.Name, false)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return nil, err
 		}
-		info, err := os.Stat(filePath)
+		info, err := os.Lstat(filePath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -417,11 +420,14 @@ func discoverLegacyResourceFiles(legacyRoot string) ([]legacyResourceFile, error
 		})
 	}
 	for _, legacyDir := range legacyResourceDirs {
-		dirPath, err := safeJoin(root, legacyDir.Name)
+		dirPath, err := pathWithinRoot(root, legacyDir.Name, false)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return nil, err
 		}
-		info, err := os.Stat(dirPath)
+		info, err := os.Lstat(dirPath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -435,6 +441,13 @@ func discoverLegacyResourceFiles(legacyRoot string) ([]legacyResourceFile, error
 			if walkErr != nil {
 				return walkErr
 			}
+			relativePath, err := filepath.Rel(root, filePath)
+			if err != nil {
+				return err
+			}
+			if _, err := pathWithinRoot(root, relativePath, false); err != nil {
+				return err
+			}
 			if entry.IsDir() {
 				if filePath != dirPath && strings.HasPrefix(entry.Name(), ".") {
 					return filepath.SkipDir
@@ -443,10 +456,6 @@ func discoverLegacyResourceFiles(legacyRoot string) ([]legacyResourceFile, error
 			}
 			if strings.HasPrefix(entry.Name(), ".") || !isSupportedLegacyResourceFile(entry.Name()) {
 				return nil
-			}
-			relativePath, err := filepath.Rel(root, filePath)
-			if err != nil {
-				return err
 			}
 			files = append(files, legacyResourceFile{
 				RelativePath: filepath.Clean(relativePath),
@@ -564,7 +573,7 @@ func registerDiscoveredLegacyFile(ctx context.Context, db *sql.DB, opt options, 
 	}
 	assetID, err := createDiscoveredAsset(ctx, db, group, resourceKey, category, strings.TrimSuffix(fileName, filepath.Ext(fileName)), fileName, stored, file.RelativePath)
 	if err != nil {
-		if targetPath, pathErr := safeJoin(opt.resourceRoot, filepath.FromSlash(storagePath)); pathErr == nil {
+		if targetPath, pathErr := pathWithinRoot(opt.resourceRoot, filepath.FromSlash(storagePath), false); pathErr == nil {
 			_ = os.Remove(targetPath)
 		}
 		return "", err
@@ -591,11 +600,14 @@ func resolveLegacySourcePath(legacyRoot, legacyAssetsRoot, relativePath string) 
 		candidates = append(candidates, candidate{root: legacyRoot, relative: filepath.Join("data", "assets", relativePath)})
 	}
 	for _, candidate := range candidates {
-		sourcePath, err := safeJoin(candidate.root, candidate.relative)
+		sourcePath, err := pathWithinRoot(candidate.root, candidate.relative, false)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return "", false, err
 		}
-		info, err := os.Stat(sourcePath)
+		info, err := os.Lstat(sourcePath)
 		if err == nil {
 			if info.IsDir() {
 				return "", false, errors.New("source path is a directory")
@@ -702,15 +714,90 @@ func safeJoin(root, relativePath string) (string, error) {
 	return full, nil
 }
 
+func pathWithinRoot(root, relativePath string, allowMissing bool) (string, error) {
+	full, err := safeJoin(root, relativePath)
+	if err != nil {
+		return "", err
+	}
+	base, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	rootInfo, err := os.Lstat(base)
+	if err != nil {
+		return "", err
+	}
+	if rootInfo.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("symbolic link root is not allowed")
+	}
+	if !rootInfo.IsDir() {
+		return "", errors.New("root path is not a directory")
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return "", err
+	}
+
+	relative, err := filepath.Rel(base, full)
+	if err != nil {
+		return "", err
+	}
+	existingPath := base
+	currentPath := base
+	for _, component := range strings.Split(relative, string(os.PathSeparator)) {
+		if component == "" || component == "." {
+			continue
+		}
+		currentPath = filepath.Join(currentPath, component)
+		info, err := os.Lstat(currentPath)
+		if err != nil {
+			if allowMissing && errors.Is(err, os.ErrNotExist) {
+				break
+			}
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("symbolic link is not allowed")
+		}
+		existingPath = currentPath
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(existingPath)
+	if err != nil {
+		return "", err
+	}
+	resolvedRelative, err := filepath.Rel(resolvedRoot, resolvedPath)
+	if err != nil {
+		return "", err
+	}
+	if resolvedRelative == ".." || strings.HasPrefix(resolvedRelative, ".."+string(os.PathSeparator)) {
+		return "", errors.New("path resolves outside root")
+	}
+	return full, nil
+}
+
 func copyResourceFile(resourceRoot, storagePath, sourcePath string) (storedObject, error) {
-	targetPath, err := safeJoin(resourceRoot, filepath.FromSlash(storagePath))
+	if err := os.MkdirAll(resourceRoot, 0o750); err != nil {
+		return storedObject{}, err
+	}
+	targetPath, err := pathWithinRoot(resourceRoot, filepath.FromSlash(storagePath), true)
 	if err != nil {
 		return storedObject{}, err
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o750); err != nil {
 		return storedObject{}, err
 	}
+	if _, err := pathWithinRoot(resourceRoot, filepath.FromSlash(storagePath), true); err != nil {
+		return storedObject{}, err
+	}
 
+	sourceInfo, err := os.Lstat(sourcePath)
+	if err != nil {
+		return storedObject{}, err
+	}
+	if sourceInfo.Mode()&os.ModeSymlink != 0 {
+		return storedObject{}, errors.New("symbolic link source is not allowed")
+	}
 	src, err := os.Open(sourcePath)
 	if err != nil {
 		return storedObject{}, err
@@ -784,9 +871,12 @@ func fileChecksum(path string) (string, error) {
 }
 
 func fingerprintFile(filePath string) (fileFingerprint, error) {
-	info, err := os.Stat(filePath)
+	info, err := os.Lstat(filePath)
 	if err != nil {
 		return fileFingerprint{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fileFingerprint{}, errors.New("symbolic link source is not allowed")
 	}
 	if info.IsDir() {
 		return fileFingerprint{}, errors.New("source path is a directory")
@@ -2227,6 +2317,9 @@ func cleanupDuplicateResourceBindings(ctx context.Context, db *sql.DB, groupID u
 			return 0, err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM task_assets WHERE group_id=? AND asset_id=?`, groupID, duplicate.AssetID); err != nil {
+			return 0, err
+		}
+		if err := remapGroupSettingsAssetID(ctx, tx, groupID, duplicate.AssetID, duplicate.CanonicalAssetID, now); err != nil {
 			return 0, err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE asset_dependencies
