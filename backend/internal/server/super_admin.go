@@ -44,6 +44,9 @@ func (a *app) handleSuperCreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+	a.audit(id, u.ID, "create_group", "study_groups", id, nil, map[string]any{
+		"name": req.Name,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "default_password": password})
 }
 
@@ -69,9 +72,15 @@ func (a *app) handleSuperUpdateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	a.audit(groupID, u.ID, "update_group", "study_groups", groupID, nil, map[string]any{
-		"name": req.Name,
-	}, r)
+	before := groupAuditValue(u.Groups, groupID)
+	after := map[string]any{"name": req.Name}
+	if before != nil {
+		after["tenant_id"] = before["tenant_id"]
+		after["status"] = before["status"]
+		a.auditChanges(groupID, u.ID, "update_group", "study_groups", groupID, before, after, r)
+	} else {
+		a.audit(groupID, u.ID, "update_group", "study_groups", groupID, nil, after, r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -87,14 +96,15 @@ func (a *app) handleSuperDeleteGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "group_delete_failed")
 		return
 	}
+	a.audit(0, u.ID, "delete_group", "study_groups", groupID, groupAuditValue(u.Groups, groupID), map[string]any{
+		"deleted":        true,
+		"resource_files": len(resourcePaths),
+	}, r)
 	if err := a.deleteOwnedResourceFiles(r.Context(), resourcePaths); err != nil {
 		writeError(w, http.StatusInternalServerError, "group_resource_delete_failed")
 		return
 	}
 	a.refreshTodayContent(groupID)
-	a.audit(0, u.ID, "delete_group", "study_groups", groupID, nil, map[string]any{
-		"resource_files": len(resourcePaths),
-	}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "resource_files": len(resourcePaths)})
 }
 
@@ -190,6 +200,14 @@ func (a *app) handleSuperCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "user_create_failed")
 		return
 	}
+	a.audit(req.GroupID, u.ID, "create_user", "users", id, nil, map[string]any{
+		"username":       req.Username,
+		"display_name":   req.DisplayName,
+		"name_pinyin":    req.NamePinyin,
+		"group_id":       req.GroupID,
+		"role":           req.Role,
+		"is_super_admin": req.IsSuperAdmin,
+	}, r)
 	resp := map[string]any{"id": id}
 	if initialPassword != "" {
 		resp["initial_password"] = initialPassword
@@ -238,5 +256,22 @@ func (a *app) handleSuperAddGroupMember(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusConflict, "member_add_failed")
 		return
 	}
+	a.audit(groupID, u.ID, "add_member", "group_members", req.UserID, nil, map[string]any{
+		"user_id":     req.UserID,
+		"member_name": req.MemberName,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
+}
+
+func groupAuditValue(groups []userdomain.Group, groupID uint64) map[string]any {
+	for _, group := range groups {
+		if group.ID == groupID {
+			return map[string]any{
+				"tenant_id": group.TenantID,
+				"name":      group.Name,
+				"status":    1,
+			}
+		}
+	}
+	return nil
 }

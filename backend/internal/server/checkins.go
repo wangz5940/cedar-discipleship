@@ -121,6 +121,7 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing {
+		markAuditHandled(r)
 		writeJSON(w, http.StatusOK, map[string]any{"id": id})
 		return
 	}
@@ -159,11 +160,12 @@ func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	before := a.checkinAuditSnapshot(r.Context(), groupID, id)
 	if err := a.checkins.DeleteOwn(r.Context(), groupID, u.ID, id); err != nil {
 		writeCheckinDeleteError(w, err)
 		return
 	}
-	a.audit(groupID, u.ID, "delete_own_checkin", "checkin_records", id, nil, nil, r)
+	a.audit(groupID, u.ID, "delete_own_checkin", "checkin_records", id, before, map[string]any{"deleted": true}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -174,12 +176,50 @@ func (a *app) handleAdminDeleteCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	before := a.checkinAuditSnapshot(r.Context(), groupID, id)
 	if err := a.checkins.DeleteAny(r.Context(), groupID, id); err != nil {
 		writeCheckinDeleteError(w, err)
 		return
 	}
-	a.audit(groupID, u.ID, "delete_checkin", "checkin_records", id, nil, nil, r)
+	a.audit(groupID, u.ID, "delete_checkin", "checkin_records", id, before, map[string]any{"deleted": true}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) checkinAuditSnapshot(ctx context.Context, groupID, recordID uint64) map[string]any {
+	if a.db == nil || recordID == 0 {
+		return nil
+	}
+	var (
+		userID      uint64
+		taskID      sql.NullInt64
+		weekID      sql.NullInt64
+		logicalDate time.Time
+		taskType    string
+		part        string
+	)
+	err := a.db.QueryRowContext(ctx, `SELECT user_id,task_id,week_id,logical_date,task_type,part
+		FROM checkin_records WHERE id=? AND group_id=? AND deleted_at IS NULL`,
+		recordID, groupID,
+	).Scan(&userID, &taskID, &weekID, &logicalDate, &taskType, &part)
+	if err != nil {
+		return nil
+	}
+	return map[string]any{
+		"user_id":      userID,
+		"task_id":      nullableAuditID(taskID),
+		"week_id":      nullableAuditID(weekID),
+		"logical_date": logicalDate.Format("2006-01-02"),
+		"task_type":    taskType,
+		"part":         part,
+		"deleted":      false,
+	}
+}
+
+func nullableAuditID(value sql.NullInt64) any {
+	if !value.Valid || value.Int64 <= 0 {
+		return nil
+	}
+	return uint64(value.Int64)
 }
 
 func writeCheckinDeleteError(w http.ResponseWriter, err error) {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,8 @@ func (a *app) handleAdminSaveLearningConfig(w http.ResponseWriter, r *http.Reque
 	if settings == nil {
 		settings = map[string]any{}
 	}
-	if err := a.upsertGroupLearningConfig(r.Context(), groupID, settings); err != nil {
+	before, after, err := a.upsertGroupLearningConfig(r.Context(), groupID, settings)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "learning_config_save_failed")
 		return
 	}
@@ -49,7 +51,7 @@ func (a *app) handleAdminSaveLearningConfig(w http.ResponseWriter, r *http.Reque
 				"group_id", groupID, "error", err)
 		}
 	}
-	a.audit(groupID, u.ID, "save_learning_config", "group_settings", groupID, nil, map[string]any{"keys": len(settings)}, r)
+	a.auditChanges(groupID, u.ID, "save_learning_config", "group_settings", groupID, before, after, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "settings": settings})
 }
 
@@ -112,6 +114,12 @@ func (a *app) handleAdminCreateMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "member_save_failed")
 		return
 	}
+	a.audit(groupID, u.ID, "add_member", "group_members", userID, nil, map[string]any{
+		"user_id":      userID,
+		"username":     req.Username,
+		"display_name": req.DisplayName,
+		"created_user": req.CreateUser,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"user_id": userID})
 }
 
@@ -122,6 +130,7 @@ func (a *app) handleAdminRemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	memberID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	before := a.memberAuditValue(r.Context(), groupID, memberID)
 	targetUserID, err := a.users.RemoveMember(r.Context(), groupID, memberID, u.ID, u.IsSuperAdmin, time.Now().UTC())
 	if errors.Is(err, userdomain.ErrMemberNotFound) {
 		writeError(w, http.StatusNotFound, "member_not_found")
@@ -143,7 +152,10 @@ func (a *app) handleAdminRemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "member_remove_failed")
 		return
 	}
-	a.audit(groupID, u.ID, "remove_member", "group_members", memberID, nil, map[string]any{"user_id": targetUserID}, r)
+	a.audit(groupID, u.ID, "remove_member", "group_members", memberID, before, map[string]any{
+		"user_id": targetUserID,
+		"deleted": true,
+	}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -182,6 +194,7 @@ func (a *app) setRole(w http.ResponseWriter, r *http.Request, role string, grant
 		return
 	}
 	memberID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	member := a.memberAuditValue(r.Context(), groupID, memberID)
 	err := a.users.SetRole(r.Context(), groupID, memberID, u.ID, u.IsSuperAdmin, role, grant, time.Now().UTC())
 	if errors.Is(err, userdomain.ErrMemberNotFound) {
 		writeError(w, http.StatusNotFound, "member_not_found")
@@ -203,7 +216,61 @@ func (a *app) setRole(w http.ResponseWriter, r *http.Request, role string, grant
 		writeError(w, http.StatusInternalServerError, "member_role_save_failed")
 		return
 	}
+	action := "grant_group_role"
+	before, after := false, true
+	if !grant {
+		action = "revoke_group_role"
+		before, after = true, false
+	}
+	if member != nil {
+		before = stringSliceContains(member["roles"], role)
+		after = grant
+	}
+	a.auditChanges(
+		groupID,
+		u.ID,
+		action,
+		"user_group_roles",
+		memberID,
+		map[string]any{"role": role, "granted": before},
+		map[string]any{"role": role, "granted": after},
+		r,
+	)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) memberAuditValue(ctx context.Context, groupID, memberID uint64) map[string]any {
+	members, err := a.users.Members(ctx, groupID)
+	if err != nil {
+		slog.WarnContext(ctx, "member audit snapshot failed",
+			"group_id", groupID, "member_id", memberID, "error", err)
+		return nil
+	}
+	for _, member := range members {
+		if member.MemberID == memberID {
+			return map[string]any{
+				"member_id":   member.MemberID,
+				"user_id":     member.UserID,
+				"username":    member.Username,
+				"member_name": member.MemberName,
+				"roles":       member.Roles,
+			}
+		}
+	}
+	return nil
+}
+
+func stringSliceContains(value any, target string) bool {
+	items, ok := value.([]string)
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +280,15 @@ func (a *app) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items, err := a.audits.ListByGroup(r.Context(), groupID, 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *app) handleAllAuditLogs(w http.ResponseWriter, r *http.Request) {
+	items, err := a.audits.ListAll(r.Context(), 200)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "audit_failed")
 		return

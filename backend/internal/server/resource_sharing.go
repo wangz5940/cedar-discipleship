@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -72,6 +73,11 @@ func (a *app) handleUpdateAssetSharing(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &input) {
 		return
 	}
+	before, beforeErr := a.assets.ShareSettings(r.Context(), groupID, assetID)
+	if beforeErr != nil {
+		slog.WarnContext(r.Context(), "asset sharing audit snapshot failed",
+			"group_id", groupID, "asset_id", assetID, "phase", "before", "error", beforeErr)
+	}
 	if err := a.assets.SaveShareSettings(r.Context(), groupID, assetID, u.ID, input); err != nil {
 		a.writeAssetError(w, err)
 		return
@@ -80,7 +86,16 @@ func (a *app) handleUpdateAssetSharing(w http.ResponseWriter, r *http.Request) {
 	if input.Scope == "" || input.Scope == assetdomain.ShareScopePrivate {
 		action = "revoke_asset_share"
 	}
-	a.audit(groupID, u.ID, action, "assets", assetID, nil, input, r)
+	after, afterErr := a.assets.ShareSettings(r.Context(), groupID, assetID)
+	if beforeErr == nil && afterErr == nil {
+		a.auditChanges(groupID, u.ID, action, "assets", assetID, before, after, r)
+	} else {
+		if afterErr != nil {
+			slog.WarnContext(r.Context(), "asset sharing audit snapshot failed",
+				"group_id", groupID, "asset_id", assetID, "phase", "after", "error", afterErr)
+		}
+		a.audit(groupID, u.ID, action, "assets", assetID, nil, input, r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -95,6 +110,7 @@ func (a *app) handleRenameAsset(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &input) {
 		return
 	}
+	before, beforeErr := a.assets.Find(r.Context(), groupID, assetID)
 	item, err := a.assets.Rename(r.Context(), groupID, assetID, input)
 	if err != nil {
 		a.writeAssetError(w, err)
@@ -103,7 +119,11 @@ func (a *app) handleRenameAsset(w http.ResponseWriter, r *http.Request) {
 	if a.todayCache != nil {
 		a.todayCache.Clear()
 	}
-	a.audit(groupID, u.ID, "rename_asset", "assets", assetID, nil, input, r)
+	if beforeErr == nil {
+		a.auditChanges(groupID, u.ID, "rename_asset", "assets", assetID, before, item, r)
+	} else {
+		a.audit(groupID, u.ID, "rename_asset", "assets", assetID, nil, input, r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"asset": item})
 }
 
@@ -118,6 +138,7 @@ func (a *app) handleChangeAssetCategory(w http.ResponseWriter, r *http.Request) 
 	if !readJSON(w, r, &input) {
 		return
 	}
+	before, beforeErr := a.assets.Find(r.Context(), groupID, assetID)
 	item, err := a.assets.ChangeCategory(r.Context(), groupID, assetID, input)
 	if err != nil {
 		a.writeAssetError(w, err)
@@ -126,7 +147,11 @@ func (a *app) handleChangeAssetCategory(w http.ResponseWriter, r *http.Request) 
 	if a.todayCache != nil {
 		a.todayCache.Clear()
 	}
-	a.audit(groupID, u.ID, "change_asset_category", "assets", assetID, nil, input, r)
+	if beforeErr == nil {
+		a.auditChanges(groupID, u.ID, "change_asset_category", "assets", assetID, before, item, r)
+	} else {
+		a.audit(groupID, u.ID, "change_asset_category", "assets", assetID, nil, input, r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"asset": item})
 }
 
@@ -145,6 +170,7 @@ func (a *app) handleResourceImportPreview(w http.ResponseWriter, r *http.Request
 		a.writeAssetError(w, err)
 		return
 	}
+	markAuditHandled(r)
 	writeJSON(w, http.StatusOK, map[string]any{"preview": preview})
 }
 

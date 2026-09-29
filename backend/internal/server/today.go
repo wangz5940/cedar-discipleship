@@ -70,11 +70,19 @@ func (a *app) handleTodayCacheMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleClearTodayCache(w http.ResponseWriter, r *http.Request) {
-	groupID := requireGroupID(w, mustUser(r))
+	user := mustUser(r)
+	groupID := requireGroupID(w, user)
 	if groupID == 0 {
 		return
 	}
 	removed := a.invalidateTodayContent(groupID)
+	if removed > 0 {
+		a.audit(groupID, user.ID, "clear_today_cache", "runtime_cache", groupID, nil, map[string]any{
+			"removed_entries": removed,
+		}, r)
+	} else {
+		markAuditHandled(r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":              true,
 		"removed_entries": removed,

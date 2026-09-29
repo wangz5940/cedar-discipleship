@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log"
@@ -206,10 +208,18 @@ func (a *app) handleMinistryIdentity(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &input) {
 		return
 	}
+	groupID := pathUint64(r, "id")
+	before := a.ministryIdentityAuditSnapshot(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		ministryActor(user),
+		user.ID,
+	)
 	err := a.ministry.SetIdentityPublic(
 		r.Context(),
 		studyGroupID,
-		pathUint64(r, "id"),
+		groupID,
 		ministryActor(user),
 		input.Public,
 		time.Now().UTC(),
@@ -217,6 +227,12 @@ func (a *app) handleMinistryIdentity(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.writeMinistryError(w, r, err)
 		return
+	}
+	after := map[string]any{"ministry_group_id": groupID, "identity_public": input.Public}
+	if before == nil {
+		a.audit(studyGroupID, user.ID, "update_ministry_identity_visibility", "ministry_group_members", user.ID, nil, after, r)
+	} else {
+		a.auditChanges(studyGroupID, user.ID, "update_ministry_identity_visibility", "ministry_group_members", user.ID, before, after, r)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -416,6 +432,21 @@ func (a *app) handleMinistryCreateShare(w http.ResponseWriter, r *http.Request) 
 		a.writeMinistryError(w, r, err)
 		return
 	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"create_ministry_share",
+		"ministry_shares",
+		shareID,
+		nil,
+		map[string]any{
+			"ministry_group_id": pathUint64(r, "id"),
+			"title":             input.Title,
+			"body_length":       len([]rune(input.Body)),
+			"body_sha256":       textAuditDigest(input.Body),
+		},
+		r,
+	)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": shareID})
 }
 
@@ -429,11 +460,20 @@ func (a *app) handleMinistryUpdateShare(w http.ResponseWriter, r *http.Request) 
 	if !readJSON(w, r, &input) {
 		return
 	}
+	groupID := pathUint64(r, "id")
+	shareID := pathUint64(r, "share_id")
+	before := a.ministryShareAuditSnapshot(
+		r.Context(),
+		studyGroupID,
+		groupID,
+		ministryActor(user),
+		shareID,
+	)
 	err := a.ministry.UpdateShare(
 		r.Context(),
 		studyGroupID,
-		pathUint64(r, "id"),
-		pathUint64(r, "share_id"),
+		groupID,
+		shareID,
 		ministryActor(user),
 		input,
 		time.Now().UTC(),
@@ -441,6 +481,17 @@ func (a *app) handleMinistryUpdateShare(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		a.writeMinistryError(w, r, err)
 		return
+	}
+	after := map[string]any{
+		"ministry_group_id": groupID,
+		"title":             input.Title,
+		"body_length":       len([]rune(input.Body)),
+		"body_sha256":       textAuditDigest(input.Body),
+	}
+	if before == nil {
+		a.audit(studyGroupID, user.ID, "update_ministry_share", "ministry_shares", shareID, nil, after, r)
+	} else {
+		a.auditChanges(studyGroupID, user.ID, "update_ministry_share", "ministry_shares", shareID, before, after, r)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -611,6 +662,22 @@ func (a *app) handleMinistryCreateProgress(w http.ResponseWriter, r *http.Reques
 		a.writeMinistryError(w, r, err)
 		return
 	}
+	a.audit(
+		studyGroupID,
+		user.ID,
+		"create_ministry_progress",
+		"ministry_progress",
+		progressID,
+		nil,
+		map[string]any{
+			"ministry_group_id": pathUint64(r, "id"),
+			"occurred_at":       input.OccurredAt,
+			"content_length":    len([]rune(input.Content)),
+			"content_sha256":    textAuditDigest(input.Content),
+			"asset_ids":         input.AssetIDs,
+		},
+		r,
+	)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": progressID})
 }
 
@@ -738,6 +805,55 @@ func ministryActor(user currentUser) ministrydomain.Actor {
 			user.IsTenantAdmin ||
 			hasRole(user.Roles, roleGroupAdmin),
 	}
+}
+
+func (a *app) ministryIdentityAuditSnapshot(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	actor ministrydomain.Actor,
+	userID uint64,
+) map[string]any {
+	detail, err := a.ministry.Detail(ctx, studyGroupID, groupID, actor)
+	if err != nil {
+		return nil
+	}
+	for _, member := range detail.Members {
+		if member.UserID == userID {
+			return map[string]any{
+				"ministry_group_id": groupID,
+				"identity_public":   member.IdentityPublic,
+			}
+		}
+	}
+	return nil
+}
+
+func (a *app) ministryShareAuditSnapshot(
+	ctx context.Context,
+	studyGroupID, groupID uint64,
+	actor ministrydomain.Actor,
+	shareID uint64,
+) map[string]any {
+	detail, err := a.ministry.Detail(ctx, studyGroupID, groupID, actor)
+	if err != nil {
+		return nil
+	}
+	for _, share := range detail.Shares {
+		if share.ID == shareID {
+			return map[string]any{
+				"ministry_group_id": groupID,
+				"title":             share.Title,
+				"body_length":       len([]rune(share.Body)),
+				"body_sha256":       textAuditDigest(share.Body),
+			}
+		}
+	}
+	return nil
+}
+
+func textAuditDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", sum)
 }
 
 func pathUint64(r *http.Request, name string) uint64 {

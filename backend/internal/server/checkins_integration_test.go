@@ -185,4 +185,11 @@ func TestCheckinDeleteHandlersOnlyAuditDeletedRecords(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM audit_logs`).Scan(&auditCount); err != nil || auditCount != len(successes) {
 		t.Fatalf("audit count after deletes = %d, err=%v", auditCount, err)
 	}
+	var detailedCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM audit_logs
+		WHERE JSON_EXTRACT(before_json,'$.user_id') IS NOT NULL
+		  AND JSON_UNQUOTE(JSON_EXTRACT(after_json,'$.deleted'))='true'`).Scan(&detailedCount); err != nil ||
+		detailedCount != len(successes) {
+		t.Fatalf("detailed audit count = %d, err=%v", detailedCount, err)
+	}
 }

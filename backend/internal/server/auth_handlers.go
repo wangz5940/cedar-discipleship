@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -110,6 +111,12 @@ func (a *app) handleRefreshSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setAuthCookies(w, r, refreshToken, csrfToken, session.ExpiresAt)
+	slog.InfoContext(r.Context(), "session refreshed",
+		"actor_user_id", user.ID,
+		"group_id", user.CurrentGroupID,
+		"session_id", session.ID,
+		"client_ip", clientIP(r),
+	)
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
 }
 
@@ -127,6 +134,10 @@ func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	clearAuthCookies(w, r)
+	slog.InfoContext(r.Context(), "session logout",
+		"session_present", cookieErr == nil,
+		"client_ip", clientIP(r),
+	)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -226,6 +237,16 @@ func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "default_group_failed")
 			return
 		}
+		a.auditChanges(
+			u.CurrentGroupID,
+			u.ID,
+			"update_default_group",
+			"users",
+			u.ID,
+			map[string]any{"default_group_id": u.DefaultGroupID},
+			map[string]any{"default_group_id": uint64(0)},
+			r,
+		)
 		u.DefaultGroupID = 0
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "user": u})
 		return
@@ -238,6 +259,16 @@ func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "default_group_failed")
 		return
 	}
+	a.auditChanges(
+		req.GroupID,
+		u.ID,
+		"update_default_group",
+		"users",
+		u.ID,
+		map[string]any{"default_group_id": u.DefaultGroupID},
+		map[string]any{"default_group_id": req.GroupID},
+		r,
+	)
 	u.DefaultGroupID = req.GroupID
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "user": u})
 }
@@ -263,6 +294,19 @@ func (a *app) handleUpdatePersonalSettings(w http.ResponseWriter, r *http.Reques
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "personal_settings_failed")
 	default:
+		a.auditChanges(
+			groupID,
+			u.ID,
+			"update_personal_settings",
+			"group_members",
+			u.ID,
+			userdomain.PersonalSettings{
+				MemberName:     u.MemberName,
+				MobileViewMode: u.MobileViewMode,
+			},
+			settings,
+			r,
+		)
 		writeJSON(w, http.StatusOK, map[string]any{"settings": settings})
 	}
 }
@@ -302,6 +346,16 @@ func (a *app) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "password_save_failed")
 		return
 	}
+	a.audit(
+		u.CurrentGroupID,
+		u.ID,
+		"change_password",
+		"users",
+		u.ID,
+		nil,
+		map[string]any{"password_changed": true, "sessions_revoked": true},
+		r,
+	)
 	clearAuthCookies(w, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

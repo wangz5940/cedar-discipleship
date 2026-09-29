@@ -184,3 +184,7 @@ func (*uploadAuditRepo) Create(context.Context, auditdomain.Log) error {
 func (*uploadAuditRepo) ListByGroup(context.Context, uint64, int) ([]auditdomain.Log, error) {
 	return nil, nil
 }
+
+func (*uploadAuditRepo) ListAll(context.Context, int) ([]auditdomain.Log, error) {
+	return nil, nil
+}

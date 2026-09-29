@@ -329,6 +329,17 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id, _ := result.LastInsertId()
+	a.audit(groupID, u.ID, "create_recite_attempt", "recite_attempts", uint64(id), nil, map[string]any{
+		"user_id":       userID,
+		"task_id":       req.TaskID,
+		"week_id":       target.WeekID,
+		"logical_date":  now.Format("2006-01-02"),
+		"blank_percent": req.Rate,
+		"blank_count":   req.Total,
+		"correct_count": req.Correct,
+		"score":         score,
+		"attempt_no":    attemptNo,
+	}, r)
 	writeJSON(w, http.StatusCreated, reciteAttempt{
 		ID: uint64(id), At: now.Format(time.RFC3339), Rate: req.Rate,
 		Correct: req.Correct, Total: req.Total, Score: score, AttemptNo: attemptNo,
@@ -438,6 +449,34 @@ func (a *app) handleSuperDeleteReciteAttempt(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid_recite_attempt_id")
 		return
 	}
+	var (
+		targetUserID uint64
+		weekID       sql.NullInt64
+		verseRef     string
+		logicalDate  time.Time
+		rate         int
+		total        int
+		correct      int
+		score        int
+		attemptNo    int
+	)
+	var before map[string]any
+	if err := a.db.QueryRowContext(r.Context(), `SELECT user_id,week_id,verse_ref,logical_date,
+		blank_percent,blank_count,correct_count,score,attempt_no
+		FROM recite_attempts WHERE id=? AND group_id=?`, id, groupID).
+		Scan(&targetUserID, &weekID, &verseRef, &logicalDate, &rate, &total, &correct, &score, &attemptNo); err == nil {
+		before = map[string]any{
+			"user_id":       targetUserID,
+			"week_id":       nullableAuditID(weekID),
+			"verse_ref":     verseRef,
+			"logical_date":  logicalDate.Format("2006-01-02"),
+			"blank_percent": rate,
+			"blank_count":   total,
+			"correct_count": correct,
+			"score":         score,
+			"attempt_no":    attemptNo,
+		}
+	}
 	result, err := a.db.ExecContext(r.Context(), `DELETE FROM recite_attempts WHERE id=? AND group_id=?`, id, groupID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "admin recite history delete failed", "error", err)
@@ -448,7 +487,7 @@ func (a *app) handleSuperDeleteReciteAttempt(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusNotFound, "recite_attempt_not_found")
 		return
 	}
-	a.audit(groupID, u.ID, "delete_recite_attempt", "recite_attempts", id, nil, nil, r)
+	a.audit(groupID, u.ID, "delete_recite_attempt", "recite_attempts", id, before, map[string]any{"deleted": true}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

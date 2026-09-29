@@ -499,10 +499,17 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(r.Context(), "bot checkin notification enqueue failed", "record_id", id, "group_id", group.ID, "error", notifyErr)
 		}
 	}
-	a.audit(group.ID, userID, "bot_create_checkin", "checkin_records", id, nil, map[string]any{"logical_date": record.LogicalDate, "task_type": record.TaskType, "task_id": record.TaskID, "week_id": record.WeekID}, r)
 	status := http.StatusCreated
 	if existing {
 		status = http.StatusOK
+	} else {
+		a.audit(group.ID, 0, "bot_create_checkin", "checkin_records", id, nil, map[string]any{
+			"user_id":      userID,
+			"logical_date": record.LogicalDate,
+			"task_type":    record.TaskType,
+			"task_id":      record.TaskID,
+			"week_id":      record.WeekID,
+		}, r)
 	}
 	writeJSON(w, status, map[string]any{"id": id, "existing": existing, "task_type": record.TaskType, "task_id": record.TaskID, "week_id": record.WeekID, "detail": record.Detail})
 }
@@ -522,10 +529,11 @@ func (a *app) handleBotDeleteCheckin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_checkin_id")
 		return
 	}
+	before := a.checkinAuditSnapshot(r.Context(), group.ID, id)
 	if err := a.checkins.DeleteAny(r.Context(), group.ID, id); err != nil {
 		writeCheckinDeleteError(w, err)
 		return
 	}
-	a.audit(group.ID, 0, "bot_delete_checkin", "checkin_records", id, nil, nil, r)
+	a.audit(group.ID, 0, "bot_delete_checkin", "checkin_records", id, before, map[string]any{"deleted": true}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

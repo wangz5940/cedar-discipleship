@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	auditdomain "agp/backend/internal/audit"
 	userdomain "agp/backend/internal/user"
 )
 
@@ -35,7 +36,11 @@ func TestHandleUpdatePersonalSettingsAllowsOrdinaryMemberForCurrentGroup(t *test
 	t.Parallel()
 
 	repo := &personalSettingsHandlerRepository{}
-	a := &app{users: userdomain.NewService(repo)}
+	auditRepo := &serverAuditRepository{}
+	a := &app{
+		users:  userdomain.NewService(repo),
+		audits: auditdomain.NewService(auditRepo),
+	}
 	request := httptest.NewRequest(
 		http.MethodPut,
 		"/api/personal-settings",
@@ -45,6 +50,8 @@ func TestHandleUpdatePersonalSettingsAllowsOrdinaryMemberForCurrentGroup(t *test
 		ID:             23,
 		Username:       "unchanged-account",
 		CurrentGroupID: 7,
+		MemberName:     "旧名字",
+		MobileViewMode: userdomain.MobileViewMasonry,
 		Roles:          []string{userdomain.RoleMember},
 	}))
 	recorder := httptest.NewRecorder()
@@ -68,6 +75,13 @@ func TestHandleUpdatePersonalSettingsAllowsOrdinaryMemberForCurrentGroup(t *test
 	}
 	if payload.Settings != repo.settings {
 		t.Fatalf("response settings = %+v, want %+v", payload.Settings, repo.settings)
+	}
+	if len(auditRepo.logs) != 1 || auditRepo.logs[0].Action != "update_personal_settings" {
+		t.Fatalf("audit logs = %#v", auditRepo.logs)
+	}
+	if auditRepo.logs[0].BeforeJSON != `{"member_name":"旧名字","mobile_view_mode":"masonry"}` ||
+		auditRepo.logs[0].AfterJSON != `{"member_name":"本组名字","mobile_view_mode":"stacked"}` {
+		t.Fatalf("audit changes = %s -> %s", auditRepo.logs[0].BeforeJSON, auditRepo.logs[0].AfterJSON)
 	}
 }
 

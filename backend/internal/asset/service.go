@@ -68,6 +68,15 @@ func (s *Service) List(ctx context.Context, groupID uint64, limit int) ([]AssetV
 	return vos, nil
 }
 
+func (s *Service) Find(ctx context.Context, groupID, assetID uint64) (*AssetVO, error) {
+	item, err := s.repo.FindByID(ctx, groupID, assetID)
+	if err != nil {
+		return nil, err
+	}
+	vo := toAssetVO(*item)
+	return &vo, nil
+}
+
 func (s *Service) DownloadFile(ctx context.Context, groupID, id uint64) (*DownloadFile, error) {
 	item, err := s.downloadTarget(ctx, groupID, id)
 	if err != nil {

@@ -252,6 +252,35 @@ func (s *Service) SaveLearningConfig(ctx context.Context, groupID uint64, settin
 	return s.repo.SaveLearningConfig(ctx, groupID, settings)
 }
 
+func (s *Service) SaveLearningConfigWithSnapshots(
+	ctx context.Context,
+	groupID uint64,
+	settings map[string]any,
+) (map[string]any, map[string]any, error) {
+	repo, ok := s.repo.(interface {
+		SaveLearningConfigWithSnapshots(
+			context.Context,
+			uint64,
+			map[string]any,
+		) (map[string]any, map[string]any, error)
+	})
+	if ok {
+		return repo.SaveLearningConfigWithSnapshots(ctx, groupID, settings)
+	}
+	before, err := s.repo.LearningConfig(ctx, groupID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.repo.SaveLearningConfig(ctx, groupID, settings); err != nil {
+		return nil, nil, err
+	}
+	after, err := s.repo.LearningConfig(ctx, groupID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return before, after, nil
+}
+
 func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 	var tasks []TaskDraft
 	if input.BookEnabled {

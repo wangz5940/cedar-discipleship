@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -91,6 +92,10 @@ func (a *app) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "tenant_create_failed")
 		return
 	}
+	a.audit(0, mustUser(r).ID, "create_tenant", "tenants", tenantID, nil, map[string]any{
+		"name":   req.Name,
+		"status": 1,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": tenantID})
 }
 
@@ -107,6 +112,12 @@ func (a *app) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tenantID := pathUint64(r, "tenant_id")
+	var previousName string
+	beforeErr := a.db.QueryRowContext(r.Context(), `SELECT name FROM tenants WHERE id=? AND status=1`, tenantID).Scan(&previousName)
+	if beforeErr != nil && !errors.Is(beforeErr, sql.ErrNoRows) {
+		slog.WarnContext(r.Context(), "tenant audit snapshot failed",
+			"tenant_id", tenantID, "error", beforeErr)
+	}
 	res, err := a.db.ExecContext(r.Context(), `UPDATE tenants SET name=?,updated_at=? WHERE id=? AND status=1`, req.Name, time.Now().UTC(), tenantID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "tenant_update_failed")
@@ -117,7 +128,20 @@ func (a *app) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "tenant_not_found")
 		return
 	}
-	a.audit(0, mustUser(r).ID, "update_tenant", "tenants", tenantID, nil, map[string]any{"name": req.Name}, r)
+	if beforeErr == nil {
+		a.auditChanges(
+			0,
+			mustUser(r).ID,
+			"update_tenant",
+			"tenants",
+			tenantID,
+			map[string]any{"name": previousName},
+			map[string]any{"name": req.Name},
+			r,
+		)
+	} else {
+		a.audit(0, mustUser(r).ID, "update_tenant", "tenants", tenantID, nil, map[string]any{"name": req.Name}, r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -134,7 +158,8 @@ func (a *app) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var lockedID uint64
-	if err := tx.QueryRowContext(r.Context(), `SELECT id FROM tenants WHERE id=? AND status=1 FOR UPDATE`, tenantID).Scan(&lockedID); err != nil {
+	var tenantName string
+	if err := tx.QueryRowContext(r.Context(), `SELECT id,name FROM tenants WHERE id=? AND status=1 FOR UPDATE`, tenantID).Scan(&lockedID, &tenantName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "tenant_not_found")
 		} else {
@@ -164,7 +189,16 @@ func (a *app) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "tenant_delete_failed")
 		return
 	}
-	a.audit(0, mustUser(r).ID, "delete_tenant", "tenants", tenantID, nil, nil, r)
+	a.audit(
+		0,
+		mustUser(r).ID,
+		"delete_tenant",
+		"tenants",
+		tenantID,
+		map[string]any{"name": tenantName, "status": 1},
+		map[string]any{"name": tenantName, "status": 0},
+		r,
+	)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -195,6 +229,7 @@ func (a *app) handleMoveGroupTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sourceTenantID == req.TenantID {
+		markAuditHandled(r)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
@@ -319,6 +354,10 @@ func (a *app) handleTenantCreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "group_create_failed")
 		return
 	}
+	a.audit(id, mustUser(r).ID, "create_group", "study_groups", id, nil, map[string]any{
+		"tenant_id": tenantID,
+		"name":      req.Name,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "default_password": password})
 }
 
@@ -344,9 +383,31 @@ func (a *app) handleTenantUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	var previousName string
+	beforeErr := a.db.QueryRowContext(r.Context(), `SELECT name FROM study_groups WHERE id=? AND tenant_id=? AND status=1`, groupID, pathUint64(r, "tenant_id")).Scan(&previousName)
+	if beforeErr != nil && !errors.Is(beforeErr, sql.ErrNoRows) {
+		slog.WarnContext(r.Context(), "group audit snapshot failed",
+			"group_id", groupID, "error", beforeErr)
+	}
 	if err := a.users.UpdateGroup(r.Context(), groupID, req.Name, time.Now().UTC()); err != nil {
 		writeError(w, http.StatusConflict, "group_update_failed")
 		return
+	}
+	if beforeErr == nil {
+		a.auditChanges(
+			groupID,
+			mustUser(r).ID,
+			"update_group",
+			"study_groups",
+			groupID,
+			map[string]any{"name": previousName},
+			map[string]any{"name": strings.TrimSpace(req.Name)},
+			r,
+		)
+	} else {
+		a.audit(groupID, mustUser(r).ID, "update_group", "study_groups", groupID, nil, map[string]any{
+			"name": strings.TrimSpace(req.Name),
+		}, r)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -356,11 +417,24 @@ func (a *app) handleTenantDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
+	var groupName string
+	if err := a.db.QueryRowContext(r.Context(), `SELECT name FROM study_groups WHERE id=?`, groupID).Scan(&groupName); err != nil {
+		slog.WarnContext(r.Context(), "group audit snapshot failed",
+			"group_id", groupID, "error", err)
+	}
 	paths, err := a.users.DeleteGroup(r.Context(), groupID, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "group_delete_failed")
 		return
 	}
+	a.audit(0, mustUser(r).ID, "delete_group", "study_groups", groupID, map[string]any{
+		"tenant_id": pathUint64(r, "tenant_id"),
+		"name":      groupName,
+		"status":    1,
+	}, map[string]any{
+		"deleted":        true,
+		"resource_files": len(paths),
+	}, r)
 	if err := a.deleteOwnedResourceFiles(r.Context(), paths); err != nil {
 		writeError(w, http.StatusInternalServerError, "group_resource_delete_failed")
 		return
@@ -461,7 +535,11 @@ func (a *app) handleCreateTenantAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "tenant_admin_create_failed")
 		return
 	}
-	a.audit(0, mustUser(r).ID, "create_tenant_admin", "users", adminID, nil, map[string]any{"tenant_id": tenantID}, r)
+	a.audit(0, mustUser(r).ID, "create_tenant_admin", "users", adminID, nil, map[string]any{
+		"tenant_id":    tenantID,
+		"username":     req.Username,
+		"display_name": req.DisplayName,
+	}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": adminID})
 }
 
@@ -500,10 +578,11 @@ func (a *app) handleUpdateTenantAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var lockedID uint64
-	err = tx.QueryRowContext(r.Context(), `SELECT u.id FROM users u
+	var previousDisplayName string
+	err = tx.QueryRowContext(r.Context(), `SELECT u.id,u.display_name FROM users u
 		JOIN tenant_members tm ON tm.user_id=u.id
 		WHERE u.id=? AND u.status=1 AND u.is_super_admin=0
-		AND tm.tenant_id=? AND tm.role='admin' AND tm.status=1 FOR UPDATE`, adminID, tenantID).Scan(&lockedID)
+		AND tm.tenant_id=? AND tm.role='admin' AND tm.status=1 FOR UPDATE`, adminID, tenantID).Scan(&lockedID, &previousDisplayName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "tenant_admin_not_found")
@@ -531,6 +610,18 @@ func (a *app) handleUpdateTenantAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "tenant_admin_update_failed")
 		return
 	}
-	a.audit(0, mustUser(r).ID, "update_tenant_admin", "users", adminID, nil, map[string]any{"tenant_id": tenantID, "display_name": req.DisplayName, "password_changed": hash != ""}, r)
+	before := map[string]any{
+		"tenant_id":    tenantID,
+		"display_name": previousDisplayName,
+	}
+	after := map[string]any{
+		"tenant_id":    tenantID,
+		"display_name": req.DisplayName,
+	}
+	if hash != "" {
+		before["password_changed"] = false
+		after["password_changed"] = true
+	}
+	a.auditChanges(0, mustUser(r).ID, "update_tenant_admin", "users", adminID, before, after, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

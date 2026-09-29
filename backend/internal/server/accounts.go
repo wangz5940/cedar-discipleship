@@ -71,11 +71,60 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), currentUserKey, u)
 		ctx = context.WithValue(ctx, requestAuditStateKey, auditState)
 		authenticatedRequest := r.WithContext(ctx)
-		next(w, authenticatedRequest)
-		if !auditState.recorded {
-			logUserOperation(authenticatedRequest, w, u)
+		responseWriter := w
+		if _, ok := responseWriter.(*statusResponseWriter); !ok {
+			responseWriter = &statusResponseWriter{ResponseWriter: w}
+		}
+		next(responseWriter, authenticatedRequest)
+		if !auditState.handled && requiresBusinessAudit(authenticatedRequest) && responseSucceeded(responseWriter) {
+			slog.WarnContext(authenticatedRequest.Context(), "business mutation used audit fallback",
+				"method", authenticatedRequest.Method,
+				"route", requestPattern(authenticatedRequest),
+				"actor_user_id", u.ID,
+				"group_id", u.CurrentGroupID,
+			)
+			a.audit(
+				u.CurrentGroupID,
+				u.ID,
+				"write_request",
+				"api_route",
+				0,
+				nil,
+				map[string]any{
+					"method": authenticatedRequest.Method,
+					"route":  requestPattern(authenticatedRequest),
+					"path":   authenticatedRequest.URL.Path,
+				},
+				authenticatedRequest,
+			)
+		}
+		if !auditState.recorded && !auditState.handled {
+			logUserOperation(authenticatedRequest, responseWriter, u)
 		}
 	}
+}
+
+func requiresBusinessAudit(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+	default:
+		return false
+	}
+	switch requestPattern(r) {
+	case "POST /api/auth/switch-group",
+		"POST /api/ministry-notifications/{id}/read",
+		"POST /api/admin/resource-imports/preview":
+		return false
+	default:
+		return true
+	}
+}
+
+func responseSucceeded(w http.ResponseWriter) bool {
+	if recorder, ok := w.(*statusResponseWriter); ok {
+		return recorder.statusCode() < http.StatusBadRequest
+	}
+	return true
 }
 
 func logAuthFailure(r *http.Request, reason string, err error) {
@@ -153,12 +202,17 @@ func (a *app) groupLearningConfig(ctx context.Context, groupID uint64) (map[stri
 	return a.learning.LearningConfig(ctx, groupID)
 }
 
-func (a *app) upsertGroupLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
-	if err := a.learning.SaveLearningConfig(ctx, groupID, settings); err != nil {
-		return err
+func (a *app) upsertGroupLearningConfig(
+	ctx context.Context,
+	groupID uint64,
+	settings map[string]any,
+) (map[string]any, map[string]any, error) {
+	before, after, err := a.learning.SaveLearningConfigWithSnapshots(ctx, groupID, settings)
+	if err != nil {
+		return nil, nil, err
 	}
 	a.refreshTodayContent(groupID)
-	return nil
+	return before, after, nil
 }
 
 func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLeaders bool, actorID uint64, r *http.Request) (int64, error) {
@@ -173,7 +227,10 @@ func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLe
 	if err != nil {
 		return 0, err
 	}
-	a.audit(groupID, actorID, "set_group_default_password", "study_groups", groupID, nil, map[string]any{"affected_users": affected}, r)
+	a.audit(groupID, actorID, "set_group_default_password", "study_groups", groupID, nil, map[string]any{
+		"password_changed": true,
+		"affected_users":   affected,
+	}, r)
 	return affected, nil
 }
 
@@ -186,7 +243,19 @@ func (a *app) addMember(ctx context.Context, groupID, userID uint64, memberName 
 }
 
 func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID uint64, before, after any, r *http.Request) {
-	err := a.audits.Create(r.Context(), auditdomain.CreateLogInput{
+	if a.audits == nil {
+		slog.ErrorContext(r.Context(), "audit service unavailable",
+			"action", action,
+			"target_type", targetType,
+			"target_id", targetID,
+			"actor_id", actorID,
+			"group_id", groupID,
+		)
+		return
+	}
+	auditContext, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
+	defer cancel()
+	err := a.audits.Create(auditContext, auditdomain.CreateLogInput{
 		GroupID:    groupID,
 		ActorID:    actorID,
 		Action:     action,
@@ -198,20 +267,26 @@ func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID
 		UserAgent:  r.UserAgent(),
 	}, time.Now())
 	if err != nil {
-		slog.ErrorContext(
-			r.Context(),
-			"audit log write failed",
+		attrs := []any{
 			"action", action,
 			"target_type", targetType,
 			"target_id", targetID,
 			"actor_id", actorID,
 			"group_id", groupID,
 			"error", err,
-		)
+		}
+		if safeBefore, sanitizeErr := auditdomain.Sanitize(before); sanitizeErr == nil && safeBefore != nil {
+			attrs = append(attrs, "before", safeBefore)
+		}
+		if safeAfter, sanitizeErr := auditdomain.Sanitize(after); sanitizeErr == nil && safeAfter != nil {
+			attrs = append(attrs, "after", safeAfter)
+		}
+		slog.ErrorContext(r.Context(), "audit log write failed", attrs...)
 		return
 	}
 	if state, ok := r.Context().Value(requestAuditStateKey).(*requestAuditState); ok {
 		state.recorded = true
+		state.handled = true
 	}
 	actor, _ := r.Context().Value(currentUserKey).(currentUser)
 	attrs := []any{
@@ -225,6 +300,41 @@ func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID
 		"client_ip", clientIP(r),
 	}
 	slog.InfoContext(r.Context(), "audit event recorded", attrs...)
+}
+
+func (a *app) auditChanges(
+	groupID, actorID uint64,
+	action, targetType string,
+	targetID uint64,
+	before, after any,
+	r *http.Request,
+) {
+	beforeChanges, afterChanges, changed, err := auditdomain.ChangedFields(before, after)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "audit change calculation failed",
+			"action", action,
+			"target_type", targetType,
+			"target_id", targetID,
+			"actor_id", actorID,
+			"group_id", groupID,
+			"error", err,
+		)
+		a.audit(groupID, actorID, action, targetType, targetID, before, after, r)
+		return
+	}
+	if !changed {
+		if state, ok := r.Context().Value(requestAuditStateKey).(*requestAuditState); ok {
+			state.handled = true
+		}
+		return
+	}
+	a.audit(groupID, actorID, action, targetType, targetID, beforeChanges, afterChanges, r)
+}
+
+func markAuditHandled(r *http.Request) {
+	if state, ok := r.Context().Value(requestAuditStateKey).(*requestAuditState); ok {
+		state.handled = true
+	}
 }
 
 func (a *app) signToken(c tokenClaims) (string, error) {

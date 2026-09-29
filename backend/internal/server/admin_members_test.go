@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	auditdomain "agp/backend/internal/audit"
 	userdomain "agp/backend/internal/user"
 )
 
@@ -94,7 +95,11 @@ func TestHandleAdminCreateMemberConfirmsExistingAccountMembership(t *testing.T) 
 	t.Parallel()
 
 	repo := &adminMemberTestRepository{}
-	a := &app{users: userdomain.NewService(repo)}
+	auditRepo := &serverAuditRepository{}
+	a := &app{
+		users:  userdomain.NewService(repo),
+		audits: auditdomain.NewService(auditRepo),
+	}
 	request := adminMemberRequest(t, `{
 		"create_user": false,
 		"user_id": 23,
@@ -112,6 +117,11 @@ func TestHandleAdminCreateMemberConfirmsExistingAccountMembership(t *testing.T) 
 		repo.createdInput.UserID != 23 ||
 		repo.createdInput.DisplayName != "已有成员" {
 		t.Fatalf("repository input = %+v", repo.createdInput)
+	}
+	if len(auditRepo.logs) != 1 ||
+		auditRepo.logs[0].Action != "add_member" ||
+		auditRepo.logs[0].TargetID != 23 {
+		t.Fatalf("audit logs = %#v", auditRepo.logs)
 	}
 }
 

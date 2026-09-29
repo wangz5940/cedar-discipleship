@@ -21,7 +21,25 @@ func (r *MySQLRepository) Create(ctx context.Context, log Log) error {
 }
 
 func (r *MySQLRepository) ListByGroup(ctx context.Context, groupID uint64, limit int) ([]Log, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,actor_user_id,action,target_type,target_id,created_at FROM audit_logs WHERE group_id=? ORDER BY id DESC LIMIT ?`, groupID, limit)
+	return r.list(ctx, `SELECT a.id,a.group_id,a.actor_user_id,
+		COALESCE(u.username,''),COALESCE(u.display_name,''),
+		a.action,a.target_type,a.target_id,a.before_json,a.after_json,a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id=a.actor_user_id
+		WHERE a.group_id=? ORDER BY a.id DESC LIMIT ?`, groupID, limit)
+}
+
+func (r *MySQLRepository) ListAll(ctx context.Context, limit int) ([]Log, error) {
+	return r.list(ctx, `SELECT a.id,a.group_id,a.actor_user_id,
+		COALESCE(u.username,''),COALESCE(u.display_name,''),
+		a.action,a.target_type,a.target_id,a.before_json,a.after_json,a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id=a.actor_user_id
+		ORDER BY a.id DESC LIMIT ?`, limit)
+}
+
+func (r *MySQLRepository) list(ctx context.Context, query string, args ...any) ([]Log, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -30,13 +48,35 @@ func (r *MySQLRepository) ListByGroup(ctx context.Context, groupID uint64, limit
 	var items []Log
 	for rows.Next() {
 		var item Log
-		var targetID sql.NullInt64
+		var groupID, targetID sql.NullInt64
+		var beforeJSON, afterJSON sql.NullString
 		var created time.Time
-		if err := rows.Scan(&item.ID, &item.ActorID, &item.Action, &item.TargetType, &targetID, &created); err != nil {
+		if err := rows.Scan(
+			&item.ID,
+			&groupID,
+			&item.ActorID,
+			&item.ActorUsername,
+			&item.ActorDisplayName,
+			&item.Action,
+			&item.TargetType,
+			&targetID,
+			&beforeJSON,
+			&afterJSON,
+			&created,
+		); err != nil {
 			return nil, err
+		}
+		if groupID.Valid && groupID.Int64 > 0 {
+			item.GroupID = uint64(groupID.Int64)
 		}
 		if targetID.Valid && targetID.Int64 > 0 {
 			item.TargetID = uint64(targetID.Int64)
+		}
+		if beforeJSON.Valid {
+			item.BeforeJSON = beforeJSON.String
+		}
+		if afterJSON.Valid {
+			item.AfterJSON = afterJSON.String
 		}
 		item.CreatedAt = created.Format(time.RFC3339)
 		items = append(items, item)

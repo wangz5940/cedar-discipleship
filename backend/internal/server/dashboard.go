@@ -108,6 +108,20 @@ func (a *app) handleDashboardActiveRule(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid_active_member_rule")
 		return
 	}
+	var beforeRule *statisticsdomain.ActiveMemberRuleVO
+	if currentSettings, err := a.groupLearningConfig(r.Context(), groupID); err == nil {
+		current := activeMemberRuleFromSettings(currentSettings)
+		beforeRule = &current
+	} else {
+		log.Printf(
+			"dashboard active rule audit snapshot failed method=%s path=%s user_id=%d group_id=%d err=%v",
+			r.Method,
+			r.URL.Path,
+			u.ID,
+			groupID,
+			err,
+		)
+	}
 	settings := map[string]any{
 		"mode":       rule.Mode,
 		"task_types": rule.TaskTypes,
@@ -125,16 +139,11 @@ func (a *app) handleDashboardActiveRule(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.refreshTodayContent(groupID)
-	a.audit(
-		groupID,
-		u.ID,
-		"update_active_member_rule",
-		"group_settings",
-		groupID,
-		nil,
-		rule,
-		r,
-	)
+	if beforeRule == nil {
+		a.audit(groupID, u.ID, "update_active_member_rule", "group_settings", groupID, nil, rule, r)
+	} else {
+		a.auditChanges(groupID, u.ID, "update_active_member_rule", "group_settings", groupID, *beforeRule, rule, r)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active_rule": rule})
 }
 

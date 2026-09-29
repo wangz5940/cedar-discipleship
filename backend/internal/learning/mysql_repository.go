@@ -284,9 +284,18 @@ func BackupLearningDataTx(ctx context.Context, tx *sql.Tx, groupID uint64) (map[
 }
 
 func (r *MySQLRepository) SaveLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
+	_, _, err := r.SaveLearningConfigWithSnapshots(ctx, groupID, settings)
+	return err
+}
+
+func (r *MySQLRepository) SaveLearningConfigWithSnapshots(
+	ctx context.Context,
+	groupID uint64,
+	settings map[string]any,
+) (map[string]any, map[string]any, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	defer tx.Rollback()
 
@@ -294,14 +303,14 @@ func (r *MySQLRepository) SaveLearningConfig(ctx context.Context, groupID uint64
 	if _, err := tx.ExecContext(ctx, `INSERT INTO group_settings(group_id,settings,created_at,updated_at)
 		VALUES (?,JSON_OBJECT(),?,?)
 		ON DUPLICATE KEY UPDATE group_id=VALUES(group_id)`, groupID, now, now); err != nil {
-		return err
+		return nil, nil, err
 	}
 	existing, err := learningConfigForUpdate(ctx, tx, groupID)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if err := preserveDailyScheduleHistory(existing, settings); err != nil {
-		return err
+		return nil, nil, err
 	}
 	if rule, ok := existing["active_member_rule"]; ok {
 		if settings == nil {
@@ -312,9 +321,12 @@ func (r *MySQLRepository) SaveLearningConfig(ctx context.Context, groupID uint64
 		delete(settings, "active_member_rule")
 	}
 	if err := UpsertLearningConfigTx(ctx, tx, groupID, settings); err != nil {
-		return err
+		return nil, nil, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return existing, settings, nil
 }
 
 func (r *MySQLRepository) SaveActiveMemberRule(ctx context.Context, groupID uint64, rule map[string]any) error {
