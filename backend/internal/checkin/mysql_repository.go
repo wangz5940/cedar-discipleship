@@ -226,9 +226,9 @@ func createRecord(ctx context.Context, execer recordExecer, record *Record, acto
 		// unique-key dimension while legacy records remain matched by task/asset.
 		part = "video:" + strconv.FormatUint(record.TaskID, 10)
 	}
-	res, err := execer.ExecContext(ctx, `INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		record.GroupID, record.UserID, nullableID(record.TaskID), nullableID(record.WeekID), record.LogicalDate, now, record.TaskType, "done", record.IsRetro, record.Detail, record.Note, part, "web", actorID, now, now)
+	res, err := execer.ExecContext(ctx, `INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,active_key,created_by,created_at,updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		record.GroupID, record.UserID, nullableID(record.TaskID), nullableID(record.WeekID), record.LogicalDate, now, record.TaskType, "done", record.IsRetro, record.Detail, record.Note, part, "web", ActiveRecordKey(record.TaskType, record.TaskID), actorID, now, now)
 	if err != nil {
 		return 0, err
 	}
@@ -253,14 +253,31 @@ func isWeeklyTaskType(taskType string) bool {
 
 func (r *MySQLRepository) DeleteOwn(ctx context.Context, groupID, userID, recordID uint64) error {
 	now := nowSQL()
-	_, err := r.db.ExecContext(ctx, `UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND user_id=? AND deleted_at IS NULL`, now, now, recordID, groupID, userID)
-	return err
+	result, err := r.db.ExecContext(ctx, `UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND user_id=? AND deleted_at IS NULL`, now, now, recordID, groupID, userID)
+	return requireDeletedRecord(result, err)
 }
 
 func (r *MySQLRepository) DeleteAny(ctx context.Context, groupID, recordID uint64) error {
 	now := nowSQL()
-	_, err := r.db.ExecContext(ctx, `UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND deleted_at IS NULL`, now, now, recordID, groupID)
-	return err
+	result, err := r.db.ExecContext(ctx, `UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND deleted_at IS NULL`, now, now, recordID, groupID)
+	return requireDeletedRecord(result, err)
+}
+
+func requireDeletedRecord(result sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	if affected != 1 {
+		return errors.New("unexpected deleted record count")
+	}
+	return nil
 }
 
 func (r *MySQLRepository) List(ctx context.Context, groupID uint64, from, to string, userID uint64, limit int) ([]Record, error) {

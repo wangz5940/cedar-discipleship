@@ -91,6 +91,50 @@ func TestVideoReplacementAndSingleConnectionTasks(t *testing.T) {
 	})
 }
 
+func TestDeleteReportsMissingOrOutOfScopeRecords(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO checkin_records
+		(id,group_id,user_id,logical_date,checkin_time,task_type,created_by,created_at,updated_at)
+		VALUES
+		  (1,1,10,'2026-09-22',NOW(),'daily_devotion',10,NOW(),NOW()),
+		  (2,1,20,'2026-09-23',NOW(),'daily_devotion',20,NOW(),NOW())`)
+	repo := checkin.NewMySQLRepository(db)
+
+	for name, err := range map[string]error{
+		"own missing":       repo.DeleteOwn(t.Context(), 1, 10, 99),
+		"own other user":    repo.DeleteOwn(t.Context(), 1, 10, 2),
+		"own other group":   repo.DeleteOwn(t.Context(), 2, 10, 1),
+		"admin missing":     repo.DeleteAny(t.Context(), 1, 99),
+		"admin other group": repo.DeleteAny(t.Context(), 2, 2),
+	} {
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Errorf("%s error = %v, want sql.ErrNoRows", name, err)
+		}
+	}
+
+	if err := repo.DeleteOwn(t.Context(), 1, 10, 1); err != nil {
+		t.Fatalf("delete own: %v", err)
+	}
+	if err := repo.DeleteOwn(t.Context(), 1, 10, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("repeat delete own error = %v, want sql.ErrNoRows", err)
+	}
+	if err := repo.DeleteAny(t.Context(), 1, 2); err != nil {
+		t.Fatalf("admin delete: %v", err)
+	}
+	if err := repo.DeleteAny(t.Context(), 1, 2); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("repeat admin delete error = %v, want sql.ErrNoRows", err)
+	}
+
+	var deletedCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM checkin_records
+		WHERE deleted_at IS NOT NULL AND active_key=id`).Scan(&deletedCount); err != nil {
+		t.Fatal(err)
+	}
+	if deletedCount != 2 {
+		t.Fatalf("deleted rows = %d, want 2", deletedCount)
+	}
+}
+
 func assertVideoCompletion(t *testing.T, service *learning.Service, userID uint64, date string, taskID uint64, want bool) {
 	t.Helper()
 	content, err := service.TodayContent(t.Context(), 1, date, nil, time.Now())

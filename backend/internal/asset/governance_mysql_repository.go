@@ -3,6 +3,7 @@ package asset
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -69,6 +70,9 @@ func removeImportedAssetTx(ctx context.Context, tx *sql.Tx, groupID, importedAss
 		importedAssetID, groupID, AssetKindImported).Scan(&sourceAssetID); err != nil {
 		return 0, err
 	}
+	if err := ensureAssetUnusedTx(ctx, tx, groupID, importedAssetID); err != nil {
+		return 0, err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE asset_bindings SET deleted_at=?,updated_at=? WHERE asset_id=? AND group_id=?`,
 		at, at, importedAssetID, groupID); err != nil {
 		return 0, err
@@ -89,6 +93,15 @@ func removeImportedAssetTx(ctx context.Context, tx *sql.Tx, groupID, importedAss
 }
 
 func deleteOwnedAssetTx(ctx context.Context, tx *sql.Tx, groupID, assetID, actorID uint64, at time.Time) error {
+	var lockedAssetID uint64
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM asset_bindings
+		WHERE asset_id=? AND group_id=? AND asset_kind=? AND deleted_at IS NULL FOR UPDATE`,
+		assetID, groupID, AssetKindOwned).Scan(&lockedAssetID); err != nil {
+		return err
+	}
+	if err := ensureAssetUnusedTx(ctx, tx, groupID, assetID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE asset_bindings
 		SET deleted_at=?,updated_at=?
 		WHERE asset_id=? AND group_id=? AND asset_kind=? AND deleted_at IS NULL`,
@@ -111,6 +124,20 @@ func deleteOwnedAssetTx(ctx context.Context, tx *sql.Tx, groupID, assetID, actor
 		return err
 	}
 	return nil
+}
+
+func ensureAssetUnusedTx(ctx context.Context, tx *sql.Tx, groupID, assetID uint64) error {
+	var taskID uint64
+	err := tx.QueryRowContext(ctx, `SELECT task_id FROM task_assets
+		WHERE group_id=? AND asset_id=? LIMIT 1 FOR UPDATE`, groupID, assetID).Scan(&taskID)
+	switch {
+	case err == nil:
+		return ErrAssetInUse
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	default:
+		return err
+	}
 }
 
 func (r *MySQLRepository) DependencyGraph(

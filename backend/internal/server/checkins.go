@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -159,7 +160,7 @@ func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err := a.checkins.DeleteOwn(r.Context(), groupID, u.ID, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete_failed")
+		writeCheckinDeleteError(w, err)
 		return
 	}
 	a.audit(groupID, u.ID, "delete_own_checkin", "checkin_records", id, nil, nil, r)
@@ -174,11 +175,19 @@ func (a *app) handleAdminDeleteCheckin(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err := a.checkins.DeleteAny(r.Context(), groupID, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete_failed")
+		writeCheckinDeleteError(w, err)
 		return
 	}
 	a.audit(groupID, u.ID, "delete_checkin", "checkin_records", id, nil, nil, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func writeCheckinDeleteError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "checkin_not_found")
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "delete_failed")
 }
 
 func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {

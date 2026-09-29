@@ -29,13 +29,14 @@ func TestWebAndBotMultipleBooksOnSameDay(t *testing.T) {
 				VALUES (1,1,'Member',NOW(),NOW(),NOW());
 				INSERT INTO study_weeks(id,group_id,start_date,end_date,book_enabled,created_at,updated_at)
 				VALUES (1,1,'2026-09-21','2026-09-27',1,NOW(),NOW())`)
-			titles := []string{"第一本读物", strings.Repeat("长", 70)}
+			longPrefix := strings.Repeat("长", 64)
+			titles := []string{"第一本读物", longPrefix + "甲", longPrefix + "乙"}
 			for i, title := range titles {
 				testdb.Exec(t, db, `INSERT INTO study_tasks(id,group_id,week_id,task_type,title,created_at,updated_at)
 					VALUES (?,1,1,'weekly_book',?,NOW(),NOW())`, i+1, title)
 			}
 			testdb.Exec(t, db, `INSERT INTO study_tasks(id,group_id,week_id,task_type,title,created_at,updated_at)
-				VALUES (3,1,1,'weekly_checkin','旧整周任务',NOW(),NOW())`)
+					VALUES (10,1,1,'weekly_checkin','旧整周任务',NOW(),NOW())`)
 			checkins := checkin.NewService(checkin.NewMySQLRepository(db))
 			a := &app{
 				db: db, location: time.UTC,
@@ -72,12 +73,14 @@ func TestWebAndBotMultipleBooksOnSameDay(t *testing.T) {
 				}
 			}
 			var count int
-			if err := db.QueryRow(`SELECT COUNT(*) FROM checkin_records`).Scan(&count); err != nil || count != 2 {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM checkin_records`).Scan(&count); err != nil || count != len(titles) {
 				t.Fatalf("records=%d err=%v", count, err)
 			}
+			activeKeys := map[uint64]bool{}
 			for i, title := range titles {
 				var part string
-				if err := db.QueryRow(`SELECT part FROM checkin_records WHERE task_id=?`, i+1).Scan(&part); err != nil {
+				var activeKey uint64
+				if err := db.QueryRow(`SELECT part,active_key FROM checkin_records WHERE task_id=?`, i+1).Scan(&part, &activeKey); err != nil {
 					t.Fatal(err)
 				}
 				runes := []rune(title)
@@ -87,6 +90,10 @@ func TestWebAndBotMultipleBooksOnSameDay(t *testing.T) {
 				if part != string(runes) {
 					t.Errorf("book=%d part=%q", i, part)
 				}
+				if activeKey == 0 || activeKeys[activeKey] {
+					t.Errorf("book=%d active_key=%d is not a distinct task key", i, activeKey)
+				}
+				activeKeys[activeKey] = true
 			}
 		})
 	}

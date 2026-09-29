@@ -523,7 +523,7 @@ func (a *app) handleBotDeleteCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.checkins.DeleteAny(r.Context(), group.ID, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete_failed")
+		writeCheckinDeleteError(w, err)
 		return
 	}
 	a.audit(group.ID, 0, "bot_delete_checkin", "checkin_records", id, nil, nil, r)

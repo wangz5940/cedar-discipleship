@@ -98,3 +98,14 @@ func TestRenameAssetInvalidatesTodayContentWithoutSendingNotification(t *testing
 		t.Fatalf("notification calls = enqueues %d, wakes %d; want none", notifier.enqueues, notifier.wakes)
 	}
 }
+
+func TestWriteAssetErrorMapsReferencedResourceToConflict(t *testing.T) {
+	t.Parallel()
+	response := httptest.NewRecorder()
+
+	(&app{}).writeAssetError(response, assetdomain.ErrAssetInUse)
+
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "asset_in_use") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+}

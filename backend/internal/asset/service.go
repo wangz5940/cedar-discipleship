@@ -24,6 +24,7 @@ var (
 	ErrInvalidGroupCode   = errors.New("invalid_group_code")
 	ErrInvalidBatchInput  = errors.New("invalid_batch_input")
 	ErrInvalidAssetTitle  = errors.New("invalid_asset_title")
+	ErrAssetInUse         = errors.New("asset_in_use")
 )
 
 var (

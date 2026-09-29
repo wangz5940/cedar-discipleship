@@ -503,14 +503,19 @@ func insertStudyTaskTx(ctx context.Context, tx *sql.Tx, groupID, weekID uint64, 
 }
 
 func linkTaskAssetTx(ctx context.Context, tx *sql.Tx, groupID, taskID, assetID uint64, usageType string, sortOrder int, now time.Time) error {
-	var exists int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM assets WHERE id=? AND group_id=?`, assetID, groupID).Scan(&exists); err != nil {
-		return err
-	}
-	if exists == 0 {
+	var activeAssetID uint64
+	err := tx.QueryRowContext(ctx, `SELECT a.id
+		FROM assets a
+		JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id
+		WHERE a.id=? AND a.group_id=? AND b.deleted_at IS NULL
+		FOR SHARE`, assetID, groupID).Scan(&activeAssetID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("asset_not_found")
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO task_assets (group_id,task_id,asset_id,usage_type,sort_order,created_at)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO task_assets (group_id,task_id,asset_id,usage_type,sort_order,created_at)
 		VALUES (?,?,?,?,?,?)`, groupID, taskID, assetID, usageType, sortOrder, now)
 	return err
 }

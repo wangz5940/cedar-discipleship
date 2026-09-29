@@ -124,6 +124,12 @@ function categoryLabel(category) {
   return resourceCategoryLabel(category);
 }
 
+function assetRemovalErrorMessage(error) {
+  return error?.message === 'asset_in_use'
+    ? '资源正在用于学习任务，请先调整任务后再移除'
+    : error?.message;
+}
+
 function statusText(status) {
   return {
     active: '有效',
@@ -290,7 +296,7 @@ async function confirmBatchDelete() {
     await loadAdminData(true);
     await loadGovernance();
   } catch (error) {
-    toast(error.message);
+    toast(assetRemovalErrorMessage(error));
   } finally {
     batchBusy.value = false;
     batchProgress.value = '';
@@ -482,7 +488,7 @@ async function removeImport(asset) {
     await reloadApp();
     await loadGovernance();
   } catch (error) {
-    toast(error.message);
+    toast(assetRemovalErrorMessage(error));
   }
 }
 

@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	checkindomain "agp/backend/internal/checkin"
 	"agp/backend/internal/learning"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -1301,7 +1302,7 @@ func findWeekID(ctx context.Context, tx *sql.Tx, groupID uint64, logicalDate str
 }
 
 func insertCheckin(ctx context.Context, tx *sql.Tx, groupID, userID, weekID uint64, rec oldRecord, row checkinRow, checkinTime time.Time, allowDuplicateAsDeleted bool) (string, error) {
-	activeKey := uint64(0)
+	activeKey := checkindomain.ActiveRecordKey(row.TaskType, row.TaskID)
 	deletedAt := any(nil)
 	status := "inserted"
 	if exists, err := checkinExists(ctx, tx, groupID, userID, weekID, rec.LogicalDate, row); err != nil {

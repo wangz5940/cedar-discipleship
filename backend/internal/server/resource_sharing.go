@@ -277,6 +277,8 @@ func (a *app) writeAssetError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "invalid_share_scope")
 	case errors.Is(err, assetdomain.ErrInvalidGroupCode):
 		writeError(w, http.StatusBadRequest, "invalid_group_code")
+	case errors.Is(err, assetdomain.ErrAssetInUse):
+		writeError(w, http.StatusConflict, "asset_in_use")
 	case errors.Is(err, sql.ErrNoRows):
 		writeError(w, http.StatusNotFound, "asset_not_found")
 	case errors.Is(err, assetdomain.ErrSharingUnsupported):

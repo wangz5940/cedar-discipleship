@@ -5,6 +5,7 @@ package backup
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,5 +240,52 @@ func TestInvalidBackupRollsBackMemberChanges(t *testing.T) {
 	}
 	if members != 1 || admins != 1 || createdUsers != 0 {
 		t.Fatalf("partial restore escaped rollback: members=%d admins=%d new users=%d", members, admins, createdUsers)
+	}
+}
+
+func TestRestoreKeepsWeeklyBooksWithSharedLongTitlePrefix(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES (1,'member','Member','member',NOW(),NOW());
+		INSERT INTO study_weeks(id,group_id,start_date,end_date,created_at,updated_at)
+		VALUES (1,1,'2026-09-21','2026-09-27',NOW(),NOW());
+		INSERT INTO study_tasks(id,group_id,week_id,task_type,title,created_at,updated_at)
+		VALUES
+		  (1,1,1,'weekly_book','Book A',NOW(),NOW()),
+		  (2,1,1,'weekly_book','Book B',NOW(),NOW())`)
+	prefix := strings.Repeat("长", 64)
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewMySQLRepository(db)
+	err = repo.replaceCheckinsTx(
+		t.Context(),
+		tx,
+		1,
+		1,
+		map[string]uint64{"member": 1},
+		map[uint64]uint64{1: 1},
+		map[uint64]uint64{1: 1, 2: 2},
+		[]Checkin{
+			{Username: "member", TaskID: 1, WeekID: 1, LogicalDate: "2026-09-23", TaskType: "weekly_book", Part: prefix + "甲", Detail: prefix + "甲"},
+			{Username: "member", TaskID: 2, WeekID: 1, LogicalDate: "2026-09-23", TaskType: "weekly_book", Part: prefix + "乙", Detail: prefix + "乙"},
+		},
+		time.Now(),
+	)
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var count, distinctKeys int
+	if err := db.QueryRow(`SELECT COUNT(*),COUNT(DISTINCT active_key)
+		FROM checkin_records WHERE task_type='weekly_book'`).Scan(&count, &distinctKeys); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 || distinctKeys != 2 {
+		t.Fatalf("restored records=%d distinct keys=%d, want 2/2", count, distinctKeys)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"agp/backend/internal/asset"
+	checkindomain "agp/backend/internal/checkin"
 	"agp/backend/internal/learning"
 )
 
@@ -1188,9 +1189,13 @@ func (r *MySQLRepository) replaceCheckinsTx(
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			groupID, userID, taskID, weekID, checkin.LogicalDate, checkinTime, checkin.TaskType, "done", checkin.IsRetro, checkin.Detail, checkin.Note, truncate(checkin.Part, 64), "import", actorID, checkinTime, checkinTime); err != nil {
+		activeKey := uint64(0)
+		if resolvedTaskID, ok := taskID.(uint64); ok {
+			activeKey = checkindomain.ActiveRecordKey(checkin.TaskType, resolvedTaskID)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,active_key,created_by,created_at,updated_at)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			groupID, userID, taskID, weekID, checkin.LogicalDate, checkinTime, checkin.TaskType, "done", checkin.IsRetro, checkin.Detail, checkin.Note, truncate(checkin.Part, 64), "import", activeKey, actorID, checkinTime, checkinTime); err != nil {
 			return err
 		}
 	}
