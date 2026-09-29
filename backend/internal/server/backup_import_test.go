@@ -75,3 +75,16 @@ func TestHandleAdminImportLocalBackupRequiresConfirmation(t *testing.T) {
 		t.Fatalf("response does not include an explicit confirmation value: %s", recorder.Body.String())
 	}
 }
+
+func TestWriteBackupImportErrorMapsForbiddenRoleChange(t *testing.T) {
+	recorder := httptest.NewRecorder()
+
+	writeBackupImportError(recorder, backup.ErrBackupRoleChangeForbidden)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+	if !strings.Contains(recorder.Body.String(), backup.ErrBackupRoleChangeForbidden.Error()) {
+		t.Fatalf("response does not include role error: %s", recorder.Body.String())
+	}
+}

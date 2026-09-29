@@ -306,6 +306,9 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 	if err != nil {
 		return err
 	}
+	if err := ensureBackupLeaderRoleChangeAllowedTx(ctx, tx, groupID, actorID, roleAssignments); err != nil {
+		return err
+	}
 	if err := r.replaceRolesTx(ctx, tx, groupID, roleAssignments, now); err != nil {
 		return err
 	}
@@ -1030,6 +1033,82 @@ func ensureGroupMemberUserTx(ctx context.Context, tx *sql.Tx, groupID uint64, me
 		return 0, err
 	}
 	return userID, nil
+}
+
+func ensureBackupLeaderRoleChangeAllowedTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	groupID, actorID uint64,
+	roleAssignments map[uint64][]string,
+) error {
+	currentLeaders, err := lockedGroupLeaderIDsTx(ctx, tx, groupID)
+	if err != nil {
+		return err
+	}
+	nextLeaders := make(map[uint64]struct{})
+	for userID, roles := range roleAssignments {
+		for _, role := range roles {
+			if strings.TrimSpace(role) == roleGroupLeader {
+				nextLeaders[userID] = struct{}{}
+				break
+			}
+		}
+	}
+	if sameUserIDSet(currentLeaders, nextLeaders) {
+		return nil
+	}
+	if _, ok := currentLeaders[actorID]; ok {
+		return nil
+	}
+
+	var isSuperAdmin, isTenantAdmin bool
+	err = tx.QueryRowContext(ctx, `SELECT u.is_super_admin,COALESCE(tm.role='admin' AND tm.status=1,FALSE)
+		FROM users u
+		JOIN study_groups g ON g.id=?
+		LEFT JOIN tenant_members tm ON tm.tenant_id=g.tenant_id AND tm.user_id=u.id
+		WHERE u.id=? AND u.status=1
+		FOR UPDATE`, groupID, actorID).Scan(&isSuperAdmin, &isTenantAdmin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrBackupRoleChangeForbidden
+	}
+	if err != nil {
+		return err
+	}
+	if !isSuperAdmin && !isTenantAdmin {
+		return ErrBackupRoleChangeForbidden
+	}
+	return nil
+}
+
+func lockedGroupLeaderIDsTx(ctx context.Context, tx *sql.Tx, groupID uint64) (map[uint64]struct{}, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM user_group_roles
+		WHERE group_id=? AND role=? ORDER BY user_id FOR UPDATE`, groupID, roleGroupLeader)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	leaders := make(map[uint64]struct{})
+	for rows.Next() {
+		var userID uint64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		leaders[userID] = struct{}{}
+	}
+	return leaders, rows.Err()
+}
+
+func sameUserIDSet(left, right map[uint64]struct{}) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for userID := range left {
+		if _, ok := right[userID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *MySQLRepository) replaceRolesTx(ctx context.Context, tx *sql.Tx, groupID uint64, roleAssignments map[uint64][]string, now time.Time) error {

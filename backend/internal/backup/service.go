@@ -20,6 +20,7 @@ var (
 	ErrBackupConfirmationRequired = errors.New("backup_confirmation_required")
 	ErrBackupContentRequired      = errors.New("backup_content_required")
 	ErrBackupGroupMismatch        = errors.New("backup_group_mismatch")
+	ErrBackupRoleChangeForbidden  = errors.New("backup_role_change_forbidden")
 	ErrBackupVersionUnsupported   = errors.New("backup_version_unsupported")
 )
 
