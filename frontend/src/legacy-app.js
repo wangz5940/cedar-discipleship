@@ -928,6 +928,7 @@ function classifyViewerResource(item) {
   const category = normalizeResourceCategory(item?.category);
   const text = `${item?.title || ''} ${item?.original_name || ''} ${category}`.toLowerCase();
   if (isMediaResourceType(type)) return 'video';
+  if (/(文字稿|逐字稿|录音稿|讲稿)/.test(text)) return 'passage';
   if (category === 'mentor' || text.includes('mentor') || text.includes('导读') || text.includes('内容概要') || text.includes('圣经纵览的目的与价值')) return 'mentor';
   if (['handout', 'share', 'ppt'].includes(category)) return 'handout';
   if (category === 'book') return 'book';
@@ -943,9 +944,19 @@ function isMediaResourceType(type) {
 
 function matchViewerResourceToTitle(item, title) {
   const targetKey = normalizeResourceSeriesKey(title);
-  const itemKey = normalizeResourceSeriesKey(`${item?.title || ''} ${item?.original_name || ''}`);
-  if (!targetKey || !itemKey) return false;
-  return itemKey.includes(targetKey) || targetKey.includes(itemKey);
+  const itemKeys = [item?.title, item?.original_name]
+    .map(normalizeResourceSeriesKey)
+    .filter(Boolean);
+  if (!targetKey || !itemKeys.length) return false;
+  if (itemKeys.some((itemKey) => itemKey.includes(targetKey) || targetKey.includes(itemKey))) {
+    return true;
+  }
+  const transcriptTitle = String(item?.title || '');
+  if (!/(文字稿|逐字稿|录音稿|讲稿)/.test(transcriptTitle)) return false;
+  const transcriptBase = transcriptTitle
+    .split(/[\s（(]*(?:文字稿|逐字稿|录音稿|讲稿)/)[0];
+  const transcriptKey = normalizeResourceSeriesKey(transcriptBase);
+  return Boolean(transcriptKey && targetKey.startsWith(transcriptKey));
 }
 
 function viewerResourceLink(item, fallbackTitle = '') {
@@ -1395,7 +1406,7 @@ function currentTaskOptions() {
   const dailyConfig = taskSectionsConfig().daily || {};
   const separateDailyCheckins = dailyConfig.checkin_mode === 'separate';
   const customDevotion = dailyDevotionPlanMode(dailyDevotionConfig()) === 'custom';
-  const videoLinks = currentWeeklyVideoLinks(videoTasks, configPlan);
+  const weeklyVideoEntries = buildWeeklyVideoEntries(videoTasks, configPlan);
   const tasks = [];
   if (separateDailyCheckins) {
     if (dailyConfig.devotion?.enabled !== false && (!customDevotion || devotionLink)) {
@@ -1445,26 +1456,31 @@ function currentTaskOptions() {
     }
   }
   if (shouldRenderWeeklyTask(week.video_enabled, videoTasks)) {
-    const weeklyMediaType = videoLinks[0]?.type === 'audio' ? 'audio' : 'video';
     const generatedWeekTitle = [
       ...(enabledFlag(week.book_enabled) ? bookTasks.map((item) => item.title) : []),
-      enabledFlag(week.video_enabled) ? videoTasks[0]?.title : '',
+      ...(enabledFlag(week.video_enabled) ? videoTasks.map((item) => item.title) : []),
       enabledFlag(week.verse_enabled) ? week.verse_ref : '',
     ].filter(Boolean).join('；');
     const customWeekTitle = week.title && week.title !== generatedWeekTitle && week.title !== '周任务'
       ? week.title : '';
-    tasks.push({
-      type: 'weekly_video',
-      taskID: Number(videoTasks[0]?.id || 0),
-      weekID: Number(week.id || 0),
-      title: customWeekTitle || videoLinks[0]?.title || videoTasks[0]?.title || (weeklyMediaType === 'audio' ? '本周音频' : '本周视频'),
-      icon: weeklyMediaType === 'audio' ? '音频' : '视频',
-      part: '',
-      detail: customWeekTitle || videoLinks[0]?.title || videoTasks[0]?.title || (weeklyMediaType === 'audio' ? '本周音频' : '本周视频'),
-      summary: weeklyMediaType === 'audio' ? '必听音频' : '必看视频',
-      contentURL: videoLinks[0]?.url || '',
-      contentLinks: videoLinks,
-    });
+    for (const media of weeklyVideoEntries) {
+      const weeklyMediaType = media.type === 'audio' ? 'audio' : 'video';
+      const title = (weeklyVideoEntries.length === 1 ? customWeekTitle : '')
+        || media.title
+        || (weeklyMediaType === 'audio' ? '本周音频' : '本周视频');
+      tasks.push({
+        type: 'weekly_video',
+        taskID: media.taskID || 0,
+        weekID: Number(week.id || 0),
+        title,
+        icon: weeklyMediaType === 'audio' ? '音频' : '视频',
+        part: '',
+        detail: title,
+        summary: weeklyMediaType === 'audio' ? '必听音频' : '必看视频',
+        contentURL: media.contentLinks[0]?.url || '',
+        contentLinks: media.contentLinks,
+      });
+    }
   }
   if (enabledFlag(week.verse_enabled) && verseTask?.id) {
     const verseTitle = week.verse_ref || verseTask?.title || '本周背经';
@@ -1541,6 +1557,7 @@ function findTodayHubTask(task, hubTasks) {
   if (task.taskID) {
     const matched = hubTasks.find((item) => item.type === task.type && Number(item.task_id || 0) === Number(task.taskID));
     if (matched) return matched;
+    if (hubTasks.some((item) => item.type === task.type && Number(item.task_id || 0) > 0)) return null;
   }
   const title = String(task.part || task.detail || task.title || '').trim();
   return hubTasks.find((item) => {
@@ -1641,10 +1658,12 @@ function currentWeekConfigPlan() {
     || null;
 }
 
-function bestAssetLinksForTitle(title, task) {
-  const localAssets = [...(task?.assets || []), ...state.assets];
-  const matched = localAssets
+function bestAssetLinksForTitle(title, task, assets = state.assets) {
+  const bound = firstTaskAssetLink(task, title);
+  if (bound) return [bound];
+  const matched = assets
     .filter((asset, index, arr) => assetDownloadURL(asset) && arr.findIndex((other) => assetDownloadURL(other) === assetDownloadURL(asset)) === index)
+    .filter((asset) => ['book', 'passage'].includes(classifyViewerResource(asset)))
     .filter((asset) => matchViewerResourceToTitle(asset, title))
     .map((asset) => ({
       label: asset.title || asset.original_name || '打开内容',
@@ -1654,12 +1673,10 @@ function bestAssetLinksForTitle(title, task) {
       pageRange: extractPdfPageRange(title),
     }));
   if (matched.length) return matched;
-  const first = firstTaskAssetLink(task, title);
-  if (first && splitBookTitles(task?.title || '').length <= 1) return [first];
   return [];
 }
 
-function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
+export function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null, assets = state.assets) {
   const configuredReadings = normalizeWeekReadings(configPlan);
   if (!bookTasks.length && configuredReadings.length) {
     return configuredReadings.map((reading, index) => {
@@ -1669,7 +1686,7 @@ function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
         title: reading.title,
         contentLinks: reading.url
           ? [{ label: '读物内容', title: reading.title, url: reading.url, type: reading.type || 'pdf', pageRange: extractPdfPageRange(reading.title) }]
-          : bestAssetLinksForTitle(reading.title, task),
+          : bestAssetLinksForTitle(reading.title, task, assets),
       };
     });
   }
@@ -1677,7 +1694,7 @@ function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
     const title = String(weekTitle || '周读物').trim() || '周读物';
     return [{
       title,
-      contentLinks: bestAssetLinksForTitle(title, null),
+      contentLinks: bestAssetLinksForTitle(title, null, assets),
     }];
   }
   return bookTasks.map((task) => {
@@ -1685,7 +1702,7 @@ function buildWeeklyBookEntries(bookTasks, weekTitle, configPlan = null) {
     return {
       taskID: Number(task.id || 0),
       title,
-      contentLinks: bestAssetLinksForTitle(title, task),
+      contentLinks: bestAssetLinksForTitle(title, task, assets),
     };
   });
 }
@@ -1701,30 +1718,76 @@ function bookTaskForReading(bookTasks, reading, index) {
 
 export function currentWeeklyVideoLinks(videoTasks, configPlan = null) {
   const taskList = Array.isArray(videoTasks) ? videoTasks.filter(Boolean) : (videoTasks ? [videoTasks] : []);
-  const assetLinks = taskList
-    .map((task) => firstTaskAssetLink(task, task?.title || '本周视频'))
-    .filter(Boolean);
+  const taskLinks = taskList.map(weeklyMediaTaskLink).filter(Boolean);
   const configVideos = normalizeWeekVideos(configPlan).map((item) => ({
     label: item.title || '视频内容',
     title: item.title || '本周视频',
     url: item.url,
     type: inferResourceType(item.url, 'video'),
   })).filter((item) => isPlayableContentURL(item.url));
-  const directTaskLinks = taskList
-    .map((task) => {
-      const url = String(task?.url || task?.content || '').trim();
-      if (!isPlayableContentURL(url)) return null;
-      return {
-        label: task.title || '视频内容',
-        title: task.title || '本周视频',
-        url,
-        type: inferResourceType(url, 'video'),
-      };
-    })
-    .filter(Boolean);
-  const taskLinks = [...assetLinks, ...directTaskLinks];
   const links = taskLinks.length ? taskLinks : configVideos;
   return links.filter((item, index, arr) => item.url && arr.findIndex((other) => other.url === item.url) === index);
+}
+
+function weeklyMediaTaskLink(task) {
+  const title = task?.title || '本周视频';
+  const assetLink = firstTaskAssetLink(task, title);
+  if (assetLink) return { ...assetLink, label: title };
+  const url = String(task?.url || task?.content || '').trim();
+  if (!isPlayableContentURL(url)) return null;
+  return {
+    label: title,
+    title,
+    url,
+    type: inferResourceType(url, 'video'),
+  };
+}
+
+function mediaCompanionLabel(item) {
+  const title = String(item?.title || '');
+  if (item?.category === 'handout') return '配套讲义';
+  if (item?.category === 'passage' && /(文字稿|逐字稿|录音稿|讲稿)/.test(title)) return '文字稿';
+  if (item?.category === 'passage') return '配套读物';
+  return title || '相关音视频';
+}
+
+function weeklyMediaContentLinks(primary, assets) {
+  if (!primary?.url) return [];
+  const related = buildMediaViewerSections({
+    title: primary.title,
+    url: primary.url,
+    sourceURL: primary.url,
+    type: primary.type,
+  }, assets).flatMap((section) => section.items);
+  const primaryURL = String(primary.url);
+  return [
+    primary,
+    ...related
+      .filter((item) => String(item.url) !== primaryURL)
+      .map((item) => ({ ...item, label: mediaCompanionLabel(item) })),
+  ];
+}
+
+export function buildWeeklyVideoEntries(videoTasks, configPlan = null, assets = state.assets) {
+  const taskList = Array.isArray(videoTasks) ? videoTasks.filter(Boolean) : (videoTasks ? [videoTasks] : []);
+  if (taskList.length) {
+    return taskList.map((task) => {
+      const primary = weeklyMediaTaskLink(task);
+      const title = primary?.title || task?.title || '本周视频';
+      return {
+        taskID: Number(task?.id || 0),
+        title,
+        type: primary?.type || 'video',
+        contentLinks: weeklyMediaContentLinks(primary, assets),
+      };
+    });
+  }
+  return currentWeeklyVideoLinks([], configPlan).map((primary) => ({
+    taskID: 0,
+    title: primary.title,
+    type: primary.type,
+    contentLinks: weeklyMediaContentLinks(primary, assets),
+  }));
 }
 
 function isPlayableContentURL(url) {
@@ -1880,7 +1943,14 @@ function checkinMatchesTask(item, task) {
     const recordDetail = String(item.detail || '');
     return Boolean(part) && (recordPart === part || recordDetail === part);
   }
-  if (task.type === 'weekly_video' || task.type === 'weekly_verse' || task.type === 'weekly_outline') {
+  if (task.type === 'weekly_video') {
+    if (task.taskID && item.task_id) {
+      return Number(item.task_id) === Number(task.taskID);
+    }
+    if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
+    return item.logical_date === state.selectedDate;
+  }
+  if (task.type === 'weekly_verse' || task.type === 'weekly_outline') {
     if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
     if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
     return item.logical_date === state.selectedDate;

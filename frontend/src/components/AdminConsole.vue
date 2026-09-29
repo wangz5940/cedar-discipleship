@@ -914,6 +914,7 @@ async function runLocalBackupImport() {
                           </select>
                           <button class="ghost" type="button" @click="removeWeekBinding('videos', index)">删除</button>
                         </div>
+                        <button class="secondary" type="button" @click="addWeekBinding('videos')">新增音视频</button>
                       </div>
                     </Transition>
                     <Transition name="admin-task-section">

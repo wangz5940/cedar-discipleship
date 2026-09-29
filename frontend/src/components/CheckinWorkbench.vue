@@ -115,7 +115,9 @@ function taskTypeLabel(task) {
   }
 }
 
-function taskActionText(task) {
+function taskActionText(task, link = null) {
+  if (link && ['audio', 'video'].includes(link.type)) return '播放';
+  if (link && task.type === 'weekly_video') return '查看';
   if (task.type === 'weekly_video') return '播放';
   if (task.type === 'weekly_outline') return '查看';
   return '阅读';
@@ -184,7 +186,7 @@ async function exportStatsChart() {
           <div class="panel tasks">
             <article
               v-for="task in tasks"
-              :key="`${task.type}:${task.part || ''}:${task.title}`"
+              :key="`${task.type}:${task.taskID || 0}:${task.part || ''}:${task.title}`"
               class="task"
               :class="taskIsCompleted(task) ? 'is-completed' : 'is-pending'"
             >
@@ -225,7 +227,7 @@ async function exportStatsChart() {
                       <span>{{ link.label || link.title || '学习资料' }}</span>
                       <small v-if="taskMaterialTitle(link)">{{ taskMaterialTitle(link) }}</small>
                     </span>
-                    <span class="task-material-action">{{ taskActionText(task) }}<ChevronRight :size="16" /></span>
+                    <span class="task-material-action">{{ taskActionText(task, link) }}<ChevronRight :size="16" /></span>
                   </button>
                 </div>
               </div>

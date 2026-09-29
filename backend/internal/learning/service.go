@@ -293,7 +293,7 @@ func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 				AssetID:   video.AssetID,
 				UsageType: "video",
 			})
-			break
+			order++
 		}
 	}
 	if verseTitle := WeeklyVerseTaskTitle(input, existingVerseTitle); verseTitle != "" &&
@@ -337,7 +337,6 @@ func WeekTitle(input WeekInput) string {
 		for _, video := range input.Videos {
 			if title := strings.TrimSpace(video.Title); title != "" {
 				parts = append(parts, title)
-				break
 			}
 		}
 	}

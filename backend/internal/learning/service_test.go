@@ -95,6 +95,26 @@ func TestInferTaskBindingTypeKeepsWeeklyAudio(t *testing.T) {
 	}
 }
 
+func TestBuildTaskDraftsCreatesOneTaskPerWeeklyMediaBinding(t *testing.T) {
+	t.Parallel()
+
+	drafts := BuildTaskDrafts(WeekInput{
+		VideoEnabled: true,
+		Videos: []TaskBinding{
+			{Title: "第一篇音频", AssetID: 101},
+			{Title: "第二篇视频", AssetID: 102},
+		},
+	}, "")
+	if len(drafts) != 2 {
+		t.Fatalf("BuildTaskDrafts() returned %d tasks, want 2", len(drafts))
+	}
+	for index, draft := range drafts {
+		if draft.TaskType != "weekly_video" || draft.AssetID != uint64(101+index) || draft.SortOrder != index+1 {
+			t.Fatalf("draft %d = %+v", index, draft)
+		}
+	}
+}
+
 func TestMatchingTodayRecordWeeklyVideoMatchesSameTaskAcrossDates(t *testing.T) {
 	taskID := uint64(11)
 	weekID := uint64(7)
@@ -506,10 +526,13 @@ func TestWeekTitleUsesLearningContent(t *testing.T) {
 			{Title: "《生命读经》第一篇"},
 			{Title: "《生命读经》第二篇"},
 		},
-		Videos:   []TaskBinding{{Title: "本周交通视频"}},
+		Videos: []TaskBinding{
+			{Title: "本周交通视频"},
+			{Title: "本周补充音频"},
+		},
 		VerseRef: "罗马书 8:1",
 	})
-	want := "《生命读经》第一篇；《生命读经》第二篇；本周交通视频；罗马书 8:1"
+	want := "《生命读经》第一篇；《生命读经》第二篇；本周交通视频；本周补充音频；罗马书 8:1"
 	if title != want {
 		t.Fatalf("WeekTitle() = %q, want %q", title, want)
 	}

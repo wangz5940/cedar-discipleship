@@ -24,3 +24,43 @@ describe('learning statistics', () => {
     expect(html.includes('背经')).toBe(false);
   });
 });
+
+describe('weekly media tasks', () => {
+  it('renders separate check-in cards and keeps companion materials inside each card', async () => {
+    const pinia = createPinia();
+    useCheckinWorkbenchStore(pinia).setSnapshot({
+      visible: true,
+      selectedDate: '2026-09-29',
+      maxDate: '2026-09-29',
+      selectedDateLabel: '9月29日',
+      total: 2,
+      tasks: [
+        {
+          type: 'weekly_video',
+          taskID: 41,
+          title: '第一篇音频',
+          contentLinks: [
+            { label: '第一篇音频', title: '第一篇音频', type: 'audio', url: '/api/assets/101/download' },
+            { label: '配套讲义', title: '第一篇讲义', type: 'pdf', url: '/api/assets/102/download' },
+          ],
+        },
+        {
+          type: 'weekly_video',
+          taskID: 42,
+          title: '第二篇视频',
+          contentLinks: [
+            { label: '第二篇视频', title: '第二篇视频', type: 'video', url: '/api/assets/103/download' },
+          ],
+        },
+      ],
+    });
+
+    const context = {};
+    await renderToString(createSSRApp(CheckinWorkbench).use(pinia), context);
+    const html = context.teleports['#vue-checkin-workbench'];
+    expect(html.match(/完成并打卡/g)).toHaveLength(2);
+    expect(html).toContain('配套讲义');
+    expect(html).toContain('播放');
+    expect(html).toContain('查看');
+  });
+});

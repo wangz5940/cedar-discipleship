@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import {
   api,
+  buildWeeklyBookEntries,
+  buildWeeklyVideoEntries,
   buildMediaViewerSections,
   currentWeeklyVideoLinks,
   mergeTodayHubTasks,
@@ -43,6 +45,68 @@ describe('video learning related resources', () => {
   it('keeps configured audio tasks as audio content', () => {
     const links = currentWeeklyVideoLinks([], { videos: [{ title: '科大门训音频', url: 'https://example.com/lesson.mp3' }] });
     expect(links[0]).toMatchObject({ title: '科大门训音频', type: 'audio' });
+  });
+
+  it('groups a series transcript and matching handout with its media', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });
+    const sections = buildMediaViewerSections({
+      title: '生命的道路-1引言',
+      url: '/api/assets/997/download',
+      type: 'audio',
+    }, [
+      { id: 958, title: '生命的道路(文字稿)', original_name: '基督是我们的生命(文字稿)-201903.pdf', category: 'book' },
+      { id: 992, title: '生命的道路-1', original_name: '生命的道路-1.pdf', category: 'handout' },
+      { id: 997, title: '生命的道路-1引言', original_name: '201903生命-1引言.mp3', category: 'video', mime_type: 'audio/mpeg' },
+    ]);
+
+    expect(sections.map((section) => section.key)).toEqual(['passage', 'handout', 'video']);
+    expect(sections.flatMap((section) => section.items.map((item) => item.url))).toEqual([
+      '/api/assets/958/download',
+      '/api/assets/992/download',
+      '/api/assets/997/download',
+    ]);
+  });
+
+  it('keeps same-title audio outside a book task', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });
+    const [entry] = buildWeeklyBookEntries([{
+      id: 1290,
+      task_type: 'weekly_book',
+      title: 'DS10p-KX1-1-罪',
+      assets: [{
+        id: 1041,
+        title: 'DS10p-KX1-1-罪',
+        original_name: 'DS10p-KX1-1-罪.pdf',
+        category: 'markdown',
+      }],
+    }], '', null, [
+      { id: 1018, title: 'DS10p-KX1-1-罪', original_name: 'DS10p-KX1-1-罪.mp3', category: 'video', mime_type: 'audio/mpeg' },
+      { id: 1041, title: 'DS10p-KX1-1-罪', original_name: 'DS10p-KX1-1-罪.pdf', category: 'markdown', mime_type: 'application/pdf' },
+    ]);
+
+    expect(entry.contentLinks.map((item) => item.url)).toEqual(['/api/assets/1041/download']);
+  });
+
+  it('builds one check-in entry per media task and keeps companions inside each entry', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });
+    const assets = [
+      { id: 958, title: '生命的道路(文字稿)', original_name: '基督是我们的生命(文字稿)-201903.pdf', category: 'book' },
+      { id: 992, title: '生命的道路-1', original_name: '生命的道路-1.pdf', category: 'handout' },
+      { id: 997, title: '生命的道路-1引言', original_name: '201903生命-1引言.mp3', category: 'video', mime_type: 'audio/mpeg' },
+      { id: 998, title: '生命的道路-2亚伯拉罕与活祭(上)', original_name: '201903生命-2亚伯拉罕与活祭(上).mp3', category: 'video', mime_type: 'audio/mpeg' },
+    ];
+    const entries = buildWeeklyVideoEntries([
+      { id: 1257, title: '生命的道路-1引言', assets: [assets[2]] },
+      { id: 1258, title: '生命的道路-2亚伯拉罕与活祭(上)', assets: [assets[3]] },
+    ], null, assets);
+
+    expect(entries.map((item) => item.taskID)).toEqual([1257, 1258]);
+    expect(entries[0].contentLinks.map((item) => item.url)).toEqual([
+      '/api/assets/997/download',
+      '/api/assets/958/download',
+      '/api/assets/992/download',
+    ]);
+    expect(entries[1].contentLinks[0].url).toBe('/api/assets/998/download');
   });
 
   it.each(['audio', 'video'])('opens a bound %s asset with its matching player', async (type) => {
@@ -148,5 +212,31 @@ describe('renamed task titles', () => {
     );
 
     expect(task).toMatchObject({ title: '新视频名称', icon: '视频' });
+  });
+
+  it('does not let one media check-in complete another task in the same week', () => {
+    const tasks = mergeTodayHubTasks(
+      [
+        { type: 'weekly_video', taskID: 41, weekID: 7, title: '第一篇音频' },
+        { type: 'weekly_video', taskID: 42, weekID: 7, title: '第二篇音频' },
+      ],
+      [],
+      [{ task_type: 'weekly_video', task_id: 41, week_id: 7 }],
+    );
+
+    expect(tasks.map((task) => task.completed)).toEqual([true, false]);
+  });
+
+  it('does not reuse a different identified hub task for another media task', () => {
+    const tasks = mergeTodayHubTasks(
+      [
+        { type: 'weekly_video', taskID: 41, weekID: 7, title: '第一篇音频' },
+        { type: 'weekly_video', taskID: 42, weekID: 7, title: '第二篇音频' },
+      ],
+      [{ type: 'weekly_video', task_id: 41, week_id: 7, title: '第一篇音频', completed: true }],
+      [],
+    );
+
+    expect(tasks.map((task) => task.completed)).toEqual([true, false]);
   });
 });
