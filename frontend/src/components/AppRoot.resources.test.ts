@@ -10,4 +10,12 @@ describe('desktop resource cards', () => {
     );
     expect(component).not.toContain('<span class="app-resource-card__cta"');
   });
+
+  it('keeps download actions above the full-card preview target', () => {
+    const styles = readFileSync(new URL('./app-root.css', import.meta.url), 'utf8');
+
+    expect(styles).toMatch(
+      /\.app-resource-stack-card__actions\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;/,
+    );
+  });
 });
