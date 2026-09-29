@@ -155,7 +155,9 @@ func (r *MySQLRepository) DeleteGroup(ctx context.Context, id uint64, at time.Ti
 		`DELETE FROM group_members WHERE group_id=?`,
 		`DELETE FROM login_logs WHERE group_id=?`,
 		`DELETE FROM audit_logs WHERE group_id=?`,
-		`UPDATE refresh_sessions SET current_group_id=NULL, updated_at=? WHERE current_group_id=?`,
+		`UPDATE refresh_sessions
+			SET current_group_id=NULL,group_version=group_version+1,updated_at=?
+			WHERE current_group_id=?`,
 		`UPDATE users SET default_group_id=NULL, updated_at=? WHERE default_group_id=?`,
 		`DELETE FROM study_groups WHERE id=?`,
 	}

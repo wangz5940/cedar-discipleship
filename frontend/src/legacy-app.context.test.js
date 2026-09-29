@@ -11,11 +11,15 @@ describe('main data context', () => {
   let release;
   let entered;
   let waiting;
+  let switchConflicts;
+  let switchCalls;
 
   beforeEach(() => {
     setActivePinia(createPinia());
     groupID = 1;
     heldPath = '';
+    switchConflicts = 0;
+    switchCalls = 0;
     waiting = new Promise((resolve) => { entered = resolve; });
     vi.stubGlobal('document', { cookie: '' });
     vi.stubGlobal('window', { location: { origin: 'http://localhost' } });
@@ -25,8 +29,16 @@ describe('main data context', () => {
       const user = { id: 1, username: 'member', current_group_id: groupID, study_groups: [{ id: 1 }, { id: 2 }], roles: [] };
       let body = {};
       if (path === '/api/auth/login') body = { token: 'session', user };
+      if (path === '/api/auth/refresh') body = { token: 'refreshed', user };
       if (path === '/api/auth/me') body = { user };
-      if (path === '/api/auth/switch-group') body = { token: 'group-2', user: { ...user, current_group_id: 2 } };
+      if (path === '/api/auth/switch-group') {
+        switchCalls += 1;
+        if (switchConflicts > 0) {
+          switchConflicts -= 1;
+          return Response.json({ error: 'refresh_session_group_changed' }, { status: 409 });
+        }
+        body = { token: 'group-2', user: { ...user, current_group_id: 2 } };
+      }
       if (path.startsWith('/api/app/bootstrap')) body = { members: [{ user_id: groupID }], learning_config: { marker: groupID } };
       if (path.startsWith('/api/today')) body = { title: `${groupID}:${path.split('date=')[1]}`, tasks: [], progress: {} };
       if (path.startsWith('/api/dashboard/monthly-ranking')) {
@@ -73,6 +85,17 @@ describe('main data context', () => {
     await old;
     expect(useAppStateStore().currentGroupID).toBe(2);
     expect(useCheckinWorkbenchStore().title).toBe('2:2026-08-03');
+  });
+
+  it('refreshes and retries the latest switch after a session version conflict', async () => {
+    await login('member', 'password');
+    groupID = 2;
+    switchConflicts = 1;
+
+    await switchGroup(2);
+
+    expect(switchCalls).toBe(2);
+    expect(useAppStateStore().currentGroupID).toBe(2);
   });
 
   it('retains the newest statistics range after an older query completes', async () => {

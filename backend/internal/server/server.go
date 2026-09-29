@@ -108,6 +108,7 @@ type tokenClaims struct {
 	UserID         uint64 `json:"uid"`
 	CurrentGroupID uint64 `json:"gid,omitempty"`
 	SessionID      uint64 `json:"sid,omitempty"`
+	GroupVersion   uint64 `json:"gv,omitempty"`
 	ExpiresAt      int64  `json:"exp"`
 }
 

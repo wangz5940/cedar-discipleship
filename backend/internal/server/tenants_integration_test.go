@@ -19,6 +19,7 @@ import (
 func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "011_refresh_sessions.sql")
+	testdb.Apply(t, db, "016_refresh_session_group_version.sql")
 	testdb.Apply(t, db, "012_ministry_catalog_seed_policy.sql")
 	testdb.Apply(t, db, "013_member_personal_settings.sql")
 	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,is_super_admin,created_at,updated_at)
@@ -30,7 +31,19 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	call := func(method, path string, userID, groupID uint64, body string) (int, map[string]any) {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
-		token, err := a.signToken(tokenClaims{UserID: userID, CurrentGroupID: groupID})
+		sessionToken := fmt.Sprintf("http-%d-%d-%d", userID, groupID, time.Now().UnixNano())
+		result, err := db.Exec(`INSERT INTO refresh_sessions
+			(user_id,token_hash,csrf_hash,current_group_id,expires_at,created_at,updated_at)
+			VALUES (?,?,?,?,DATE_ADD(NOW(),INTERVAL 1 DAY),NOW(),NOW())`,
+			userID, tokenHash(sessionToken), tokenHash("csrf"), nullableUint64SQL(groupID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sessionID, err := insertedID(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		token, err := a.signToken(tokenClaims{UserID: userID, CurrentGroupID: groupID, SessionID: sessionID})
 		if err != nil {
 			t.Fatal(err)
 		}

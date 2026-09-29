@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ func passwordSessionFixture(t *testing.T) (*app, *sql.DB) {
 	t.Helper()
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "011_refresh_sessions.sql")
+	testdb.Apply(t, db, "016_refresh_session_group_version.sql")
 	testdb.Apply(t, db, "013_member_personal_settings.sql")
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
 		VALUES (1,'a','A',NOW(),NOW()),(2,'b','B',NOW(),NOW());
@@ -71,7 +73,7 @@ func TestPasswordResetRevokesOnlyAffectedSessions(t *testing.T) {
 					if (err != nil) != revoked {
 						t.Errorf("user %d device %d refresh err=%v, revoked=%v", id, device, err, revoked)
 					}
-					active, err := a.activeRefreshSession(t.Context(), uint64((id-1)*2+device+1), uint64(id))
+					active, err := a.activeRefreshSession(t.Context(), uint64((id-1)*2+device+1), uint64(id), 0, 0)
 					if err != nil || active == revoked {
 						t.Errorf("user %d device %d active=%v err=%v", id, device, active, err)
 					}
@@ -88,6 +90,10 @@ func TestChangePasswordRejectsOldCookiesAndAccessToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, db, `UPDATE users SET password_hash=? WHERE id=1`, hash)
+	legacyToken, err := a.signToken(tokenClaims{UserID: 1, CurrentGroupID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"old_password":"old-password","new_password":"new-password"}`))
 	req = req.WithContext(context.WithValue(req.Context(), currentUserKey, currentUser{ID: 1}))
 	response := httptest.NewRecorder()
@@ -114,6 +120,73 @@ func TestChangePasswordRejectsOldCookiesAndAccessToken(t *testing.T) {
 	a.auth(a.handleMe)(response, access)
 	if response.Code != http.StatusUnauthorized {
 		t.Errorf("old access: %d", response.Code)
+	}
+	legacyAccess := httptest.NewRequest(http.MethodGet, "/", nil)
+	legacyAccess.Header.Set("Authorization", "Bearer "+legacyToken)
+	response = httptest.NewRecorder()
+	a.auth(a.handleMe)(response, legacyAccess)
+	if response.Code != http.StatusUnauthorized {
+		t.Errorf("legacy access without session: %d", response.Code)
+	}
+}
+
+func TestRefreshSessionGroupRejectsStaleCurrentGroup(t *testing.T) {
+	a, db := passwordSessionFixture(t)
+	var sessionID uint64
+	if err := db.QueryRow(`SELECT id FROM refresh_sessions WHERE user_id=2 ORDER BY id LIMIT 1`).Scan(&sessionID); err != nil {
+		t.Fatal(err)
+	}
+	staleToken, err := a.signToken(tokenClaims{UserID: 2, SessionID: sessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := a.updateRefreshSessionGroup(t.Context(), sessionID, 2, 0, 2)
+	if err != nil {
+		t.Fatalf("current switch failed: %v", err)
+	}
+	if version != 1 {
+		t.Fatalf("session version = %d, want 1", version)
+	}
+	if _, err := a.updateRefreshSessionGroup(t.Context(), sessionID, 2, 0, 1); !errors.Is(err, errRefreshSessionGroupChanged) {
+		t.Fatalf("stale switch error = %v, want %v", err, errRefreshSessionGroupChanged)
+	}
+	var groupID, groupVersion uint64
+	if err := db.QueryRow(`SELECT current_group_id,group_version FROM refresh_sessions WHERE id=?`, sessionID).
+		Scan(&groupID, &groupVersion); err != nil {
+		t.Fatal(err)
+	}
+	if groupID != 2 || groupVersion != 1 {
+		t.Fatalf("session group/version = %d/%d, want 2/1", groupID, groupVersion)
+	}
+	for _, test := range []struct {
+		name       string
+		token      string
+		wantStatus int
+	}{
+		{name: "stale token", token: staleToken, wantStatus: http.StatusUnauthorized},
+		{
+			name: "current token",
+			token: func() string {
+				token, err := a.signToken(tokenClaims{
+					UserID: 2, CurrentGroupID: 2, SessionID: sessionID, GroupVersion: 1,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return token
+			}(),
+			wantStatus: http.StatusOK,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.Header.Set("Authorization", "Bearer "+test.token)
+			response := httptest.NewRecorder()
+			a.auth(a.handleMe)(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
+			}
+		})
 	}
 }
 

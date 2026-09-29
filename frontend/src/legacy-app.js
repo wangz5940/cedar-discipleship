@@ -605,10 +605,23 @@ async function setDefaultGroup(groupID) {
 export async function switchGroup(groupID) {
   const requestID = ++switchRequestID;
   const generation = ++sessionGeneration;
-  const result = await api('/auth/switch-group', {
+  const requestSwitch = () => api('/auth/switch-group', {
     method: 'POST',
     body: JSON.stringify({ group_id: Number(groupID) }),
   });
+  let result;
+  try {
+    result = await requestSwitch();
+  } catch (error) {
+    if (error.code !== 'refresh_session_group_changed'
+      || requestID !== switchRequestID
+      || generation !== sessionGeneration) {
+      throw error;
+    }
+    const refreshed = await refreshSession();
+    if (!refreshed || requestID !== switchRequestID || generation !== sessionGeneration) return;
+    result = await requestSwitch();
+  }
   if (requestID !== switchRequestID || generation !== sessionGeneration) return;
   sessionGeneration += 1;
   closeViewer();

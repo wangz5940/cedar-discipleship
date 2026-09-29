@@ -99,7 +99,12 @@ func (a *app) handleRefreshSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	token, err := a.signToken(tokenClaims{UserID: user.ID, CurrentGroupID: user.CurrentGroupID, SessionID: session.ID})
+	token, err := a.signToken(tokenClaims{
+		UserID:         user.ID,
+		CurrentGroupID: user.CurrentGroupID,
+		SessionID:      session.ID,
+		GroupVersion:   session.GroupVersion,
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "token_failed")
 		return
@@ -170,16 +175,39 @@ func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	claims, _ := a.verifyToken(bearerToken(r))
-	token, err := a.signToken(tokenClaims{UserID: u.ID, CurrentGroupID: req.GroupID, SessionID: claims.SessionID})
+	claims, err := a.verifyToken(bearerToken(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "token_failed")
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	a.updateRefreshSessionGroup(r.Context(), r, req.GroupID)
 	user, err := a.users.CurrentUser(r.Context(), u.ID, req.GroupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "user_failed")
+		return
+	}
+	groupVersion, err := a.updateRefreshSessionGroup(
+		r.Context(),
+		claims.SessionID,
+		u.ID,
+		claims.GroupVersion,
+		req.GroupID,
+	)
+	if err != nil {
+		if errors.Is(err, errRefreshSessionGroupChanged) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "session_failed")
+		return
+	}
+	token, err := a.signToken(tokenClaims{
+		UserID:         u.ID,
+		CurrentGroupID: req.GroupID,
+		SessionID:      claims.SessionID,
+		GroupVersion:   groupVersion,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "token_failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})

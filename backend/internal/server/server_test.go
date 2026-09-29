@@ -167,9 +167,41 @@ func TestLoginLimiterSupportsConcurrentRequests(t *testing.T) {
 	if !limiter.blocked("127.0.0.1", "member") {
 		t.Fatal("limiter should block after repeated failed attempts")
 	}
-	limiter.success("127.0.0.1", "member")
-	if limiter.blocked("127.0.0.1", "member") {
-		t.Fatal("limiter should clear after a successful login")
+}
+
+func TestLoginLimiterBlocksAccountAcrossIPs(t *testing.T) {
+	limiter := newLoginLimiter()
+	for index := range maxLoginFailuresPerAccount {
+		limiter.fail(fmt.Sprintf("192.0.2.%d", index+1), "member")
+	}
+	if !limiter.blocked("198.51.100.1", "member") {
+		t.Fatal("account limiter was bypassed by rotating source addresses")
+	}
+}
+
+func TestLoginLimiterBlocksIPAcrossAccounts(t *testing.T) {
+	limiter := newLoginLimiter()
+	for index := range maxLoginFailuresPerIP {
+		limiter.fail("192.0.2.1", fmt.Sprintf("member-%d", index))
+	}
+	if !limiter.blocked("192.0.2.1", "another-member") {
+		t.Fatal("source limiter was bypassed by rotating accounts")
+	}
+}
+
+func TestLoginLimiterSuccessClearsAccountButKeepsSourceHistory(t *testing.T) {
+	limiter := newLoginLimiter()
+	limiter.fail("192.0.2.1", "member")
+	limiter.success("192.0.2.1", "member")
+
+	if _, ok := limiter.failures[loginAccountKey("member")]; ok {
+		t.Fatal("successful login did not clear account failures")
+	}
+	if _, ok := limiter.failures[loginCombinationKey("192.0.2.1", "member")]; ok {
+		t.Fatal("successful login did not clear account and source failures")
+	}
+	if _, ok := limiter.failures[loginIPKey("192.0.2.1")]; !ok {
+		t.Fatal("successful login cleared source failure history")
 	}
 }
 

@@ -28,6 +28,8 @@ const (
 	csrfHeaderName    = "X-CSRF-Token"
 )
 
+var errRefreshSessionGroupChanged = errors.New("refresh_session_group_changed")
+
 func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
@@ -42,13 +44,22 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		if claims.SessionID > 0 {
-			active, err := a.activeRefreshSession(r.Context(), claims.SessionID, claims.UserID)
-			if err != nil || !active {
-				logAuthFailure(r, "refresh_session_inactive", err)
-				writeError(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
+		if claims.SessionID == 0 {
+			logAuthFailure(r, "session_id_missing", nil)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		active, err := a.activeRefreshSession(
+			r.Context(),
+			claims.SessionID,
+			claims.UserID,
+			claims.CurrentGroupID,
+			claims.GroupVersion,
+		)
+		if err != nil || !active {
+			logAuthFailure(r, "refresh_session_inactive", err)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 		u, err := a.loadCurrentUser(r.Context(), claims.UserID, claims.CurrentGroupID)
 		if err != nil {
@@ -261,6 +272,7 @@ type refreshSession struct {
 	ID             uint64
 	UserID         uint64
 	CurrentGroupID uint64
+	GroupVersion   uint64
 	ExpiresAt      time.Time
 }
 
@@ -313,10 +325,16 @@ func (a *app) refreshSession(ctx context.Context, token, csrf string) (refreshSe
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
-	err = tx.QueryRowContext(ctx, `SELECT id,user_id,COALESCE(current_group_id,0),expires_at
+	err = tx.QueryRowContext(ctx, `SELECT id,user_id,COALESCE(current_group_id,0),group_version,expires_at
 		FROM refresh_sessions
 		WHERE token_hash=? AND csrf_hash=? AND revoked_at IS NULL AND expires_at>? FOR UPDATE`,
-		tokenHash(token), tokenHash(csrf), now).Scan(&session.ID, &session.UserID, &session.CurrentGroupID, &session.ExpiresAt)
+		tokenHash(token), tokenHash(csrf), now).Scan(
+		&session.ID,
+		&session.UserID,
+		&session.CurrentGroupID,
+		&session.GroupVersion,
+		&session.ExpiresAt,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return session, errors.New("invalid_refresh_session")
@@ -333,12 +351,21 @@ func (a *app) refreshSession(ctx context.Context, token, csrf string) (refreshSe
 	return session, tx.Commit()
 }
 
-func (a *app) activeRefreshSession(ctx context.Context, sessionID, userID uint64) (bool, error) {
+func (a *app) activeRefreshSession(
+	ctx context.Context,
+	sessionID, userID, groupID, groupVersion uint64,
+) (bool, error) {
 	var exists int
 	err := a.db.QueryRowContext(ctx, `SELECT 1
 		FROM refresh_sessions
-		WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?`,
-		sessionID, userID, time.Now().UTC()).Scan(&exists)
+		WHERE id=? AND user_id=? AND current_group_id <=> ? AND group_version=?
+		  AND revoked_at IS NULL AND expires_at>?`,
+		sessionID,
+		userID,
+		nullableUint64SQL(groupID),
+		groupVersion,
+		time.Now().UTC(),
+	).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -357,18 +384,33 @@ func (a *app) revokeRefreshSession(ctx context.Context, token string) error {
 	return err
 }
 
-func (a *app) updateRefreshSessionGroup(ctx context.Context, r *http.Request, groupID uint64) {
-	cookie, err := r.Cookie(refreshCookieName)
-	if err != nil || strings.TrimSpace(cookie.Value) == "" {
-		return
-	}
+func (a *app) updateRefreshSessionGroup(
+	ctx context.Context,
+	sessionID, userID, expectedVersion, groupID uint64,
+) (uint64, error) {
 	now := time.Now().UTC()
-	if _, err := a.db.ExecContext(ctx, `UPDATE refresh_sessions
-		SET current_group_id=?,updated_at=?
-		WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?`,
-		nullableUint64SQL(groupID), now, tokenHash(cookie.Value), now); err != nil {
-		slog.WarnContext(ctx, "refresh session group update failed", "error", err)
+	result, err := a.db.ExecContext(ctx, `UPDATE refresh_sessions
+		SET current_group_id=?,group_version=group_version+1,updated_at=?
+		WHERE id=? AND user_id=? AND group_version=?
+		  AND revoked_at IS NULL AND expires_at>?`,
+		nullableUint64SQL(groupID),
+		now,
+		sessionID,
+		userID,
+		expectedVersion,
+		now,
+	)
+	if err != nil {
+		return 0, err
 	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if affected != 1 {
+		return 0, errRefreshSessionGroupChanged
+	}
+	return expectedVersion + 1, nil
 }
 
 func refreshCredentials(r *http.Request) (string, string, error) {
@@ -553,36 +595,59 @@ type loginFailure struct {
 
 const maxLoginFailureEntries = 10_000
 const loginFailureTTL = 10 * time.Minute
+const maxLoginFailuresPerAccount = 8
+const maxLoginFailuresPerIP = 32
+const maxLoginFailuresPerCombination = 8
 
 func newLoginLimiter() *loginLimiter {
 	return &loginLimiter{failures: map[string]loginFailure{}}
 }
 
-func (l *loginLimiter) key(ip, username string) string {
-	return ip + "|" + username
+func loginAccountKey(username string) string {
+	return "account|" + username
+}
+
+func loginIPKey(ip string) string {
+	return "ip|" + ip
+}
+
+func loginCombinationKey(ip, username string) string {
+	return "combination|" + ip + "|" + username
 }
 
 func (l *loginLimiter) blocked(ip, username string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	key := l.key(ip, username)
-	item, ok := l.failures[key]
-	if !ok {
-		return false
-	}
 	now := time.Now()
-	if !item.BlockedTo.After(now) && now.Sub(item.LastSeen) >= loginFailureTTL {
-		delete(l.failures, key)
-		return false
+	blocked := false
+	for _, key := range []string{
+		loginAccountKey(username),
+		loginIPKey(ip),
+		loginCombinationKey(ip, username),
+	} {
+		item, ok := l.failures[key]
+		if !ok {
+			continue
+		}
+		if !item.BlockedTo.After(now) && now.Sub(item.LastSeen) >= loginFailureTTL {
+			delete(l.failures, key)
+			continue
+		}
+		blocked = blocked || item.BlockedTo.After(now)
 	}
-	return item.BlockedTo.After(now)
+	return blocked
 }
 
 func (l *loginLimiter) fail(ip, username string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	key := l.key(ip, username)
+	l.failKeyLocked(loginAccountKey(username), maxLoginFailuresPerAccount, now)
+	l.failKeyLocked(loginIPKey(ip), maxLoginFailuresPerIP, now)
+	l.failKeyLocked(loginCombinationKey(ip, username), maxLoginFailuresPerCombination, now)
+}
+
+func (l *loginLimiter) failKeyLocked(key string, limit int, now time.Time) {
 	item, exists := l.failures[key]
 	if exists && !item.BlockedTo.After(now) && now.Sub(item.LastSeen) >= loginFailureTTL {
 		item = loginFailure{}
@@ -592,7 +657,7 @@ func (l *loginLimiter) fail(ip, username string) {
 	}
 	item.Count++
 	item.LastSeen = now
-	if item.Count >= 8 {
+	if item.Count >= limit {
 		item.BlockedTo = now.Add(loginFailureTTL)
 	}
 	l.failures[key] = item
@@ -614,7 +679,8 @@ func (l *loginLimiter) evictOneLocked(now time.Time) {
 func (l *loginLimiter) success(ip, username string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.failures, l.key(ip, username))
+	delete(l.failures, loginAccountKey(username))
+	delete(l.failures, loginCombinationKey(ip, username))
 }
 
 func (a *app) recordLoginLog(r *http.Request, input userdomain.LoginLog) {
