@@ -468,6 +468,11 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_filename")
 			return
 		}
+		if errors.Is(err, assetdomain.ErrInvalidAssetCategory) ||
+			errors.Is(err, assetdomain.ErrAssetCategoryFileMismatch) {
+			a.writeAssetError(w, err)
+			return
+		}
 		if errors.Is(err, assetdomain.ErrStorageDirectory) {
 			writeError(w, http.StatusInternalServerError, "asset_dir_failed")
 			return

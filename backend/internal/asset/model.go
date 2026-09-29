@@ -166,6 +166,11 @@ type BatchDeleteInput struct {
 	AssetIDs []uint64 `json:"asset_ids"`
 }
 
+type BatchCategoryInput struct {
+	AssetIDs []uint64 `json:"asset_ids"`
+	Category string   `json:"category"`
+}
+
 type BatchImportInput struct {
 	SourceAssetIDs []uint64 `json:"source_asset_ids"`
 }
@@ -182,6 +187,12 @@ type BatchDeleteResult struct {
 	OwnedCount    int      `json:"owned_count"`
 	ImportedCount int      `json:"imported_count"`
 	Count         int      `json:"count"`
+}
+
+type BatchCategoryResult struct {
+	AssetIDs []uint64 `json:"asset_ids"`
+	Category string   `json:"category"`
+	Count    int      `json:"count"`
 }
 
 type BatchImportResult struct {

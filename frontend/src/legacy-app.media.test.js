@@ -54,7 +54,7 @@ describe('video learning related resources', () => {
       url: '/api/assets/997/download',
       type: 'audio',
     }, [
-      { id: 958, title: '生命的道路(文字稿)', original_name: '基督是我们的生命(文字稿)-201903.pdf', category: 'book' },
+      { id: 958, title: '生命的道路(文字稿)', original_name: '基督是我们的生命(文字稿)-201903.pdf', category: 'passage' },
       { id: 992, title: '生命的道路-1', original_name: '生命的道路-1.pdf', category: 'handout' },
       { id: 997, title: '生命的道路-1引言', original_name: '201903生命-1引言.mp3', category: 'video', mime_type: 'audio/mpeg' },
     ]);
@@ -90,7 +90,7 @@ describe('video learning related resources', () => {
   it('builds one check-in entry per media task and keeps companions inside each entry', () => {
     vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });
     const assets = [
-      { id: 958, title: '生命的道路(文字稿)', original_name: '基督是我们的生命(文字稿)-201903.pdf', category: 'book' },
+      { id: 958, title: '生命的道路(文字稿)', original_name: '基督是我们的生命(文字稿)-201903.pdf', category: 'passage' },
       { id: 992, title: '生命的道路-1', original_name: '生命的道路-1.pdf', category: 'handout' },
       { id: 997, title: '生命的道路-1引言', original_name: '201903生命-1引言.mp3', category: 'video', mime_type: 'audio/mpeg' },
       { id: 998, title: '生命的道路-2亚伯拉罕与活祭(上)', original_name: '201903生命-2亚伯拉罕与活祭(上).mp3', category: 'video', mime_type: 'audio/mpeg' },
@@ -109,9 +109,9 @@ describe('video learning related resources', () => {
     expect(entries[1].contentLinks[0].url).toBe('/api/assets/998/download');
   });
 
-  it('associates an imported legacy markdown PDF with a same-title audio task', () => {
+  it('requires an explicit document category before associating a same-title PDF', () => {
     vi.stubGlobal('window', { location: { origin: 'https://mouss.synology.me:7399' } });
-    const [entry] = buildWeeklyVideoEntries([{
+    const tasks = [{
       id: 1298,
       title: 'DS10p-KX1-1-罪',
       assets: [{
@@ -121,7 +121,8 @@ describe('video learning related resources', () => {
         category: 'video',
         mime_type: 'audio/mpeg',
       }],
-    }], null, [
+    }];
+    const assets = [
       {
         id: 1049,
         title: 'DS10p-KX1-1-罪',
@@ -138,11 +139,20 @@ describe('video learning related resources', () => {
         category: 'video',
         mime_type: 'audio/mpeg',
       },
+    ];
+
+    const [uncategorizedEntry] = buildWeeklyVideoEntries(tasks, null, assets);
+    expect(uncategorizedEntry.contentLinks).toEqual([
+      expect.objectContaining({ url: '/api/assets/1051/download', type: 'audio' }),
     ]);
 
-    expect(entry.contentLinks).toEqual([
+    const [categorizedEntry] = buildWeeklyVideoEntries(tasks, null, [
+      { ...assets[0], category: 'handout' },
+      assets[1],
+    ]);
+    expect(categorizedEntry.contentLinks).toEqual([
       expect.objectContaining({ url: '/api/assets/1051/download', type: 'audio' }),
-      expect.objectContaining({ url: '/api/assets/1049/download', type: 'pdf', label: '文字稿' }),
+      expect.objectContaining({ url: '/api/assets/1049/download', type: 'pdf', label: '配套讲义' }),
     ]);
   });
 

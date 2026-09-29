@@ -568,7 +568,7 @@ function openAdjacentItem(item) {
 .viewer-main-pdf { display: flex; flex-direction: column; width: 100%; overflow: hidden; }
 .viewer-main-pdf > .viewer-main-toolbar { flex: 0 0 auto; }
 .viewer-main-pdf > :deep(.pdf-viewer) { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; }
-.viewer-sidebar { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.viewer-sidebar { align-self: start; height: fit-content; max-height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .viewer-related-mobile { display: none; }
 .reader-settings-toggle { display: inline-flex; min-height: 44px; }
 .reader-controls { display: none; }

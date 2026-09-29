@@ -57,3 +57,7 @@ type ImportInput struct {
 type RenameInput struct {
 	Title string `json:"title"`
 }
+
+type ChangeCategoryInput struct {
+	Category string `json:"category"`
+}

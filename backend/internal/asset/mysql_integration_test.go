@@ -83,6 +83,75 @@ func TestRenamePreservesResourceIdentityAndPropagationRules(t *testing.T) {
 	}
 }
 
+func TestChangeCategoryPropagatesOnlyThroughActiveOwnedBindings(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `
+		INSERT INTO assets(id,group_id,category,title,original_name,storage_path,mime_type,created_by,created_at,updated_at)
+		VALUES
+		  (1,1,'markdown','课程','course.pdf','team-owner-resources/objects/00000000000000000000000000000001/course.pdf','application/pdf',1,NOW(),NOW()),
+		  (2,2,'markdown','课程','course.pdf','team-owner-resources/objects/00000000000000000000000000000001/course.pdf','application/pdf',1,NOW(),NOW()),
+		  (3,3,'markdown','课程','course.pdf','team-owner-resources/objects/00000000000000000000000000000001/course.pdf','application/pdf',1,NOW(),NOW()),
+		  (4,1,'book','第二课','second.pdf','team-source-resources/objects/00000000000000000000000000000005/second.pdf','application/pdf',1,NOW(),NOW()),
+		  (5,2,'book','第二课','second.pdf','team-source-resources/objects/00000000000000000000000000000005/second.pdf','application/pdf',1,NOW(),NOW());
+		INSERT INTO asset_bindings(asset_id,group_id,resource_key,asset_kind,source_asset_id,imported_at,deleted_at,created_at,updated_at)
+		VALUES
+		  (1,1,'00000000000000000000000000000001','owned',NULL,NULL,NULL,NOW(),NOW()),
+		  (2,2,'00000000000000000000000000000002','imported',1,NOW(),NULL,NOW(),NOW()),
+		  (3,3,'00000000000000000000000000000003','imported',1,NOW(),NOW(),NOW(),NOW()),
+		  (4,1,'00000000000000000000000000000004','imported',5,NOW(),NULL,NOW(),NOW()),
+		  (5,2,'00000000000000000000000000000005','owned',NULL,NULL,NULL,NOW(),NOW())`)
+
+	repo := asset.NewMySQLRepository(db)
+	changedAt := time.Date(2026, 9, 25, 1, 2, 3, 0, time.UTC)
+	if err := repo.ChangeCategory(t.Context(), 1, 1, "handout", changedAt); err != nil {
+		t.Fatal(err)
+	}
+	assertAssetCategory(t, db, 1, "handout")
+	assertAssetCategory(t, db, 2, "handout")
+	assertAssetCategory(t, db, 3, "markdown")
+
+	if err := repo.ChangeCategory(t.Context(), 2, 2, "passage", changedAt.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	assertAssetCategory(t, db, 1, "handout")
+	assertAssetCategory(t, db, 2, "passage")
+
+	result, err := repo.BatchChangeCategory(t.Context(), 1, asset.BatchCategoryInput{
+		AssetIDs: []uint64{1, 4},
+		Category: "passage",
+	}, changedAt.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Count != 2 {
+		t.Fatalf("batch result = %+v, want 2 updates", result)
+	}
+	assertAssetCategory(t, db, 1, "passage")
+	assertAssetCategory(t, db, 2, "passage")
+	assertAssetCategory(t, db, 3, "markdown")
+	assertAssetCategory(t, db, 4, "passage")
+	assertAssetCategory(t, db, 5, "book")
+
+	if _, err := repo.BatchChangeCategory(t.Context(), 1, asset.BatchCategoryInput{
+		AssetIDs: []uint64{4, 999},
+		Category: "book",
+	}, changedAt.Add(3*time.Minute)); err == nil {
+		t.Fatal("BatchChangeCategory() error = nil, want missing asset")
+	}
+	assertAssetCategory(t, db, 4, "passage")
+}
+
+func assertAssetCategory(t *testing.T, db *sql.DB, assetID uint64, want string) {
+	t.Helper()
+	var got string
+	if err := db.QueryRow(`SELECT category FROM assets WHERE id=?`, assetID).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("asset %d category = %q, want %q", assetID, got, want)
+	}
+}
+
 func assertAssetFields(t *testing.T, db *sql.DB, assetID uint64, wantTitle, wantOriginalName, wantStoragePath string) {
 	t.Helper()
 	var title, originalName, storagePath string

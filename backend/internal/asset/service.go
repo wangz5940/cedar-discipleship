@@ -16,20 +16,32 @@ import (
 )
 
 var (
-	ErrInvalidFilename    = errors.New("invalid_filename")
-	ErrStorageDirectory   = errors.New("asset_dir_failed")
-	ErrStorageWrite       = errors.New("asset_write_failed")
-	ErrSharingUnsupported = errors.New("asset_sharing_unsupported")
-	ErrInvalidShareScope  = errors.New("invalid_share_scope")
-	ErrInvalidGroupCode   = errors.New("invalid_group_code")
-	ErrInvalidBatchInput  = errors.New("invalid_batch_input")
-	ErrInvalidAssetTitle  = errors.New("invalid_asset_title")
-	ErrAssetInUse         = errors.New("asset_in_use")
+	ErrInvalidFilename           = errors.New("invalid_filename")
+	ErrStorageDirectory          = errors.New("asset_dir_failed")
+	ErrStorageWrite              = errors.New("asset_write_failed")
+	ErrSharingUnsupported        = errors.New("asset_sharing_unsupported")
+	ErrInvalidShareScope         = errors.New("invalid_share_scope")
+	ErrInvalidGroupCode          = errors.New("invalid_group_code")
+	ErrInvalidBatchInput         = errors.New("invalid_batch_input")
+	ErrInvalidAssetTitle         = errors.New("invalid_asset_title")
+	ErrInvalidAssetCategory      = errors.New("invalid_asset_category")
+	ErrAssetCategoryFileMismatch = errors.New("asset_category_file_mismatch")
+	ErrAssetInUse                = errors.New("asset_in_use")
 )
 
 var (
-	groupCodePattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
-	taskScopedTitleRegexp = regexp.MustCompile(`[0-9]{1,4}[[:space:]]*(?:[-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页`)
+	groupCodePattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	ministryCategoryPattern = regexp.MustCompile(`^ministry-[0-9]+$`)
+	taskScopedTitleRegexp   = regexp.MustCompile(`[0-9]{1,4}[[:space:]]*(?:[-~—–至到][[:space:]]*[0-9]{1,4})?[[:space:]]*页`)
+	managedAssetExtensions  = map[string][]string{
+		"mentor":   {".pdf"},
+		"book":     {".pdf"},
+		"passage":  {".pdf"},
+		"markdown": {".md", ".markdown", ".txt"},
+		"video":    {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".weba", ".m4v", ".mov", ".mp4", ".webm"},
+		"handout":  {".pdf"},
+		"outline":  {".avif", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"},
+	}
 )
 
 const maxBatchAssetIDs = 200
@@ -82,7 +94,13 @@ func (s *Service) Upload(ctx context.Context, req UploadRequest) (*AssetVO, erro
 	if safeName == "" {
 		return nil, ErrInvalidFilename
 	}
-	category := firstNonEmpty(req.Category, "uploaded")
+	category, err := normalizeUploadCategory(req.Category)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAssetCategoryFile(category, safeName); err != nil {
+		return nil, err
+	}
 	repo, ok := s.repo.(interface {
 		GroupCode(context.Context, uint64) (string, error)
 	})
@@ -214,12 +232,89 @@ func (s *Service) Rename(ctx context.Context, groupID, assetID uint64, input Ren
 	return &vo, nil
 }
 
+func (s *Service) ChangeCategory(ctx context.Context, groupID, assetID uint64, input ChangeCategoryInput) (*AssetVO, error) {
+	category, ok := normalizeManagedAssetCategory(input.Category)
+	if !ok {
+		return nil, ErrInvalidAssetCategory
+	}
+	item, err := s.repo.FindByID(ctx, groupID, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAssetCategoryFile(category, item.OriginalName); err != nil {
+		return nil, err
+	}
+	if item.Category == category {
+		vo := toAssetVO(*item)
+		return &vo, nil
+	}
+	repo, ok := s.repo.(interface {
+		ChangeCategory(context.Context, uint64, uint64, string, time.Time) error
+	})
+	if !ok {
+		return nil, ErrSharingUnsupported
+	}
+	if err := repo.ChangeCategory(ctx, groupID, assetID, category, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	item, err = s.repo.FindByID(ctx, groupID, assetID)
+	if err != nil {
+		return nil, err
+	}
+	vo := toAssetVO(*item)
+	return &vo, nil
+}
+
 func (s *Service) RemoveImport(ctx context.Context, groupID, importedAssetID, actorID uint64) error {
 	repo, err := s.sharingRepo()
 	if err != nil {
 		return err
 	}
 	return repo.RemoveImport(ctx, groupID, importedAssetID, actorID, time.Now().UTC())
+}
+
+func normalizeUploadCategory(value string) (string, error) {
+	category := strings.TrimSpace(strings.ToLower(value))
+	if category == "" || category == "uploaded" {
+		return "uploaded", nil
+	}
+	if ministryCategoryPattern.MatchString(category) {
+		return category, nil
+	}
+	if normalized, ok := normalizeManagedAssetCategory(category); ok {
+		return normalized, nil
+	}
+	return "", ErrInvalidAssetCategory
+}
+
+func normalizeManagedAssetCategory(value string) (string, bool) {
+	category := strings.TrimSpace(strings.ToLower(value))
+	switch category {
+	case "audio":
+		return "video", true
+	case "pdf":
+		return "passage", true
+	case "share", "ppt":
+		return "handout", true
+	case "mentor", "book", "passage", "markdown", "video", "handout", "outline":
+		return category, true
+	default:
+		return "", false
+	}
+}
+
+func validateAssetCategoryFile(category, fileName string) error {
+	if category == "uploaded" || strings.HasPrefix(category, "ministry-") {
+		return nil
+	}
+	extension := strings.ToLower(filepath.Ext(strings.TrimSpace(fileName)))
+	allowed := managedAssetExtensions[category]
+	for _, candidate := range allowed {
+		if extension == candidate {
+			return nil
+		}
+	}
+	return ErrAssetCategoryFileMismatch
 }
 
 func (s *Service) DependencyGraph(ctx context.Context, groupID uint64, isSuperAdmin bool, filter DependencyFilter) (*DependencyGraph, error) {
@@ -250,6 +345,36 @@ func (s *Service) BatchSaveShareSettings(ctx context.Context, groupID, actorID u
 		AssetIDs:         assetIDs,
 		Scope:            shareInput.Scope,
 		ConsumerGroupIDs: shareInput.ConsumerGroupIDs,
+	}, time.Now().UTC())
+}
+
+func (s *Service) BatchChangeCategory(ctx context.Context, groupID uint64, input BatchCategoryInput) (*BatchCategoryResult, error) {
+	assetIDs, err := normalizeBatchAssetIDs(input.AssetIDs)
+	if err != nil {
+		return nil, err
+	}
+	category, ok := normalizeManagedAssetCategory(input.Category)
+	if !ok {
+		return nil, ErrInvalidAssetCategory
+	}
+	for _, assetID := range assetIDs {
+		item, err := s.repo.FindByID(ctx, groupID, assetID)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateAssetCategoryFile(category, item.OriginalName); err != nil {
+			return nil, err
+		}
+	}
+	repo, ok := s.repo.(interface {
+		BatchChangeCategory(context.Context, uint64, BatchCategoryInput, time.Time) (*BatchCategoryResult, error)
+	})
+	if !ok {
+		return nil, ErrSharingUnsupported
+	}
+	return repo.BatchChangeCategory(ctx, groupID, BatchCategoryInput{
+		AssetIDs: assetIDs,
+		Category: category,
 	}, time.Now().UTC())
 }
 

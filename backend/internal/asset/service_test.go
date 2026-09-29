@@ -78,6 +78,67 @@ func TestServiceUploadHonorsPrivateVisibility(t *testing.T) {
 	}
 }
 
+func TestServiceUploadValidatesCategoryAgainstFileFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		category string
+		fileName string
+		wantErr  error
+	}{
+		{name: "markdown accepts markdown", category: "markdown", fileName: "课程.md"},
+		{name: "markdown rejects PDF", category: "markdown", fileName: "课程.pdf", wantErr: ErrAssetCategoryFileMismatch},
+		{name: "handout accepts PDF", category: "handout", fileName: "课程.pdf"},
+		{name: "handout rejects markdown", category: "handout", fileName: "课程.md", wantErr: ErrAssetCategoryFileMismatch},
+		{name: "media accepts audio", category: "video", fileName: "课程.mp3"},
+		{name: "media accepts video", category: "video", fileName: "课程.mp4"},
+		{name: "media rejects PDF", category: "video", fileName: "课程.pdf", wantErr: ErrAssetCategoryFileMismatch},
+		{name: "unknown category rejected", category: "unknown", fileName: "课程.pdf", wantErr: ErrInvalidAssetCategory},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &fakeRepository{}
+			storage := &fakeStorage{stored: &StoredObject{StoragePath: "test/object"}}
+			service := NewService(repo, storage, "")
+
+			_, err := service.Upload(context.Background(), UploadRequest{
+				GroupID:  1,
+				ActorID:  2,
+				Category: tt.category,
+				FileName: tt.fileName,
+				Reader:   strings.NewReader("content"),
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Upload() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil && storage.saves != 0 {
+				t.Fatalf("storage saves = %d, want 0", storage.saves)
+			}
+		})
+	}
+}
+
+func TestServiceUploadMergesLegacyAudioCategoryIntoMedia(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepository{}
+	service := NewService(repo, &fakeStorage{
+		stored: &StoredObject{StoragePath: "test/audio.mp3"},
+	}, "")
+
+	if _, err := service.Upload(context.Background(), UploadRequest{
+		GroupID: 1, ActorID: 2, Category: "audio", FileName: "课程.mp3", Reader: strings.NewReader("audio"),
+	}); err != nil {
+		t.Fatalf("Upload() error = %v", err)
+	}
+	if repo.created.Category != "video" {
+		t.Fatalf("created category = %q, want video", repo.created.Category)
+	}
+}
+
 func TestServiceRenameNormalizesTitle(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +155,63 @@ func TestServiceRenameNormalizesTitle(t *testing.T) {
 	}
 	if item.ID != 12 || item.Title != "新名称" {
 		t.Fatalf("Rename() = %+v, want renamed asset", item)
+	}
+}
+
+func TestServiceChangeCategoryValidatesFormatAndUpdatesAsset(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepository{
+		find: &Asset{ID: 12, GroupID: 6, Category: "markdown", OriginalName: "课程.pdf"},
+	}
+	service := NewService(repo, &fakeStorage{}, "")
+
+	item, err := service.ChangeCategory(context.Background(), 6, 12, ChangeCategoryInput{Category: "handout"})
+	if err != nil {
+		t.Fatalf("ChangeCategory() error = %v", err)
+	}
+	if repo.changedCategory != "handout" || item.Category != "handout" {
+		t.Fatalf("changed category = repository %q, response %q", repo.changedCategory, item.Category)
+	}
+
+	_, err = service.ChangeCategory(context.Background(), 6, 12, ChangeCategoryInput{Category: "markdown"})
+	if !errors.Is(err, ErrAssetCategoryFileMismatch) {
+		t.Fatalf("ChangeCategory() mismatch error = %v, want %v", err, ErrAssetCategoryFileMismatch)
+	}
+}
+
+func TestServiceBatchChangeCategoryValidatesAllAssetsBeforeWrite(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepository{finds: map[uint64]*Asset{
+		11: {ID: 11, GroupID: 6, Category: "markdown", OriginalName: "第一课.pdf"},
+		12: {ID: 12, GroupID: 6, Category: "book", OriginalName: "第二课.pdf"},
+	}}
+	service := NewService(repo, &fakeStorage{}, "")
+
+	result, err := service.BatchChangeCategory(context.Background(), 6, BatchCategoryInput{
+		AssetIDs: []uint64{11, 12, 11},
+		Category: "share",
+	})
+	if err != nil {
+		t.Fatalf("BatchChangeCategory() error = %v", err)
+	}
+	if strings.Join(uintsToStrings(repo.batchCategoryIDs), ",") != "11,12" ||
+		repo.batchCategory != "handout" || result.Count != 2 {
+		t.Fatalf("batch update = ids %v category %q result %+v", repo.batchCategoryIDs, repo.batchCategory, result)
+	}
+
+	repo.finds[12].OriginalName = "第二课.md"
+	repo.batchCategoryIDs = nil
+	_, err = service.BatchChangeCategory(context.Background(), 6, BatchCategoryInput{
+		AssetIDs: []uint64{11, 12},
+		Category: "handout",
+	})
+	if !errors.Is(err, ErrAssetCategoryFileMismatch) {
+		t.Fatalf("BatchChangeCategory() mismatch error = %v, want %v", err, ErrAssetCategoryFileMismatch)
+	}
+	if repo.batchCategoryIDs != nil {
+		t.Fatalf("repository received a partial batch: %v", repo.batchCategoryIDs)
 	}
 }
 
@@ -438,17 +556,24 @@ func TestResourceLibraryOrdersMentorBeforeOtherCategories(t *testing.T) {
 }
 
 type fakeRepository struct {
-	createErr    error
-	created      Asset
-	find         *Asset
-	list         []Asset
-	listErr      error
-	groupCode    string
-	nextID       uint64
-	renamedTitle string
+	createErr        error
+	created          Asset
+	find             *Asset
+	finds            map[uint64]*Asset
+	list             []Asset
+	listErr          error
+	groupCode        string
+	nextID           uint64
+	renamedTitle     string
+	changedCategory  string
+	batchCategoryIDs []uint64
+	batchCategory    string
 }
 
-func (r *fakeRepository) FindByID(context.Context, uint64, uint64) (*Asset, error) {
+func (r *fakeRepository) FindByID(_ context.Context, _, assetID uint64) (*Asset, error) {
+	if item := r.finds[assetID]; item != nil {
+		return item, nil
+	}
 	if r.find != nil {
 		return r.find, nil
 	}
@@ -488,12 +613,32 @@ func (r *fakeRepository) Rename(_ context.Context, _, _ uint64, title string, _ 
 	return nil
 }
 
+func (r *fakeRepository) ChangeCategory(_ context.Context, _, _ uint64, category string, _ time.Time) error {
+	r.changedCategory = category
+	if r.find != nil {
+		r.find.Category = category
+	}
+	return nil
+}
+
+func (r *fakeRepository) BatchChangeCategory(_ context.Context, _ uint64, input BatchCategoryInput, _ time.Time) (*BatchCategoryResult, error) {
+	r.batchCategoryIDs = append([]uint64(nil), input.AssetIDs...)
+	r.batchCategory = input.Category
+	return &BatchCategoryResult{
+		AssetIDs: input.AssetIDs,
+		Category: input.Category,
+		Count:    len(input.AssetIDs),
+	}, nil
+}
+
 type fakeStorage struct {
 	stored  *StoredObject
 	deleted string
+	saves   int
 }
 
 func (s *fakeStorage) Save(context.Context, string, string, io.Reader) (*StoredObject, error) {
+	s.saves++
 	return s.stored, nil
 }
 

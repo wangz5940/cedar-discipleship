@@ -12,13 +12,19 @@ import {
   Pencil,
   RefreshCw,
   Share2,
+  Tags,
   Trash2,
   X,
 } from '@lucide/vue';
 import { api, loadAdminData, reloadApp, toast } from '../legacy-app';
 import { confirmDialog, promptDialog } from '../ui/dialog';
 import { filterSharedResources } from '../runtime/resourceGovernance';
-import { normalizeResourceCategory, resourceCategoryLabel, resourceCategorySort } from '../runtime/resources';
+import {
+  normalizeResourceCategory,
+  resourceCategoriesForFiles,
+  resourceCategoryLabel,
+  resourceCategorySort,
+} from '../runtime/resources';
 import { useAppStateStore } from '../stores/appState';
 import DateField from './ui/DateField.vue';
 import MobileCardCollection from './ui/MobileCardCollection.vue';
@@ -46,11 +52,13 @@ const importDialog = ref(null);
 const batchShareDialog = ref(null);
 const batchDeleteDialog = ref(null);
 const batchImportDialog = ref(null);
+const categoryDialog = ref(null);
 const selectedAssetIDs = ref([]);
 const selectedSharedAssetIDs = ref([]);
 const batchBusy = ref(false);
 const batchProgress = ref('');
 const renamingAssetID = ref(0);
+const changingCategoryAssetID = ref(0);
 
 const views = [
   { key: 'owned', label: '本组资源', icon: Share2 },
@@ -421,6 +429,84 @@ async function renameAsset(asset) {
   }
 }
 
+function openCategoryDialog(asset) {
+  const options = resourceCategoriesForFiles([asset.original_name]);
+  if (!options.length) {
+    toast('当前文件格式没有可用的资源分类');
+    return;
+  }
+  const currentCategory = normalizeResourceCategory(asset.category);
+  categoryDialog.value = {
+    asset,
+    assets: [asset],
+    batch: false,
+    category: options.some((item) => item.key === currentCategory) ? currentCategory : '',
+    options,
+  };
+}
+
+function openBatchCategory() {
+  const assets = [...selectedAssets.value];
+  if (!assets.length) {
+    toast('请选择要修改类型的资源');
+    return;
+  }
+  const options = resourceCategoriesForFiles(assets.map((asset) => asset.original_name));
+  if (!options.length) {
+    toast('所选文件没有共同适用的文件类型，请按格式分批选择');
+    return;
+  }
+  const categories = new Set(assets.map((asset) => normalizeResourceCategory(asset.category)));
+  const currentCategory = categories.size === 1 ? [...categories][0] : '';
+  categoryDialog.value = {
+    asset: assets[0],
+    assets,
+    batch: true,
+    category: options.some((item) => item.key === currentCategory) ? currentCategory : '',
+    options,
+  };
+}
+
+async function saveAssetCategory() {
+  const dialog = categoryDialog.value;
+  if (!dialog?.category || changingCategoryAssetID.value) return;
+  changingCategoryAssetID.value = dialog.batch ? -1 : Number(dialog.asset.id);
+  if (dialog.batch) {
+    batchBusy.value = true;
+    batchProgress.value = `正在修改 ${dialog.assets.length} 个资源的文件类型…`;
+  }
+  try {
+    const result = await api(dialog.batch
+      ? '/admin/resource-batch/category'
+      : `/admin/assets/${dialog.asset.id}/category`, {
+      method: 'PUT',
+      body: JSON.stringify(dialog.batch
+        ? { asset_ids: dialog.assets.map((item) => item.id), category: dialog.category }
+        : { category: dialog.category }),
+    });
+    categoryDialog.value = null;
+    if (dialog.batch) clearAssetSelection();
+    await Promise.all([
+      reloadApp(),
+      loadAdminData(true),
+    ]);
+    await loadGovernance();
+    toast(dialog.batch
+      ? `已修改 ${result.result?.count || dialog.assets.length} 个资源的文件类型`
+      : '文件类型已更新');
+  } catch (error) {
+    const messages = {
+      invalid_asset_category: '请选择有效的文件类型',
+      asset_category_file_mismatch: '所选文件类型不支持该文件格式',
+    };
+    toast(messages[error.message] || error.message);
+  } finally {
+    changingCategoryAssetID.value = 0;
+    batchBusy.value = false;
+    batchProgress.value = '';
+  }
+}
+
 async function openImport(resource) {
   importDialog.value = {
     resource,
@@ -543,6 +629,7 @@ onMounted(loadGovernance);
         <span class="muted">已选 {{ selectedAssets.length }} 项，自有 {{ selectedOwnedAssets.length }} 项</span>
         <div class="resource-batch-actions">
           <button class="secondary" type="button" :disabled="batchShareDisabled" @click="openBatchShare"><Share2 :size="15" />批量权限</button>
+          <button class="secondary" type="button" :disabled="!selectedAssets.length || batchBusy" @click="openBatchCategory"><Tags :size="15" />批量修改类型</button>
           <button class="danger" type="button" :disabled="batchDeleteDisabled" @click="openBatchDelete"><Trash2 :size="15" />批量删除</button>
           <button class="ghost" type="button" :disabled="!selectedAssets.length || batchBusy" @click="clearAssetSelection">清空</button>
         </div>
@@ -556,6 +643,7 @@ onMounted(loadGovernance);
             <dl><div><dt>归属</dt><dd>{{ asset.asset_kind === 'imported' ? '已导入' : '本组自有' }}</dd></div><div><dt>更新</dt><dd>{{ formatDate(asset.updated_at) }}</dd></div></dl>
             <div class="resource-stack-actions">
               <button class="ghost resource-icon-button" type="button" title="重命名资料" aria-label="重命名资料" :disabled="renamingAssetID === Number(asset.id)" @click="renameAsset(asset)"><Pencil :size="16" /></button>
+              <button class="ghost resource-icon-button" type="button" title="修改资料分类" aria-label="修改资料分类" :disabled="changingCategoryAssetID === Number(asset.id)" @click="openCategoryDialog(asset)"><Tags :size="16" /></button>
               <button v-if="asset.asset_kind === 'imported'" class="danger" type="button" @click="removeImport(asset)"><Trash2 :size="15" />移除导入</button>
               <button v-else class="secondary" type="button" @click="openShare(asset)"><Share2 :size="15" />共享权限</button>
             </div>
@@ -645,6 +733,24 @@ onMounted(loadGovernance);
         </svg>
       </div>
     </template>
+
+    <div v-if="categoryDialog" class="modal-backdrop" @click.self="categoryDialog = null">
+      <section v-dialog-focus="() => { if (!changingCategoryAssetID) categoryDialog = null; }" class="resource-dialog" role="dialog" aria-modal="true" :aria-label="categoryDialog.batch ? '批量修改文件类型' : '修改文件类型'">
+        <header><div><span class="eyebrow">{{ categoryDialog.batch ? '批量修改类型' : '修改文件类型' }}</span><h3>{{ categoryDialog.batch ? `${categoryDialog.assets.length} 个资源` : categoryDialog.asset.title }}</h3></div><button class="ghost resource-icon-button" type="button" aria-label="关闭文件类型弹窗" :disabled="changingCategoryAssetID" @click="categoryDialog = null"><X :size="18" /></button></header>
+        <div class="resource-dialog-body">
+          <p v-if="categoryDialog.batch">所选文件会在一次操作中改为相同类型；自有资源会同步到仍在使用该资料的导入小组。</p>
+          <p v-else>{{ categoryDialog.asset.asset_kind === 'imported' ? '修改只影响当前小组的导入资源。' : '修改会同步到仍在使用该资料的导入小组。' }}</p>
+          <label class="resource-category-field">
+            <span>文件类型</span>
+            <select v-model="categoryDialog.category">
+              <option disabled value="">请选择文件类型</option>
+              <option v-for="category in categoryDialog.options" :key="category.key" :value="category.key">{{ category.label }}</option>
+            </select>
+          </label>
+        </div>
+        <footer><button class="ghost" type="button" :disabled="changingCategoryAssetID" @click="categoryDialog = null">取消</button><button type="button" :disabled="!categoryDialog.category || (!categoryDialog.batch && categoryDialog.category === normalizeResourceCategory(categoryDialog.asset.category)) || changingCategoryAssetID" @click="saveAssetCategory">保存类型</button></footer>
+      </section>
+    </div>
 
     <div v-if="shareDialog" class="modal-backdrop" @click.self="shareDialog = null">
       <section v-dialog-focus="() => { shareDialog = null; }" class="resource-dialog" role="dialog" aria-modal="true" aria-label="共享权限">
@@ -773,9 +879,29 @@ onMounted(loadGovernance);
 .resource-stack-card dl > div { padding: 8px; border-radius: 8px; background: var(--cd-surface-subtle); }
 .resource-stack-card dt { color: var(--cd-muted); font-size: 10px; }
 .resource-stack-card dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 700; }
-.resource-stack-actions { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }
+.resource-stack-actions { display: grid; grid-template-columns: repeat(2, 44px) minmax(0, 1fr); gap: 8px; }
 .resource-stack-actions button { min-height: 42px; }
+.resource-category-field { display: grid; gap: 6px; }
 .resource-stack-card--history { grid-template-rows: auto auto 1fr; }
+@media (min-width: 1024px) {
+  .resource-masonry :deep(.mobile-card-collection__masonry) { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .resource-stack-card {
+    grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.6fr) minmax(180px, 1fr) auto;
+    grid-template-rows: auto;
+    align-items: center;
+    min-height: 68px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+  .resource-stack-card header { justify-content: flex-start; }
+  .resource-stack-copy strong, .resource-stack-copy small,
+  .resource-stack-card dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .resource-stack-card dl { min-width: 0; }
+  .resource-stack-card dl > div { min-width: 0; padding: 6px 8px; }
+  .resource-stack-actions { display: flex; justify-content: flex-end; white-space: nowrap; }
+  .resource-stack-card--history { grid-template-columns: minmax(120px, .8fr) minmax(180px, 1fr) minmax(260px, 2fr); grid-template-rows: auto; }
+}
 @media (max-width: 767px) {
   .resource-governance-head, .resource-batch-toolbar, .resource-filter-bar, .resource-graph-tools { align-items: stretch; flex-wrap: wrap; }
   .resource-batch-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }

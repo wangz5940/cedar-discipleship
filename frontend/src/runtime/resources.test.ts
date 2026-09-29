@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   RESOURCE_UPLOAD_CATEGORIES,
   isWeeklyMediaResource,
+  isResourceFileAllowed,
   mergeResourceAssets,
   normalizeResourceCategory,
+  resourceCategoryAccept,
+  resourceCategoriesForFiles,
   resourceCategoryGroupKey,
   resourceCategoryLabel,
   resourceSelectionValue,
@@ -22,16 +25,36 @@ describe('resource runtime helpers', () => {
       'book',
       'passage',
       'markdown',
-      'audio',
       'video',
       'handout',
       'outline',
     ]);
     expect(Object.fromEntries(RESOURCE_UPLOAD_CATEGORIES.map((item) => [item.key, item.label]))).toMatchObject({
       passage: '文字稿 / 读物 PDF',
-      audio: '音频文件',
-      video: '视频文件',
+      video: '音视频文件',
     });
+  });
+
+  it('defines category-specific upload formats', () => {
+    expect(resourceCategoryAccept('handout')).toBe('.pdf');
+    expect(resourceCategoryAccept('markdown')).toContain('.md');
+    expect(resourceCategoryAccept('video')).toContain('.mp3');
+    expect(resourceCategoryAccept('video')).toContain('.mp4');
+
+    expect(isResourceFileAllowed('handout', '课程讲义.PDF')).toBe(true);
+    expect(isResourceFileAllowed('markdown', '课程文字.md')).toBe(true);
+    expect(isResourceFileAllowed('markdown', '课程文字.pdf')).toBe(false);
+    expect(isResourceFileAllowed('video', '课程录音.mp3')).toBe(true);
+    expect(isResourceFileAllowed('video', '课程录像.mp4')).toBe(true);
+    expect(isResourceFileAllowed('outline', '本周提纲.webp')).toBe(true);
+  });
+
+  it('offers only categories supported by every selected file', () => {
+    expect(resourceCategoriesForFiles(['第一课.pdf', '第二课.pdf']).map((item) => item.key))
+      .toEqual(['mentor', 'book', 'passage', 'handout']);
+    expect(resourceCategoriesForFiles(['第一课.mp3', '第二课.mp4']).map((item) => item.key))
+      .toEqual(['video']);
+    expect(resourceCategoriesForFiles(['第一课.pdf', '第二课.md'])).toEqual([]);
   });
 
   it('builds stable selection values for persisted task bindings', () => {

@@ -102,6 +102,61 @@ func (r *MySQLRepository) Rename(ctx context.Context, groupID, assetID uint64, t
 	return tx.Commit()
 }
 
+func (r *MySQLRepository) ChangeCategory(ctx context.Context, groupID, assetID uint64, category string, at time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := r.changeCategoryTx(ctx, tx, groupID, assetID, category, at); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *MySQLRepository) BatchChangeCategory(ctx context.Context, groupID uint64, input BatchCategoryInput, at time.Time) (*BatchCategoryResult, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	for _, assetID := range input.AssetIDs {
+		if err := r.changeCategoryTx(ctx, tx, groupID, assetID, input.Category, at); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &BatchCategoryResult{
+		AssetIDs: input.AssetIDs,
+		Category: input.Category,
+		Count:    len(input.AssetIDs),
+	}, nil
+}
+
+func (r *MySQLRepository) changeCategoryTx(ctx context.Context, tx *sql.Tx, groupID, assetID uint64, category string, at time.Time) error {
+	_, binding, err := r.assetWithBinding(ctx, tx, groupID, assetID)
+	if err != nil {
+		return err
+	}
+	if binding.AssetKind == AssetKindOwned {
+		_, err = tx.ExecContext(ctx, `UPDATE assets a
+			JOIN asset_bindings b ON b.asset_id=a.id AND b.group_id=a.group_id
+			SET a.category=?,a.updated_at=?
+			WHERE (a.id=? AND a.group_id=?)
+			   OR (b.source_asset_id=? AND b.asset_kind=? AND b.deleted_at IS NULL)`,
+			category, at, assetID, groupID, assetID, AssetKindImported)
+	} else {
+		_, err = tx.ExecContext(ctx, `UPDATE assets SET category=?,updated_at=? WHERE id=? AND group_id=?`,
+			category, at, assetID, groupID)
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (r *MySQLRepository) BatchSaveShareSettings(ctx context.Context, groupID, actorID uint64, input BatchShareInput, at time.Time) (*BatchShareResult, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

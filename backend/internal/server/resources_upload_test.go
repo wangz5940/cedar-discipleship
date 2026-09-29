@@ -72,6 +72,49 @@ func TestAdminUploadAssetMultipartStorage(t *testing.T) {
 	}
 }
 
+func TestAdminUploadAssetRejectsCategoryFormatMismatch(t *testing.T) {
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	if err := form.WriteField("category", "markdown"); err != nil {
+		t.Fatalf("write category: %v", err)
+	}
+	part, err := form.CreateFormFile("file", "课程.pdf")
+	if err != nil {
+		t.Fatalf("create file part: %v", err)
+	}
+	if _, err := part.Write([]byte("pdf")); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatalf("close multipart form: %v", err)
+	}
+
+	storage := &uploadAssetStorage{}
+	a := &app{
+		assets: assetdomain.NewService(&uploadAssetRepo{}, storage, ""),
+		audits: auditdomain.NewService(&uploadAuditRepo{}),
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/admin/assets/upload", &body)
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID:             1,
+		CurrentGroupID: 1,
+	}))
+	recorder := httptest.NewRecorder()
+
+	a.handleAdminUploadAsset(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("asset_category_file_mismatch")) {
+		t.Fatalf("body = %s, want asset_category_file_mismatch", recorder.Body.String())
+	}
+	if storage.size != 0 {
+		t.Fatalf("stored size = %d, want 0", storage.size)
+	}
+}
+
 type zeroReader struct{}
 
 func (zeroReader) Read(p []byte) (int, error) {

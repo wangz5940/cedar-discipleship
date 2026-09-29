@@ -25,7 +25,14 @@ export type ResourceCategoryDefinition = {
   groupDescription: string;
   uploadable?: boolean;
   aliases?: string[];
+  extensions?: string[];
 };
+
+const PDF_EXTENSIONS = ['.pdf'];
+const TEXT_EXTENSIONS = ['.md', '.markdown', '.txt'];
+const AUDIO_EXTENSIONS = ['.aac', '.flac', '.m4a', '.mp3', '.ogg', '.opus', '.wav', '.weba'];
+const VIDEO_EXTENSIONS = ['.m4v', '.mov', '.mp4', '.webm'];
+const IMAGE_EXTENSIONS = ['.avif', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'];
 
 // Add or rename resource categories here first; upload, filter, and display UI derive from this registry.
 export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
@@ -36,6 +43,7 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     groupLabel: '导读',
     groupDescription: 'Mentor 导读材料',
     uploadable: true,
+    extensions: PDF_EXTENSIONS,
   },
   {
     key: 'book',
@@ -44,6 +52,7 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     groupLabel: '书籍',
     groupDescription: '书籍 PDF 与阅读任务材料',
     uploadable: true,
+    extensions: PDF_EXTENSIONS,
   },
   {
     key: 'passage',
@@ -53,6 +62,7 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     groupDescription: '读物 PDF 与经文材料',
     uploadable: true,
     aliases: ['pdf'],
+    extensions: PDF_EXTENSIONS,
   },
   {
     key: 'markdown',
@@ -61,6 +71,7 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     groupLabel: '文字',
     groupDescription: 'Markdown 与文字材料',
     uploadable: true,
+    extensions: TEXT_EXTENSIONS,
   },
   {
     key: 'audio',
@@ -68,15 +79,16 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     uploadLabel: '音频文件',
     groupLabel: '音频',
     groupDescription: '音频与播放材料',
-    uploadable: true,
+    extensions: AUDIO_EXTENSIONS,
   },
   {
     key: 'video',
     label: '音视频',
-    uploadLabel: '视频文件',
+    uploadLabel: '音视频文件',
     groupLabel: '音视频',
     groupDescription: '音频、视频与播放材料',
     uploadable: true,
+    extensions: [...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS],
   },
   {
     key: 'handout',
@@ -86,6 +98,7 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     groupDescription: '配套讲义材料',
     uploadable: true,
     aliases: ['share', 'ppt'],
+    extensions: PDF_EXTENSIONS,
   },
   {
     key: 'outline',
@@ -94,6 +107,7 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     groupLabel: '提纲',
     groupDescription: '提纲背诵图片',
     uploadable: true,
+    extensions: IMAGE_EXTENSIONS,
   },
   {
     key: 'ministry_attachment',
@@ -105,7 +119,11 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
 
 export const RESOURCE_UPLOAD_CATEGORIES = RESOURCE_CATEGORIES
   .filter((item) => item.uploadable)
-  .map((item) => ({ key: item.key, label: item.uploadLabel || item.label }));
+  .map((item) => ({
+    key: item.key,
+    label: item.uploadLabel || item.label,
+    accept: (item.extensions || []).join(','),
+  }));
 
 const CATEGORY_ALIAS_MAP = new Map<string, string>(
   RESOURCE_CATEGORIES.flatMap((item) => [
@@ -123,6 +141,26 @@ export function normalizeResourceCategory(category?: unknown): string {
 export function resourceCategoryLabel(category?: unknown): string {
   const key = normalizeResourceCategory(category);
   return RESOURCE_CATEGORIES.find((item) => item.key === key)?.label || String(category || '') || '资源';
+}
+
+export function resourceCategoryAccept(category?: unknown): string {
+  const key = normalizeResourceCategory(category);
+  return RESOURCE_CATEGORIES.find((item) => item.key === key)?.extensions?.join(',') || '';
+}
+
+export function isResourceFileAllowed(category: unknown, fileName: unknown): boolean {
+  const key = normalizeResourceCategory(category);
+  const definition = RESOURCE_CATEGORIES.find((item) => item.key === key);
+  const name = String(fileName || '').trim().toLowerCase();
+  return Boolean(definition?.extensions?.some((extension) => name.endsWith(extension)));
+}
+
+export function resourceCategoriesForFiles(fileNames: unknown[]): typeof RESOURCE_UPLOAD_CATEGORIES {
+  const names = Array.isArray(fileNames) ? fileNames : [];
+  if (!names.length) return [];
+  return RESOURCE_UPLOAD_CATEGORIES.filter(
+    (category) => names.every((fileName) => isResourceFileAllowed(category.key, fileName)),
+  );
 }
 
 export function resourceCategorySort(left?: unknown, right?: unknown): number {

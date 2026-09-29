@@ -13,7 +13,7 @@ describe('resource layouts', () => {
     expect(component).toContain('mode="masonry"');
   });
 
-  it('keeps resource management lists in masonry mode', () => {
+  it('keeps resource management lists in the shared responsive collection', () => {
     const component = readComponent('ResourceGovernance.vue');
 
     expect(component).not.toContain('<StackedWheel');
@@ -22,13 +22,25 @@ describe('resource layouts', () => {
     expect(component.match(/mode="masonry"/g)).toHaveLength(3);
   });
 
-  it('preserves the original resource card width while laying cards out flat', () => {
+  it('uses one resource per row on desktop while retaining mobile cards', () => {
     const appStyles = readComponent('app-root.css');
     const governance = readComponent('ResourceGovernance.vue');
 
     expect(appStyles).toContain('repeat(auto-fill, minmax(min(100%, 320px), 1fr))');
     expect(governance).toContain('repeat(auto-fill, minmax(min(100%, 320px), 1fr))');
-    expect(appStyles).not.toContain('.app-resource-masonry .mobile-card-collection__masonry {\n    grid-template-columns: repeat(2');
-    expect(governance).not.toContain('.resource-masonry :deep(.mobile-card-collection__masonry) { grid-template-columns: repeat(2');
+    expect(governance).toContain('@media (min-width: 1024px)');
+    expect(governance).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(governance).toContain('grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.6fr) minmax(180px, 1fr) auto;');
+  });
+
+  it('keeps related media materials beside desktop content and above mobile content', () => {
+    const viewer = readComponent('ContentViewer.vue');
+
+    expect(viewer).toContain('class="viewer-sidebar viewer-sidebar-desktop"');
+    expect(viewer).toContain('class="viewer-related-mobile"');
+    expect(viewer.indexOf('class="viewer-related-mobile"')).toBeLessThan(viewer.indexOf('class="viewer-main"'));
+    expect(viewer).toContain('.viewer-sidebar { align-self: start; height: fit-content;');
+    expect(viewer).toContain('.viewer-sidebar-desktop { display: none; }');
+    expect(viewer).toContain('.viewer-related-mobile { display: block;');
   });
 });

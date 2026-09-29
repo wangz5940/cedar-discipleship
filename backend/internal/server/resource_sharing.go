@@ -107,6 +107,29 @@ func (a *app) handleRenameAsset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"asset": item})
 }
 
+func (a *app) handleChangeAssetCategory(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
+	}
+	assetID := pathUint64(r, "id")
+	var input assetdomain.ChangeCategoryInput
+	if !readJSON(w, r, &input) {
+		return
+	}
+	item, err := a.assets.ChangeCategory(r.Context(), groupID, assetID, input)
+	if err != nil {
+		a.writeAssetError(w, err)
+		return
+	}
+	if a.todayCache != nil {
+		a.todayCache.Clear()
+	}
+	a.audit(groupID, u.ID, "change_asset_category", "assets", assetID, nil, input, r)
+	writeJSON(w, http.StatusOK, map[string]any{"asset": item})
+}
+
 func (a *app) handleResourceImportPreview(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)
@@ -164,6 +187,32 @@ func (a *app) handleBatchAssetSharing(w http.ResponseWriter, r *http.Request) {
 	a.audit(groupID, u.ID, "batch_share_assets", "assets", 0, nil, map[string]any{
 		"asset_ids": result.AssetIDs,
 		"scope":     result.Scope,
+		"count":     result.Count,
+	}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"result": result})
+}
+
+func (a *app) handleBatchAssetCategory(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
+	}
+	var input assetdomain.BatchCategoryInput
+	if !readJSON(w, r, &input) {
+		return
+	}
+	result, err := a.assets.BatchChangeCategory(r.Context(), groupID, input)
+	if err != nil {
+		a.writeAssetError(w, err)
+		return
+	}
+	if a.todayCache != nil {
+		a.todayCache.Clear()
+	}
+	a.audit(groupID, u.ID, "batch_change_asset_category", "assets", 0, nil, map[string]any{
+		"asset_ids": result.AssetIDs,
+		"category":  result.Category,
 		"count":     result.Count,
 	}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"result": result})
@@ -271,6 +320,10 @@ func (a *app) writeAssetError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, assetdomain.ErrInvalidAssetTitle):
 		writeError(w, http.StatusBadRequest, "invalid_asset_title")
+	case errors.Is(err, assetdomain.ErrInvalidAssetCategory):
+		writeError(w, http.StatusBadRequest, "invalid_asset_category")
+	case errors.Is(err, assetdomain.ErrAssetCategoryFileMismatch):
+		writeError(w, http.StatusBadRequest, "asset_category_file_mismatch")
 	case errors.Is(err, assetdomain.ErrInvalidBatchInput):
 		writeError(w, http.StatusBadRequest, "invalid_batch_input")
 	case errors.Is(err, assetdomain.ErrInvalidShareScope):

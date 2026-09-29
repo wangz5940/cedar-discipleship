@@ -262,6 +262,12 @@ func TestResourceSharingAdminRoutesRequireGroupAdmin(t *testing.T) {
 			handler: a.handleRenameAsset,
 		},
 		{
+			name:    "change asset category",
+			method:  http.MethodPut,
+			path:    "/api/admin/assets/1/category",
+			handler: a.handleChangeAssetCategory,
+		},
+		{
 			name:    "import resource",
 			method:  http.MethodPost,
 			path:    "/api/admin/resource-imports",
@@ -272,6 +278,12 @@ func TestResourceSharingAdminRoutesRequireGroupAdmin(t *testing.T) {
 			method:  http.MethodPut,
 			path:    "/api/admin/resource-batch/sharing",
 			handler: a.handleBatchAssetSharing,
+		},
+		{
+			name:    "batch category",
+			method:  http.MethodPut,
+			path:    "/api/admin/resource-batch/category",
+			handler: a.handleBatchAssetCategory,
 		},
 		{
 			name:    "batch delete",

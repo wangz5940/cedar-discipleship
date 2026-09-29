@@ -123,6 +123,11 @@ function taskActionText(task, link = null) {
   return '阅读';
 }
 
+function visibleTaskContentLinks(task) {
+  const links = Array.isArray(task?.contentLinks) ? task.contentLinks : [];
+  return task?.type === 'weekly_video' ? links.slice(0, 1) : links;
+}
+
 function taskMaterialTitle(link) {
   const title = String(link?.title || '').trim();
   const label = String(link?.label || '').trim();
@@ -212,11 +217,11 @@ async function exportStatsChart() {
                 </span>
               </header>
 
-              <div v-if="task.contentLinks?.length > 1" class="task__body">
+              <div v-if="visibleTaskContentLinks(task).length > 1" class="task__body">
                 <!-- Multiple Links if Daily Devotion has multiple -->
-                <div v-if="task.contentLinks?.length > 1" class="task-materials">
+                <div v-if="visibleTaskContentLinks(task).length > 1" class="task-materials">
                   <button
-                    v-for="link in task.contentLinks"
+                    v-for="link in visibleTaskContentLinks(task)"
                     :key="`${link.label}:${link.url}`"
                     class="quiet task-material-link"
                     type="button"
@@ -235,7 +240,7 @@ async function exportStatsChart() {
               <footer class="actions">
                 <button v-if="task.type === 'weekly_verse'" class="secondary" type="button" title="确认或粘贴原文后生成默写卷" @click="quizTask = task">默写</button>
                 <button
-                  v-if="task.contentLinks?.length === 1"
+                  v-if="visibleTaskContentLinks(task).length === 1"
                   class="secondary task-read-button"
                   type="button"
                   @click="openTaskContent(task)"

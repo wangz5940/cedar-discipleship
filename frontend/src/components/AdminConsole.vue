@@ -25,6 +25,7 @@ import {
   RESOURCE_UPLOAD_CATEGORIES,
   isWeeklyMediaResource,
   normalizeResourceCategory,
+  resourceCategoryAccept,
 } from '../runtime/resources';
 import DateField from './ui/DateField.vue';
 import {
@@ -86,8 +87,9 @@ const memberUsername = ref('');
 const memberUsernameInput = ref(null);
 const memberConflict = ref(null);
 const memberSaving = ref(false);
-const uploadCategory = ref('markdown');
+const uploadCategory = ref('handout');
 const uploadInput = ref(null);
+const uploadingFiles = ref(false);
 const studyWeeksImportInput = ref(null);
 const localBackupImportInput = ref(null);
 const notificationSaving = ref(false);
@@ -510,7 +512,13 @@ async function deleteDailyPlan() {
 }
 
 async function uploadSelectedFile() {
-  await uploadLibraryFile(uploadInput.value, uploadCategory.value);
+  if (uploadingFiles.value) return;
+  uploadingFiles.value = true;
+  try {
+    await uploadLibraryFile(uploadInput.value, uploadCategory.value);
+  } finally {
+    uploadingFiles.value = false;
+  }
 }
 
 async function runAdminExport(path, fallbackName, successMessage) {
@@ -957,9 +965,9 @@ async function runLocalBackupImport() {
                         <option v-for="category in RESOURCE_UPLOAD_CATEGORIES" :key="category.key" :value="category.key">{{ category.label }}</option>
                       </select>
                     </label>
-                    <label class="admin-field"><span class="admin-field-label">选择文件</span><input ref="uploadInput" type="file" /></label>
+                    <label class="admin-field"><span class="admin-field-label">选择文件</span><input ref="uploadInput" type="file" multiple :accept="resourceCategoryAccept(uploadCategory)" /></label>
                     <div class="form-actions">
-                      <button :disabled="!canEditLearning" type="button" @click="uploadSelectedFile">上传到资源库</button>
+                      <button :disabled="!canEditLearning || uploadingFiles" type="button" @click="uploadSelectedFile">{{ uploadingFiles ? '正在上传…' : '上传到资源库' }}</button>
                       <button class="secondary" type="button" @click="loadAdminData(true)">刷新文件列表</button>
                     </div>
                   </div>

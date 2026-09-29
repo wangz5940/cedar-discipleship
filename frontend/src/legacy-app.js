@@ -48,6 +48,7 @@ import {
   setAccessToken,
 } from './runtime/authSession';
 import {
+  isResourceFileAllowed,
   mergeResourceAssets,
   normalizeResourceCategory,
   resourceCategoryLabel,
@@ -950,15 +951,8 @@ function classifyViewerResource(item) {
   const fallbackType = inferResourceType(item?.original_name || item?.title || item?.url || '');
   const type = String(item?.type || inferResourceTypeFromMime(item?.mime_type, fallbackType)).toLowerCase();
   const category = normalizeResourceCategory(item?.category);
-  const text = `${item?.title || ''} ${item?.original_name || ''} ${category}`.toLowerCase();
   if (isMediaResourceType(type)) return 'video';
-  if (/(文字稿|逐字稿|录音稿|讲稿)/.test(text)) return 'passage';
-  if (category === 'mentor' || text.includes('mentor') || text.includes('导读') || text.includes('内容概要') || text.includes('圣经纵览的目的与价值')) return 'mentor';
-  if (['handout', 'share', 'ppt'].includes(category)) return 'handout';
-  if (category === 'book') return 'book';
-  if (category === 'passage') return 'passage';
-  if (text.includes('讲义') || text.includes('ppt') || text.includes('handout')) return 'handout';
-  if (type === 'pdf') return 'passage';
+  if (['mentor', 'handout', 'book', 'passage'].includes(category)) return category;
   return '';
 }
 
@@ -2484,27 +2478,56 @@ export async function deleteWeekDraft() {
   }
 }
 
+export async function uploadResourceFiles(files, category, request = fetchWithAuth) {
+  const selected = Array.from(files || []);
+  const invalid = selected.filter((file) => !isResourceFileAllowed(category, file?.name));
+  if (invalid.length) {
+    throw new Error(`${invalid.map((file) => file.name).join('、')} 的格式不符合“${resourceCategoryLabel(category)}”分类`);
+  }
+
+  let uploaded = 0;
+  const failures = [];
+  for (const file of selected) {
+    const form = new FormData();
+    form.append('category', category);
+    form.append('file', file);
+    try {
+      const res = await request('/api/admin/assets/upload', {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      uploaded += 1;
+    } catch (error) {
+      failures.push({ name: file.name, error: error.message });
+    }
+  }
+  return { uploaded, failures };
+}
+
 export async function uploadLibraryFile(fileInput, category) {
-  const file = fileInput.files?.[0];
-  if (!file) {
+  const files = Array.from(fileInput?.files || []);
+  if (!files.length) {
     toast('请先选择文件');
     return;
   }
-  const form = new FormData();
-  form.append('category', category);
-  form.append('file', file);
   try {
-		const res = await fetchWithAuth('/api/admin/assets/upload', {
-      method: 'POST',
-      body: form,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    toast('文件已上传到资源库');
+    const result = await uploadResourceFiles(files, category);
     fileInput.value = '';
-    await Promise.all([loadAll(), loadAdminData(true)]);
+    if (result.uploaded > 0) {
+      await Promise.all([loadAll(), loadAdminData(true)]);
+    }
+    if (result.failures.length) {
+      const names = result.failures.map((item) => item.name).join('、');
+      toast(`已上传 ${result.uploaded}/${files.length} 个文件；失败：${names}`);
+      return result;
+    }
+    toast(`已上传 ${result.uploaded} 个文件到资源库`);
+    return result;
   } catch (error) {
     toast(error.message);
+    return null;
   }
 }
 

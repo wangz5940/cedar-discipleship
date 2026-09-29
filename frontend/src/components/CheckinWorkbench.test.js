@@ -26,7 +26,7 @@ describe('learning statistics', () => {
 });
 
 describe('weekly media tasks', () => {
-  it('renders separate check-in cards and keeps companion materials inside each card', async () => {
+  it('renders only the media action on each check-in card', async () => {
     const pinia = createPinia();
     useCheckinWorkbenchStore(pinia).setSnapshot({
       visible: true,
@@ -59,8 +59,9 @@ describe('weekly media tasks', () => {
     await renderToString(createSSRApp(CheckinWorkbench).use(pinia), context);
     const html = context.teleports['#vue-checkin-workbench'];
     expect(html.match(/完成并打卡/g)).toHaveLength(2);
-    expect(html).toContain('配套讲义');
-    expect(html).toContain('播放');
-    expect(html).toContain('查看');
+    expect(html.match(/播放/g)).toHaveLength(2);
+    expect(html).not.toContain('配套讲义');
+    expect(html).not.toContain('第一篇讲义');
+    expect(html).not.toContain('查看');
   });
 });
