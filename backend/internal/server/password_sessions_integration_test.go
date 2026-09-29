@@ -22,6 +22,7 @@ func passwordSessionFixture(t *testing.T) (*app, *sql.DB) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "011_refresh_sessions.sql")
 	testdb.Apply(t, db, "016_refresh_session_group_version.sql")
+	testdb.Apply(t, db, "016_refresh_session_group_version.sql")
 	testdb.Apply(t, db, "013_member_personal_settings.sql")
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
 		VALUES (1,'a','A',NOW(),NOW()),(2,'b','B',NOW(),NOW());
