@@ -80,6 +80,7 @@ type Request struct {
 	UserDisplayName string
 	Message         string
 	Status          Status
+	SubmissionRound uint64
 	CreatedAt       time.Time
 }
 
@@ -95,20 +96,21 @@ type Notification struct {
 }
 
 type Share struct {
-	ID          uint64
-	GroupID     uint64
-	AuthorID    uint64
-	AuthorName  string
-	Title       string
-	Body        string
-	Status      Status
-	IsPinned    bool
-	ReviewedBy  uint64
-	PublishedAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedBy   uint64
-	DeletedAt   *time.Time
+	ID              uint64
+	GroupID         uint64
+	AuthorID        uint64
+	AuthorName      string
+	Title           string
+	Body            string
+	Status          Status
+	SubmissionRound uint64
+	IsPinned        bool
+	ReviewedBy      uint64
+	PublishedAt     *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DeletedBy       uint64
+	DeletedAt       *time.Time
 }
 
 type Attachment struct {

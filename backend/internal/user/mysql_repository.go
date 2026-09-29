@@ -456,13 +456,23 @@ func (r *MySQLRepository) AdminMember(ctx context.Context, groupID, memberID uin
 	return &member, nil
 }
 
-func (r *MySQLRepository) RemoveMember(ctx context.Context, groupID, memberID, userID uint64, at time.Time) error {
+func (r *MySQLRepository) RemoveMember(
+	ctx context.Context,
+	groupID, memberID, userID, actorID uint64,
+	at time.Time,
+) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `UPDATE group_members SET status=0, updated_at=? WHERE id=? AND group_id=?`, at, memberID, groupID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE ministry_group_requests
+		SET status='rejected',reviewed_by=?,reviewed_at=?,updated_at=?
+		WHERE study_group_id=? AND user_id=? AND request_type='join' AND status='pending'`,
+		actorID, at, at, groupID, userID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_group_roles WHERE group_id=? AND user_id=?`, groupID, userID); err != nil {

@@ -22,7 +22,7 @@ type Repository interface {
 	UpdateSettings(ctx context.Context, studyGroupID, groupID uint64, input GroupSettingsInput, at time.Time) error
 	ListPendingRequests(ctx context.Context, studyGroupID uint64) ([]Request, error)
 	Request(ctx context.Context, studyGroupID, requestID uint64) (*Request, error)
-	DecideRequest(ctx context.Context, studyGroupID, requestID, reviewerID uint64, decision Status, at time.Time) error
+	DecideRequest(ctx context.Context, studyGroupID, requestID, reviewerID, expectedRound uint64, decision Status, at time.Time) error
 
 	ListNotifications(ctx context.Context, studyGroupID, userID uint64, limit int) ([]Notification, error)
 	ReadNotification(ctx context.Context, studyGroupID, notificationID, userID uint64, at time.Time) error
@@ -30,7 +30,7 @@ type Repository interface {
 	ListShares(ctx context.Context, studyGroupID, groupID, userID uint64, canModerate bool) ([]Share, error)
 	CreateShare(ctx context.Context, studyGroupID, groupID, authorID uint64, input ShareInput, status Status, at time.Time) (uint64, error)
 	UpdateShare(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, input ShareInput, status Status, canManage bool, at time.Time) error
-	DecideShare(ctx context.Context, studyGroupID, groupID, shareID, reviewerID uint64, decision Status, at time.Time) error
+	DecideShare(ctx context.Context, studyGroupID, groupID, shareID, reviewerID, expectedRound uint64, decision Status, at time.Time) error
 	SetSharePinned(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, pinned bool, at time.Time) error
 	ListDeletedShares(ctx context.Context, studyGroupID, groupID, actorID uint64, canManage bool, limit int) ([]Share, error)
 	DeleteShare(ctx context.Context, studyGroupID, groupID, shareID, actorID uint64, canManage bool, at time.Time) error

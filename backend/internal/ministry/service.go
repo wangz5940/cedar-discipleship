@@ -8,22 +8,24 @@ import (
 )
 
 var (
-	ErrGroupNotFound          = errors.New("ministry_group_not_found")
-	ErrForbidden              = errors.New("ministry_forbidden")
-	ErrAlreadyMember          = errors.New("ministry_already_member")
-	ErrNotMember              = errors.New("ministry_not_member")
-	ErrLeaderCannotLeave      = errors.New("ministry_leader_cannot_leave")
-	ErrInvalidDecision        = errors.New("ministry_invalid_decision")
-	ErrRequestAlreadyReviewed = errors.New("ministry_request_already_reviewed")
-	ErrRequestNotFound        = errors.New("ministry_request_not_found")
-	ErrShareNotFound          = errors.New("ministry_share_not_found")
-	ErrProgressNotFound       = errors.New("ministry_progress_not_found")
-	ErrShareAlreadyReviewed   = errors.New("ministry_share_already_reviewed")
-	ErrContentRequired        = errors.New("ministry_content_required")
-	ErrInvalidVisibility      = errors.New("ministry_invalid_visibility")
-	ErrInvalidRole            = errors.New("ministry_invalid_role")
-	ErrInvalidAttachment      = errors.New("ministry_invalid_attachment")
-	ErrInvalidGroupName       = errors.New("ministry_invalid_group_name")
+	ErrGroupNotFound             = errors.New("ministry_group_not_found")
+	ErrForbidden                 = errors.New("ministry_forbidden")
+	ErrAlreadyMember             = errors.New("ministry_already_member")
+	ErrNotMember                 = errors.New("ministry_not_member")
+	ErrLeaderCannotLeave         = errors.New("ministry_leader_cannot_leave")
+	ErrInvalidDecision           = errors.New("ministry_invalid_decision")
+	ErrSubmissionRoundConflict   = errors.New("ministry_submission_round_conflict")
+	ErrRequestApplicantNotMember = errors.New("ministry_request_applicant_not_member")
+	ErrRequestAlreadyReviewed    = errors.New("ministry_request_already_reviewed")
+	ErrRequestNotFound           = errors.New("ministry_request_not_found")
+	ErrShareNotFound             = errors.New("ministry_share_not_found")
+	ErrProgressNotFound          = errors.New("ministry_progress_not_found")
+	ErrShareAlreadyReviewed      = errors.New("ministry_share_already_reviewed")
+	ErrContentRequired           = errors.New("ministry_content_required")
+	ErrInvalidVisibility         = errors.New("ministry_invalid_visibility")
+	ErrInvalidRole               = errors.New("ministry_invalid_role")
+	ErrInvalidAttachment         = errors.New("ministry_invalid_attachment")
+	ErrInvalidGroupName          = errors.New("ministry_invalid_group_name")
 )
 
 type Service struct {
@@ -294,6 +296,7 @@ func (s *Service) DecideRequest(
 	ctx context.Context,
 	studyGroupID, requestID uint64,
 	actor Actor,
+	expectedRound uint64,
 	decision Status,
 	at time.Time,
 ) error {
@@ -311,7 +314,7 @@ func (s *Service) DecideRequest(
 	if err != nil || !canReviewShares(actor, access) {
 		return ErrForbidden
 	}
-	return s.repo.DecideRequest(ctx, studyGroupID, requestID, actor.UserID, decision, at)
+	return s.repo.DecideRequest(ctx, studyGroupID, requestID, actor.UserID, expectedRound, decision, at)
 }
 
 func (s *Service) Notifications(
@@ -407,6 +410,7 @@ func (s *Service) DecideShare(
 	ctx context.Context,
 	studyGroupID, groupID, shareID uint64,
 	actor Actor,
+	expectedRound uint64,
 	decision Status,
 	at time.Time,
 ) error {
@@ -417,7 +421,7 @@ func (s *Service) DecideShare(
 	if err != nil || !canReviewShares(actor, access) {
 		return ErrForbidden
 	}
-	return s.repo.DecideShare(ctx, studyGroupID, groupID, shareID, actor.UserID, decision, at)
+	return s.repo.DecideShare(ctx, studyGroupID, groupID, shareID, actor.UserID, expectedRound, decision, at)
 }
 
 func (s *Service) SetSharePinned(
@@ -585,7 +589,7 @@ func requestVO(item Request) RequestVO {
 	return RequestVO{
 		ID: item.ID, GroupID: item.GroupID, UserID: item.UserID,
 		UserDisplayName: item.UserDisplayName, Message: item.Message,
-		Status: item.Status, CreatedAt: item.CreatedAt,
+		Status: item.Status, SubmissionRound: item.SubmissionRound, CreatedAt: item.CreatedAt,
 	}
 }
 
@@ -595,7 +599,7 @@ func shareVOs(items []Share, actor Actor, access Access) []ShareVO {
 		out = append(out, ShareVO{
 			ID: item.ID, GroupID: item.GroupID, AuthorID: item.AuthorID,
 			AuthorName: item.AuthorName, Title: item.Title, Body: item.Body,
-			Status: item.Status, IsPinned: item.IsPinned,
+			Status: item.Status, SubmissionRound: item.SubmissionRound, IsPinned: item.IsPinned,
 			CanEdit:     item.DeletedAt == nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
 			CanDelete:   item.DeletedAt == nil && (item.AuthorID == actor.UserID || canManage(actor, access)),
 			CanRestore:  item.DeletedAt != nil && (item.AuthorID == actor.UserID || canManage(actor, access)),

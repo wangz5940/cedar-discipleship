@@ -21,7 +21,7 @@ type Repository interface {
 	UpdatePersonalSettings(ctx context.Context, userID, groupID uint64, settings PersonalSettings, at time.Time) error
 	CreateMember(ctx context.Context, groupID, actorID uint64, input CreateMemberInput) (uint64, error)
 	AdminMember(ctx context.Context, groupID, memberID uint64) (*AdminMember, error)
-	RemoveMember(ctx context.Context, groupID, memberID, userID uint64, at time.Time) error
+	RemoveMember(ctx context.Context, groupID, memberID, userID, actorID uint64, at time.Time) error
 	SetRole(ctx context.Context, groupID, userID uint64, role string, grant bool, at time.Time) error
 	ResetNonSuperPasswords(ctx context.Context, passwordHash string, at time.Time) (int64, error)
 	SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time) (int64, error)

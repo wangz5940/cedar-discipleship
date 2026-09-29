@@ -361,6 +361,9 @@ func (r *MySQLRepository) RequestJoin(
 	if _, err := lockGroupTx(ctx, tx, studyGroupID, groupID); err != nil {
 		return 0, err
 	}
+	if err := lockActiveStudyGroupMemberTx(ctx, tx, studyGroupID, userID); err != nil {
+		return 0, err
+	}
 	var memberID uint64
 	err = tx.QueryRowContext(
 		ctx,
@@ -738,7 +741,7 @@ func (r *MySQLRepository) ListPendingRequests(
 	rows, err := r.db.QueryContext(
 		ctx,
 		`SELECT req.id,req.ministry_group_id,req.user_id,u.display_name,
-		        req.message,req.status,req.created_at
+		        req.message,req.status,req.submission_round,req.created_at
 		   FROM ministry_group_requests req
 		   JOIN users u ON u.id=req.user_id
 		  WHERE req.study_group_id=? AND req.status='pending'
@@ -760,7 +763,7 @@ func (r *MySQLRepository) Request(
 	err := r.db.QueryRowContext(
 		ctx,
 		`SELECT req.id,req.ministry_group_id,req.user_id,u.display_name,
-		        req.message,req.status,req.created_at
+		        req.message,req.status,req.submission_round,req.created_at
 		   FROM ministry_group_requests req
 		   JOIN users u ON u.id=req.user_id
 		  WHERE req.study_group_id=? AND req.id=?`,
@@ -773,6 +776,7 @@ func (r *MySQLRepository) Request(
 		&item.UserDisplayName,
 		&item.Message,
 		&item.Status,
+		&item.SubmissionRound,
 		&item.CreatedAt,
 	)
 	if err != nil {
@@ -783,7 +787,7 @@ func (r *MySQLRepository) Request(
 
 func (r *MySQLRepository) DecideRequest(
 	ctx context.Context,
-	studyGroupID, requestID, reviewerID uint64,
+	studyGroupID, requestID, reviewerID, expectedRound uint64,
 	decision Status,
 	at time.Time,
 ) error {
@@ -795,8 +799,8 @@ func (r *MySQLRepository) DecideRequest(
 
 	var groupID, userID uint64
 	// Resolve the immutable group identity before taking locks in group -> request order.
-	if err := tx.QueryRowContext(ctx, `SELECT ministry_group_id FROM ministry_group_requests
-		WHERE id=? AND study_group_id=?`, requestID, studyGroupID).Scan(&groupID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT ministry_group_id,user_id FROM ministry_group_requests
+		WHERE id=? AND study_group_id=?`, requestID, studyGroupID).Scan(&groupID, &userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrRequestNotFound
 		}
@@ -804,6 +808,11 @@ func (r *MySQLRepository) DecideRequest(
 	}
 	if _, err := lockGroupTx(ctx, tx, studyGroupID, groupID); err != nil {
 		return err
+	}
+	if decision == StatusApproved {
+		if err := lockActiveStudyGroupMemberTx(ctx, tx, studyGroupID, userID); err != nil {
+			return err
+		}
 	}
 	var round uint64
 	var status Status
@@ -823,22 +832,26 @@ func (r *MySQLRepository) DecideRequest(
 	if status != StatusPending {
 		return ErrRequestAlreadyReviewed
 	}
+	if round != expectedRound {
+		return ErrSubmissionRoundConflict
+	}
 	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE ministry_group_requests
 		    SET status=?,reviewed_by=?,reviewed_at=?,updated_at=?
-		  WHERE id=? AND study_group_id=? AND status='pending'`,
+		  WHERE id=? AND study_group_id=? AND status='pending' AND submission_round=?`,
 		decision,
 		reviewerID,
 		at,
 		at,
 		requestID,
 		studyGroupID,
+		expectedRound,
 	)
 	if err != nil {
 		return fmt.Errorf("deciding ministry request: %w", err)
 	}
-	if err := requireOneRow(result, ErrRequestAlreadyReviewed); err != nil {
+	if err := requireOneRow(result, ErrSubmissionRoundConflict); err != nil {
 		return err
 	}
 	if decision == StatusApproved {
@@ -965,7 +978,7 @@ func (r *MySQLRepository) ListShares(
 		ctx,
 		`SELECT s.id,s.ministry_group_id,s.author_user_id,u.display_name,
 		        s.title,s.body_markdown,s.status,CASE WHEN pin.share_id IS NULL THEN 0 ELSE 1 END,
-		        COALESCE(s.reviewed_by,0),
+		        COALESCE(s.reviewed_by,0),s.submission_round,
 		        s.published_at,s.created_at,s.updated_at
 		   FROM ministry_shares s
 		   JOIN users u ON u.id=s.author_user_id
@@ -1004,6 +1017,7 @@ func (r *MySQLRepository) ListShares(
 			&item.Status,
 			&item.IsPinned,
 			&item.ReviewedBy,
+			&item.SubmissionRound,
 			&publishedAt,
 			&item.CreatedAt,
 			&item.UpdatedAt,
@@ -1034,7 +1048,7 @@ func (r *MySQLRepository) ListDeletedShares(
 		ctx,
 		`SELECT s.id,s.ministry_group_id,s.author_user_id,u.display_name,
 		        s.title,s.body_markdown,s.status,CASE WHEN pin.share_id IS NULL THEN 0 ELSE 1 END,
-		        COALESCE(s.reviewed_by,0),s.published_at,s.created_at,s.updated_at,
+		        COALESCE(s.reviewed_by,0),s.submission_round,s.published_at,s.created_at,s.updated_at,
 		        d.deleted_by,d.deleted_at
 		   FROM ministry_shares s
 		   JOIN users u ON u.id=s.author_user_id
@@ -1071,6 +1085,7 @@ func (r *MySQLRepository) ListDeletedShares(
 			&item.Status,
 			&item.IsPinned,
 			&item.ReviewedBy,
+			&item.SubmissionRound,
 			&publishedAt,
 			&item.CreatedAt,
 			&item.UpdatedAt,
@@ -1216,7 +1231,7 @@ func (r *MySQLRepository) UpdateShare(
 
 func (r *MySQLRepository) DecideShare(
 	ctx context.Context,
-	studyGroupID, groupID, shareID, reviewerID uint64,
+	studyGroupID, groupID, shareID, reviewerID, expectedRound uint64,
 	decision Status,
 	at time.Time,
 ) error {
@@ -1251,6 +1266,9 @@ func (r *MySQLRepository) DecideShare(
 	if status != StatusPending {
 		return ErrShareAlreadyReviewed
 	}
+	if round != expectedRound {
+		return ErrSubmissionRoundConflict
+	}
 	var publishedAt any
 	if decision == StatusPublished {
 		publishedAt = at
@@ -1259,7 +1277,8 @@ func (r *MySQLRepository) DecideShare(
 		ctx,
 		`UPDATE ministry_shares
 		    SET status=?,reviewed_by=?,reviewed_at=?,published_at=?,updated_at=?
-		  WHERE id=? AND study_group_id=? AND ministry_group_id=? AND status='pending'`,
+		  WHERE id=? AND study_group_id=? AND ministry_group_id=?
+		    AND status='pending' AND submission_round=?`,
 		decision,
 		reviewerID,
 		at,
@@ -1268,11 +1287,12 @@ func (r *MySQLRepository) DecideShare(
 		shareID,
 		studyGroupID,
 		groupID,
+		expectedRound,
 	)
 	if err != nil {
 		return fmt.Errorf("deciding ministry share: %w", err)
 	}
-	if err := requireOneRow(result, ErrShareAlreadyReviewed); err != nil {
+	if err := requireOneRow(result, ErrSubmissionRoundConflict); err != nil {
 		return err
 	}
 	notificationTitle := "分享申请未通过"
@@ -1801,6 +1821,7 @@ func scanRequests(rows *sql.Rows) ([]Request, error) {
 			&item.UserDisplayName,
 			&item.Message,
 			&item.Status,
+			&item.SubmissionRound,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning ministry request: %w", err)
@@ -1842,6 +1863,43 @@ func lockGroupTx(ctx context.Context, tx *sql.Tx, studyGroupID, groupID uint64) 
 		return 0, fmt.Errorf("locking ministry group: %w", err)
 	}
 	return leaderID, nil
+}
+
+func lockActiveStudyGroupMemberTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	studyGroupID, userID uint64,
+) error {
+	var memberStatus int
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT status FROM group_members WHERE group_id=? AND user_id=? FOR UPDATE`,
+		studyGroupID,
+		userID,
+	).Scan(&memberStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrRequestApplicantNotMember
+		}
+		return fmt.Errorf("locking study group member: %w", err)
+	}
+	if memberStatus != 1 {
+		return ErrRequestApplicantNotMember
+	}
+	var userStatus int
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT status FROM users WHERE id=? FOR UPDATE`,
+		userID,
+	).Scan(&userStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrRequestApplicantNotMember
+		}
+		return fmt.Errorf("locking ministry applicant: %w", err)
+	}
+	if userStatus != 1 {
+		return ErrRequestApplicantNotMember
+	}
+	return nil
 }
 
 func userDisplayNameTx(ctx context.Context, tx *sql.Tx, userID uint64) (string, error) {

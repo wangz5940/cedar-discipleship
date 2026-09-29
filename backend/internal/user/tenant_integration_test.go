@@ -13,6 +13,7 @@ import (
 func TestTenantMembershipAndGroupSelection(t *testing.T) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "013_member_personal_settings.sql")
+	testdb.Apply(t, db, "003_ministry_groups.sql")
 	testdb.Exec(t, db, `INSERT INTO tenants(id,name,status,created_at,updated_at) VALUES(2,'主体 B',1,NOW(),NOW());
 		INSERT INTO study_groups(id,tenant_id,code,name,created_at,updated_at)
 		VALUES (1,1,'a1','A1',NOW(),NOW()),(2,1,'a2','A2',NOW(),NOW()),(3,2,'b1','B1',NOW(),NOW());
@@ -52,7 +53,7 @@ func TestTenantMembershipAndGroupSelection(t *testing.T) {
 	if _, err := repo.CreateMember(t.Context(), 2, 1, CreateMemberInput{UserID: 2, DisplayName: "Both"}); err != nil {
 		t.Fatalf("same-tenant add member: %v", err)
 	}
-	if err := repo.RemoveMember(t.Context(), 1, 1, 2, time.Now()); err != nil {
+	if err := repo.RemoveMember(t.Context(), 1, 1, 2, 1, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	after, err := service.CurrentUser(t.Context(), 2, 3)

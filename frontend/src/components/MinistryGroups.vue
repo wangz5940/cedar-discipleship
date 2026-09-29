@@ -310,10 +310,17 @@ async function setMemberRole(member, role) {
 
 async function decideRequest(request, decision) {
   await runMutation(async () => {
-    await api(`/ministry-requests/${request.id}/decision`, {
-      method: 'POST',
-      body: JSON.stringify({ decision }),
-    });
+    try {
+      await api(`/ministry-requests/${request.id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({
+          decision,
+          expected_submission_round: Number(request.submission_round),
+        }),
+      });
+    } catch (error) {
+      await refreshStaleDecision(error, Number(request.group_id));
+    }
     showToast(decision === 'approved' ? '加入申请已通过' : '加入申请已拒绝');
     await loadWorkspace(request.group_id, { preserveView: true });
   });
@@ -377,13 +384,27 @@ async function decideShare(share, decision) {
   const group = detail.value?.group;
   if (!group) return;
   await runMutation(async () => {
-    await api(`/ministry-groups/${group.id}/shares/${share.id}/decision`, {
-      method: 'POST',
-      body: JSON.stringify({ decision }),
-    });
+    try {
+      await api(`/ministry-groups/${group.id}/shares/${share.id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({
+          decision,
+          expected_submission_round: Number(share.submission_round),
+        }),
+      });
+    } catch (error) {
+      await refreshStaleDecision(error, Number(group.id));
+    }
     showToast(decision === 'published' ? '分享已发布' : '分享已拒绝');
     await refreshSelectedGroup(group.id);
   });
+}
+
+async function refreshStaleDecision(error, groupID) {
+  if (error.code !== 'ministry_submission_round_conflict') throw error;
+  await loadWorkspace(groupID, { preserveView: true });
+  error.message = '审批内容已更新，请重新审批';
+  throw error;
 }
 
 async function setSharePinned(share, pinned) {

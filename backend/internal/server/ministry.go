@@ -321,9 +321,7 @@ func (a *app) handleMinistryRequestDecision(w http.ResponseWriter, r *http.Reque
 	if studyGroupID == 0 {
 		return
 	}
-	var input struct {
-		Decision ministrydomain.Status `json:"decision"`
-	}
+	var input ministrydomain.DecisionInput
 	if !readJSON(w, r, &input) {
 		return
 	}
@@ -333,6 +331,7 @@ func (a *app) handleMinistryRequestDecision(w http.ResponseWriter, r *http.Reque
 		studyGroupID,
 		requestID,
 		ministryActor(user),
+		input.ExpectedSubmissionRound,
 		input.Decision,
 		time.Now().UTC(),
 	)
@@ -347,7 +346,10 @@ func (a *app) handleMinistryRequestDecision(w http.ResponseWriter, r *http.Reque
 		"ministry_group_requests",
 		requestID,
 		nil,
-		map[string]any{"decision": input.Decision},
+		map[string]any{
+			"decision":         input.Decision,
+			"submission_round": input.ExpectedSubmissionRound,
+		},
 		r,
 	)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -449,9 +451,7 @@ func (a *app) handleMinistryShareDecision(w http.ResponseWriter, r *http.Request
 	if studyGroupID == 0 {
 		return
 	}
-	var input struct {
-		Decision ministrydomain.Status `json:"decision"`
-	}
+	var input ministrydomain.DecisionInput
 	if !readJSON(w, r, &input) {
 		return
 	}
@@ -462,6 +462,7 @@ func (a *app) handleMinistryShareDecision(w http.ResponseWriter, r *http.Request
 		pathUint64(r, "id"),
 		shareID,
 		ministryActor(user),
+		input.ExpectedSubmissionRound,
 		input.Decision,
 		time.Now().UTC(),
 	)
@@ -476,7 +477,10 @@ func (a *app) handleMinistryShareDecision(w http.ResponseWriter, r *http.Request
 		"ministry_shares",
 		shareID,
 		nil,
-		map[string]any{"decision": input.Decision},
+		map[string]any{
+			"decision":         input.Decision,
+			"submission_round": input.ExpectedSubmissionRound,
+		},
 		r,
 	)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -760,6 +764,8 @@ func (a *app) writeMinistryError(w http.ResponseWriter, r *http.Request, err err
 		errors.Is(err, ministrydomain.ErrProgressNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ministrydomain.ErrAlreadyMember),
+		errors.Is(err, ministrydomain.ErrSubmissionRoundConflict),
+		errors.Is(err, ministrydomain.ErrRequestApplicantNotMember),
 		errors.Is(err, ministrydomain.ErrRequestAlreadyReviewed),
 		errors.Is(err, ministrydomain.ErrShareAlreadyReviewed):
 		writeError(w, http.StatusConflict, err.Error())

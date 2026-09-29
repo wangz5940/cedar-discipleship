@@ -16,6 +16,7 @@ func requestRoundFixture(t *testing.T) (*MySQLRepository, *sql.DB) {
 	t.Helper()
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "003_ministry_groups.sql")
+	testdb.Apply(t, db, "005_ministry_catalog_and_pins.sql")
 	testdb.Apply(t, db, "006_ministry_content_deletions.sql")
 	testdb.Apply(t, db, "014_ministry_submission_rounds.sql")
 	testdb.Apply(t, db, "014_ministry_submission_rounds.sql")
@@ -58,11 +59,18 @@ func TestJoinAndShareNotificationsFollowSubmissionRounds(t *testing.T) {
 		if again, err := repo.RequestJoin(t.Context(), 1, 1, 1, "retry", false, at); err != nil || again != id {
 			t.Fatalf("pending retry=%d err=%v", again, err)
 		}
-		assertCount("join_request", round)
-		if err := repo.DecideRequest(t.Context(), 1, id, 2, StatusRejected, at); err != nil {
+		requests, err := repo.ListPendingRequests(t.Context(), 1)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := repo.DecideRequest(t.Context(), 1, id, 2, StatusRejected, at); !errors.Is(err, ErrRequestAlreadyReviewed) {
+		if len(requests) != 1 || requests[0].SubmissionRound != uint64(round) {
+			t.Fatalf("pending request round = %+v, want %d", requests, round)
+		}
+		assertCount("join_request", round)
+		if err := repo.DecideRequest(t.Context(), 1, id, 2, uint64(round), StatusRejected, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.DecideRequest(t.Context(), 1, id, 2, uint64(round), StatusRejected, at); !errors.Is(err, ErrRequestAlreadyReviewed) {
 			t.Fatalf("decision retry=%v", err)
 		}
 		assertCount("join_decision", round)
@@ -82,10 +90,17 @@ func TestJoinAndShareNotificationsFollowSubmissionRounds(t *testing.T) {
 	}
 	for round := 1; round <= 2; round++ {
 		assertCount("share_review", round)
-		if err := repo.DecideShare(t.Context(), 1, 1, share, 2, StatusPublished, at); err != nil {
+		shares, err := repo.ListShares(t.Context(), 1, 1, 1, true)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := repo.DecideShare(t.Context(), 1, 1, share, 2, StatusPublished, at); !errors.Is(err, ErrShareAlreadyReviewed) {
+		if len(shares) != 1 || shares[0].SubmissionRound != uint64(round) {
+			t.Fatalf("pending share round = %+v, want %d", shares, round)
+		}
+		if err := repo.DecideShare(t.Context(), 1, 1, share, 2, uint64(round), StatusPublished, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.DecideShare(t.Context(), 1, 1, share, 2, uint64(round), StatusPublished, at); !errors.Is(err, ErrShareAlreadyReviewed) {
 			t.Fatalf("share decision retry=%v", err)
 		}
 		assertCount("share_decision", round)
@@ -94,6 +109,160 @@ func TestJoinAndShareNotificationsFollowSubmissionRounds(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestStaleDecisionCannotReviewNewSubmissionRound(t *testing.T) {
+	repo, db := requestRoundFixture(t)
+	at := time.Now()
+
+	requestID, err := repo.RequestJoin(t.Context(), 1, 1, 1, "round one", false, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DecideRequest(t.Context(), 1, requestID, 2, 1, StatusRejected, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.RequestJoin(t.Context(), 1, 1, 1, "round two", false, at); err != nil {
+		t.Fatal(err)
+	}
+	request, err := repo.Request(t.Context(), 1, requestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.SubmissionRound != 2 {
+		t.Fatalf("request round = %d, want 2", request.SubmissionRound)
+	}
+	if err := repo.DecideRequest(t.Context(), 1, requestID, 2, 1, StatusApproved, at); !errors.Is(err, ErrSubmissionRoundConflict) {
+		t.Fatalf("stale request decision error = %v, want %v", err, ErrSubmissionRoundConflict)
+	}
+	var requestStatus string
+	var requestRound, memberships, decisions int
+	if err := db.QueryRow(`SELECT status,submission_round FROM ministry_group_requests WHERE id=?`, requestID).
+		Scan(&requestStatus, &requestRound); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ministry_group_members WHERE ministry_group_id=1 AND user_id=1 AND status=1`).
+		Scan(&memberships); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ministry_notifications WHERE notification_type='join_decision'`).
+		Scan(&decisions); err != nil {
+		t.Fatal(err)
+	}
+	if requestStatus != "pending" || requestRound != 2 || memberships != 0 || decisions != 1 {
+		t.Fatalf(
+			"stale request changed state: status=%s round=%d memberships=%d decisions=%d",
+			requestStatus,
+			requestRound,
+			memberships,
+			decisions,
+		)
+	}
+	if err := repo.DecideRequest(t.Context(), 1, requestID, 2, 2, StatusApproved, at); err != nil {
+		t.Fatalf("current request decision failed: %v", err)
+	}
+
+	shareID, err := repo.CreateShare(
+		t.Context(),
+		1,
+		1,
+		1,
+		ShareInput{Title: "Round one", Body: "Body"},
+		StatusPending,
+		at,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateShare(
+		t.Context(),
+		1,
+		1,
+		shareID,
+		1,
+		ShareInput{Title: "Round two", Body: "Changed"},
+		StatusPending,
+		false,
+		at,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DecideShare(t.Context(), 1, 1, shareID, 2, 1, StatusPublished, at); !errors.Is(err, ErrSubmissionRoundConflict) {
+		t.Fatalf("stale share decision error = %v, want %v", err, ErrSubmissionRoundConflict)
+	}
+	var shareTitle, shareStatus string
+	var shareRound, shareDecisions int
+	if err := db.QueryRow(`SELECT title,status,submission_round FROM ministry_shares WHERE id=?`, shareID).
+		Scan(&shareTitle, &shareStatus, &shareRound); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ministry_notifications WHERE notification_type='share_decision'`).
+		Scan(&shareDecisions); err != nil {
+		t.Fatal(err)
+	}
+	if shareTitle != "Round two" || shareStatus != "pending" || shareRound != 2 || shareDecisions != 0 {
+		t.Fatalf(
+			"stale share changed state: title=%q status=%s round=%d decisions=%d",
+			shareTitle,
+			shareStatus,
+			shareRound,
+			shareDecisions,
+		)
+	}
+	if err := repo.DecideShare(t.Context(), 1, 1, shareID, 2, 2, StatusPublished, at); err != nil {
+		t.Fatalf("current share decision failed: %v", err)
+	}
+}
+
+func TestRequestApprovalRequiresActiveStudyGroupMember(t *testing.T) {
+	tests := []struct {
+		name       string
+		deactivate string
+	}{
+		{
+			name:       "inactive group membership",
+			deactivate: `UPDATE group_members SET status=0 WHERE group_id=1 AND user_id=1`,
+		},
+		{
+			name:       "inactive user",
+			deactivate: `UPDATE users SET status=0 WHERE id=1`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo, db := requestRoundFixture(t)
+			at := time.Now()
+			requestID, err := repo.RequestJoin(t.Context(), 1, 1, 1, "join", false, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testdb.Exec(t, db, test.deactivate)
+
+			err = repo.DecideRequest(t.Context(), 1, requestID, 2, 1, StatusApproved, at)
+			if !errors.Is(err, ErrRequestApplicantNotMember) {
+				t.Fatalf("approval error = %v, want %v", err, ErrRequestApplicantNotMember)
+			}
+			var status string
+			var memberships, decisions int
+			if err := db.QueryRow(`SELECT status FROM ministry_group_requests WHERE id=?`, requestID).Scan(&status); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(`SELECT COUNT(*) FROM ministry_group_members WHERE ministry_group_id=1 AND user_id=1 AND status=1`).
+				Scan(&memberships); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(`SELECT COUNT(*) FROM ministry_notifications WHERE notification_type='join_decision'`).
+				Scan(&decisions); err != nil {
+				t.Fatal(err)
+			}
+			if status != "pending" || memberships != 0 || decisions != 0 {
+				t.Fatalf("invalid approval changed state: status=%s memberships=%d decisions=%d", status, memberships, decisions)
+			}
+			if err := repo.DecideRequest(t.Context(), 1, requestID, 2, 1, StatusRejected, at); err != nil {
+				t.Fatalf("rejection should remain allowed: %v", err)
+			}
+		})
 	}
 }
 

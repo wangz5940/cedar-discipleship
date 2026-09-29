@@ -14,6 +14,8 @@ type serviceTestRepository struct {
 	members          []Member
 	request          Request
 	decideCalls      int
+	decideRound      uint64
+	decideShareRound uint64
 	createdShare     Status
 	joinAutoApprove  bool
 	createdGroup     GroupInput
@@ -60,6 +62,21 @@ func TestPendingRequestsChecksPermissionOncePerGroup(t *testing.T) {
 		if repo.calls[group] != 1 {
 			t.Errorf("group %d permission calls=%d", group, repo.calls[group])
 		}
+	}
+}
+
+func TestApprovalVOsExposeSubmissionRound(t *testing.T) {
+	request := requestVO(Request{ID: 1, SubmissionRound: 3})
+	if request.SubmissionRound != 3 {
+		t.Fatalf("request submission round = %d, want 3", request.SubmissionRound)
+	}
+	shares := shareVOs(
+		[]Share{{ID: 2, Status: StatusPending, SubmissionRound: 4}},
+		Actor{},
+		Access{IsAdmin: true},
+	)
+	if len(shares) != 1 || shares[0].SubmissionRound != 4 {
+		t.Fatalf("share submission round = %+v, want 4", shares)
 	}
 }
 
@@ -127,14 +144,14 @@ func (r *serviceTestRepository) Request(context.Context, uint64, uint64) (*Reque
 }
 
 func (r *serviceTestRepository) DecideRequest(
-	context.Context,
-	uint64,
-	uint64,
-	uint64,
-	Status,
-	time.Time,
+	_ context.Context,
+	_, _, _ uint64,
+	expectedSubmissionRound uint64,
+	_ Status,
+	_ time.Time,
 ) error {
 	r.decideCalls++
+	r.decideRound = expectedSubmissionRound
 	return nil
 }
 
@@ -158,6 +175,17 @@ func (r *serviceTestRepository) CreateShare(
 ) (uint64, error) {
 	r.createdShare = status
 	return 1, nil
+}
+
+func (r *serviceTestRepository) DecideShare(
+	_ context.Context,
+	_, _, _, _ uint64,
+	expectedSubmissionRound uint64,
+	_ Status,
+	_ time.Time,
+) error {
+	r.decideShareRound = expectedSubmissionRound
+	return nil
 }
 
 func (r *serviceTestRepository) UpdateSettings(
@@ -331,7 +359,7 @@ func TestServiceDecideRequestRejectsReviewedRequest(t *testing.T) {
 	t.Parallel()
 
 	repo := &serviceTestRepository{
-		request: Request{ID: 12, GroupID: 3, Status: StatusApproved},
+		request: Request{ID: 12, GroupID: 3, Status: StatusApproved, SubmissionRound: 2},
 		access:  Access{IsAdmin: true},
 	}
 	service := NewService(repo)
@@ -340,6 +368,7 @@ func TestServiceDecideRequestRejectsReviewedRequest(t *testing.T) {
 		1,
 		12,
 		Actor{UserID: 7},
+		2,
 		StatusApproved,
 		time.Now(),
 	)
@@ -414,7 +443,7 @@ func TestServiceDecideRequestAllowsMinistryAdmin(t *testing.T) {
 	t.Parallel()
 
 	repo := &serviceTestRepository{
-		request: Request{ID: 12, GroupID: 3, Status: StatusPending},
+		request: Request{ID: 12, GroupID: 3, Status: StatusPending, SubmissionRound: 4},
 		access:  Access{IsMember: true, IsAdmin: true},
 	}
 	service := NewService(repo)
@@ -423,6 +452,7 @@ func TestServiceDecideRequestAllowsMinistryAdmin(t *testing.T) {
 		1,
 		12,
 		Actor{UserID: 7},
+		4,
 		StatusApproved,
 		time.Now(),
 	)
@@ -431,6 +461,31 @@ func TestServiceDecideRequestAllowsMinistryAdmin(t *testing.T) {
 	}
 	if repo.decideCalls != 1 {
 		t.Fatalf("repository decision calls = %d, want 1", repo.decideCalls)
+	}
+	if repo.decideRound != 4 {
+		t.Fatalf("repository decision round = %d, want 4", repo.decideRound)
+	}
+}
+
+func TestServiceDecideSharePassesSubmissionRound(t *testing.T) {
+	t.Parallel()
+
+	repo := &serviceTestRepository{access: Access{IsAdmin: true}}
+	err := NewService(repo).DecideShare(
+		t.Context(),
+		1,
+		3,
+		12,
+		Actor{UserID: 7},
+		5,
+		StatusPublished,
+		time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("DecideShare() error = %v", err)
+	}
+	if repo.decideShareRound != 5 {
+		t.Fatalf("repository decision round = %d, want 5", repo.decideShareRound)
 	}
 }
 
