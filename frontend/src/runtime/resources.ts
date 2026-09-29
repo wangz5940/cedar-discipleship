@@ -7,6 +7,7 @@ export type ResourceLike = {
   category?: string;
   source?: string;
   type?: string;
+  mime_type?: string;
   sectionLabel?: string;
 };
 
@@ -47,8 +48,10 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
   {
     key: 'passage',
     label: '读物',
+    uploadLabel: '文字稿 / 读物 PDF',
     groupLabel: '读物',
     groupDescription: '读物 PDF 与经文材料',
+    uploadable: true,
     aliases: ['pdf'],
   },
   {
@@ -60,9 +63,17 @@ export const RESOURCE_CATEGORIES: ResourceCategoryDefinition[] = [
     uploadable: true,
   },
   {
+    key: 'audio',
+    label: '音频',
+    uploadLabel: '音频文件',
+    groupLabel: '音频',
+    groupDescription: '音频与播放材料',
+    uploadable: true,
+  },
+  {
     key: 'video',
     label: '音视频',
-    uploadLabel: '音视频文件',
+    uploadLabel: '视频文件',
     groupLabel: '音视频',
     groupDescription: '音频、视频与播放材料',
     uploadable: true,

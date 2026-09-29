@@ -324,6 +324,10 @@ func (s *Service) uploadedLibrarySections(ctx context.Context, groupID uint64) (
 			label = "上传 Mentor 导读"
 		case "book":
 			label = "上传 PDF 读物"
+		case "passage":
+			label = "上传文字稿 / 读物"
+		case "audio":
+			label = "上传音频"
 		case "video":
 			label = "上传音视频"
 		case "handout":
@@ -347,7 +351,7 @@ func resourceCategoryRank(category string) int {
 		return 2
 	case "outline":
 		return 3
-	case "video":
+	case "audio", "video":
 		return 4
 	default:
 		return 100
