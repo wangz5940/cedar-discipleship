@@ -245,7 +245,7 @@ func (s *Service) RemoveMember(ctx context.Context, groupID, memberID, actorID u
 	if member.LeaderCount > 0 {
 		return 0, ErrCannotRemoveGroupLeader
 	}
-	if err := s.repo.RemoveMember(ctx, groupID, memberID, member.UserID, at); err != nil {
+	if err := s.repo.RemoveMember(ctx, groupID, memberID, member.UserID, actorID, at); err != nil {
 		return 0, err
 	}
 	return member.UserID, nil

@@ -36,6 +36,7 @@ type RequestVO struct {
 	UserDisplayName string    `json:"user_display_name"`
 	Message         string    `json:"message"`
 	Status          Status    `json:"status"`
+	SubmissionRound uint64    `json:"submission_round"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -51,23 +52,24 @@ type NotificationVO struct {
 }
 
 type ShareVO struct {
-	ID          uint64     `json:"id"`
-	GroupID     uint64     `json:"group_id"`
-	AuthorID    uint64     `json:"author_id"`
-	AuthorName  string     `json:"author_name"`
-	Title       string     `json:"title"`
-	Body        string     `json:"body_markdown"`
-	Status      Status     `json:"status"`
-	IsPinned    bool       `json:"is_pinned"`
-	CanEdit     bool       `json:"can_edit"`
-	CanDelete   bool       `json:"can_delete"`
-	CanRestore  bool       `json:"can_restore"`
-	CanReview   bool       `json:"can_review"`
-	CanPin      bool       `json:"can_pin"`
-	PublishedAt *time.Time `json:"published_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+	ID              uint64     `json:"id"`
+	GroupID         uint64     `json:"group_id"`
+	AuthorID        uint64     `json:"author_id"`
+	AuthorName      string     `json:"author_name"`
+	Title           string     `json:"title"`
+	Body            string     `json:"body_markdown"`
+	Status          Status     `json:"status"`
+	SubmissionRound uint64     `json:"submission_round"`
+	IsPinned        bool       `json:"is_pinned"`
+	CanEdit         bool       `json:"can_edit"`
+	CanDelete       bool       `json:"can_delete"`
+	CanRestore      bool       `json:"can_restore"`
+	CanReview       bool       `json:"can_review"`
+	CanPin          bool       `json:"can_pin"`
+	PublishedAt     *time.Time `json:"published_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 }
 
 type AttachmentVO struct {
@@ -142,6 +144,11 @@ type GroupInput struct {
 type ShareInput struct {
 	Title string `json:"title"`
 	Body  string `json:"body_markdown"`
+}
+
+type DecisionInput struct {
+	Decision                Status `json:"decision"`
+	ExpectedSubmissionRound uint64 `json:"expected_submission_round"`
 }
 
 type ProgressInput struct {
