@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -45,10 +46,20 @@ func TestFleetRemoveWaitsForWorkerWithoutBlockingFleet(t *testing.T) {
 		source := &stoppingSource{
 			started: make(chan struct{}), canceled: make(chan struct{}), release: make(chan struct{}),
 		}
-		fleet, err := NewFleet(t.TempDir(), []RobotConfig{{
+		dir := t.TempDir()
+		store := NewRobotConfigStore(filepath.Join(dir, "robots.json"))
+		if err := store.Save([]RobotConfig{{
 			ID: "secondary", Name: "secondary", Token: "123:secret",
-			Groups: map[uint64]Target{1: {ChatID: 99, ChatType: 3}},
-		}}, source)
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewBindingStore(
+			filepath.Join(dir, "robots", "secondary", "bindings.json"),
+			map[uint64]Target{1: {ChatID: 99, ChatType: 3}},
+		); err != nil {
+			t.Fatal(err)
+		}
+		fleet, err := NewFleet(dir, nil, source)
 		if err != nil {
 			t.Fatal(err)
 		}

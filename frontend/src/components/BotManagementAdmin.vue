@@ -22,7 +22,7 @@ async function load() {
     robots.value = returnedRobots.length
       ? returnedRobots
       : legacyChats.length
-        ? [{ id: 'default', name: '默认机器人', state: 'healthy', authenticated: true, chats: legacyChats }]
+        ? [{ id: 'default', name: '默认机器人', source: 'deployment', state: 'healthy', authenticated: true, chats: legacyChats }]
         : [];
     configured.value = result.configured === true || robots.value.length > 0;
     studyGroups.value = Array.isArray(result.study_groups) ? result.study_groups : [];
@@ -48,7 +48,7 @@ async function createRobot() {
 async function removeRobot(robot) {
   if (!window.confirm(`确定删除机器人“${robot.name || robot.id}”？`)) return;
   try { await api(`/super-admin/bot-robots/${encodeURIComponent(robot.id)}`, { method: 'DELETE' }); showToast('机器人已删除'); await load(); }
-  catch (error) { showToast({ robot_not_found: '机器人不存在', robot_cannot_remove: '默认机器人不能删除', bot_robot_delete_failed: '机器人删除失败' }[error.message] || error.message); }
+  catch (error) { showToast({ robot_not_found: '机器人不存在', robot_cannot_remove: '部署配置的机器人不能删除', bot_robot_delete_failed: '机器人删除失败' }[error.message] || error.message); }
 }
 
 function bindingKey(robot, chat) {
@@ -141,7 +141,7 @@ async function assign(robot, chat, event) {
             </div>
           </div>
           <span class="bot-status" :class="`is-${robot.state || 'unknown'}`">{{ robotStatus(robot) }}</span>
-          <button v-if="robot.id !== 'default'" class="secondary icon-button" type="button" title="删除机器人" @click="removeRobot(robot)"><Trash2 :size="16" /></button>
+          <button v-if="robot.source === 'registration'" class="secondary icon-button" type="button" title="删除机器人" @click="removeRobot(robot)"><Trash2 :size="16" /></button>
         </header>
 
         <div v-if="!Array.isArray(robot.chats) || !robot.chats.length" class="empty bot-empty">

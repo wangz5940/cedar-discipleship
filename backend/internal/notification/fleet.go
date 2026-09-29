@@ -23,6 +23,9 @@ const (
 	robotHealthy     = "healthy"
 	robotDegraded    = "degraded"
 	robotUnavailable = "unavailable"
+
+	robotSourceDeployment   = "deployment"
+	robotSourceRegistration = "registration"
 )
 
 var (
@@ -52,6 +55,7 @@ type RobotRegistration struct {
 type RobotStatus struct {
 	ID            string        `json:"id"`
 	Name          string        `json:"name"`
+	Source        string        `json:"source"`
 	State         string        `json:"state"`
 	Authenticated bool          `json:"authenticated"`
 	Identity      RobotIdentity `json:"identity"`
@@ -64,6 +68,7 @@ type RobotStatus struct {
 
 type fleetRobot struct {
 	config   RobotConfig
+	source   string
 	client   *PotatoClient
 	manager  *Manager
 	running  bool
@@ -296,7 +301,11 @@ func NewFleet(dir string, configs []RobotConfig, source SnapshotSource) (*Fleet,
 		robots:     make(map[string]*fleetRobot, len(merged)),
 	}
 	for _, config := range merged {
-		robot, err := newFleetRobot(dir, source, config)
+		configSource := robotSourceDeployment
+		if _, ok := registered[config.ID]; ok {
+			configSource = robotSourceRegistration
+		}
+		robot, err := newFleetRobot(dir, source, config, configSource)
 		if err != nil {
 			return nil, err
 		}
@@ -339,7 +348,7 @@ func mergeRobotConfigs(configured, stored []RobotConfig) ([]RobotConfig, map[str
 	return merged, registered, nil
 }
 
-func newFleetRobot(dir string, source SnapshotSource, config RobotConfig) (*fleetRobot, error) {
+func newFleetRobot(dir string, source SnapshotSource, config RobotConfig, configSource string) (*fleetRobot, error) {
 	client, err := NewPotatoClient(config.Token)
 	if err != nil {
 		return nil, fmt.Errorf("register robot %s: %w", config.ID, err)
@@ -352,7 +361,7 @@ func newFleetRobot(dir string, source SnapshotSource, config RobotConfig) (*flee
 	if err != nil {
 		return nil, fmt.Errorf("register robot %s: %w", config.ID, err)
 	}
-	return &fleetRobot{config: config, client: client, manager: manager}, nil
+	return &fleetRobot{config: config, source: configSource, client: client, manager: manager}, nil
 }
 
 func (f *Fleet) Run(ctx context.Context) {
@@ -443,6 +452,7 @@ func (r *fleetRobot) status(ctx context.Context) RobotStatus {
 	status := RobotStatus{
 		ID:            r.config.ID,
 		Name:          r.config.Name,
+		Source:        r.source,
 		State:         robotHealthy,
 		LastCheckedAt: time.Now().UTC(),
 		Bindings:      r.manager.Bindings(),
@@ -580,7 +590,7 @@ func (f *Fleet) Register(ctx context.Context, req RobotRegistration) (RobotStatu
 		}
 	}
 	// Reserve the ID before opening its queue directory.
-	robot, err := newFleetRobot(f.dir, f.source, config)
+	robot, err := newFleetRobot(f.dir, f.source, config, robotSourceRegistration)
 	if err != nil {
 		f.mu.Unlock()
 		return RobotStatus{}, err
@@ -609,7 +619,7 @@ func (f *Fleet) Register(ctx context.Context, req RobotRegistration) (RobotStatu
 // Remove unregisters a robot added through the admin API.
 func (f *Fleet) Remove(id string) error {
 	id = strings.TrimSpace(id)
-	if id == "" || id == defaultRobotID {
+	if id == "" {
 		return ErrRobotCannotRemove
 	}
 	f.mu.Lock()
@@ -617,6 +627,10 @@ func (f *Fleet) Remove(id string) error {
 	if !ok || robot.removing {
 		f.mu.Unlock()
 		return ErrRobotNotFound
+	}
+	if _, registered := f.registered[id]; !registered {
+		f.mu.Unlock()
+		return ErrRobotCannotRemove
 	}
 	next := make(map[string]RobotConfig, len(f.registered))
 	for key, config := range f.registered {
@@ -656,6 +670,9 @@ func robotConfigFromRegistration(req RobotRegistration, identity RobotIdentity) 
 	id := strings.TrimSpace(req.ID)
 	if id == "" {
 		id = robotIDFromIdentity(identity)
+	}
+	if id == defaultRobotID {
+		return RobotConfig{}, ErrInvalidRobotConfig
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
