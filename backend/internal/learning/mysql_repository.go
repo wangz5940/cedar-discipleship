@@ -209,6 +209,16 @@ func (r *MySQLRepository) LearningConfig(ctx context.Context, groupID uint64) (m
 func learningConfig(ctx context.Context, q queryer, groupID uint64) (map[string]any, error) {
 	var raw sql.NullString
 	err := q.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=?`, groupID).Scan(&raw)
+	return decodeLearningConfig(raw, err)
+}
+
+func learningConfigForUpdate(ctx context.Context, tx *sql.Tx, groupID uint64) (map[string]any, error) {
+	var raw sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=? FOR UPDATE`, groupID).Scan(&raw)
+	return decodeLearningConfig(raw, err)
+}
+
+func decodeLearningConfig(raw sql.NullString, err error) (map[string]any, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return map[string]any{}, nil
 	}
@@ -274,7 +284,37 @@ func BackupLearningDataTx(ctx context.Context, tx *sql.Tx, groupID uint64) (map[
 }
 
 func (r *MySQLRepository) SaveLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
-	return UpsertLearningConfigTx(ctx, r.db, groupID, settings)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := nowSQL()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO group_settings(group_id,settings,created_at,updated_at)
+		VALUES (?,JSON_OBJECT(),?,?)
+		ON DUPLICATE KEY UPDATE group_id=VALUES(group_id)`, groupID, now, now); err != nil {
+		return err
+	}
+	existing, err := learningConfigForUpdate(ctx, tx, groupID)
+	if err != nil {
+		return err
+	}
+	if err := preserveDailyScheduleHistory(existing, settings); err != nil {
+		return err
+	}
+	if rule, ok := existing["active_member_rule"]; ok {
+		if settings == nil {
+			settings = map[string]any{}
+		}
+		settings["active_member_rule"] = rule
+	} else {
+		delete(settings, "active_member_rule")
+	}
+	if err := UpsertLearningConfigTx(ctx, tx, groupID, settings); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *MySQLRepository) SaveActiveMemberRule(ctx context.Context, groupID uint64, rule map[string]any) error {
