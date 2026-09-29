@@ -53,6 +53,7 @@ type job struct {
 	CanonicalContent string    `json:"canonical_content,omitempty"`
 	CoveredRecordID  uint64    `json:"covered_record_id,omitempty"`
 	SentAt           time.Time `json:"sent_at,omitempty"`
+	RefreshAt        time.Time `json:"refresh_at,omitempty"`
 }
 
 func NewQueue(dir string, targets map[uint64][]Target, source SnapshotSource, sender TextSender) (*Queue, error) {
@@ -155,16 +156,28 @@ func (q *Queue) WakeInitial(groupID uint64, now time.Time) error {
 func (q *Queue) rearmInitial(name string, now time.Time) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if _, err := os.Stat(filepath.Join(q.dir, "pending", name)); err == nil {
+	pending := filepath.Join(q.dir, "pending", name)
+	data, err := os.ReadFile(pending)
+	if err == nil {
+		var item job
+		if err := json.Unmarshal(data, &item); err != nil {
+			return fmt.Errorf("decode pending initial notification: %w", err)
+		}
+		if item.Event.Initial != "" && now.After(item.RefreshAt) {
+			item.RefreshAt = now
+			if item.Status == "pending" {
+				item.NextTry = time.Time{}
+			}
+			return writeJob(pending, item)
+		}
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("check pending initial notification: %w", err)
 	}
 	var sourcePath string
-	var data []byte
+	data = nil
 	for _, state := range []string{"completed", "failed"} {
 		path := filepath.Join(q.dir, state, name)
-		var err error
 		data, err = os.ReadFile(path)
 		if err == nil {
 			sourcePath = path
@@ -184,22 +197,7 @@ func (q *Queue) rearmInitial(name string, now time.Time) error {
 	if item.Event.Initial == "" {
 		return nil
 	}
-	item.Event.OccurredAt = now
-	item.Messages = nil
-	item.ExpiresAt = time.Time{}
-	item.NextPart = 0
-	item.Attempts = 0
-	item.NextTry = time.Time{}
-	item.Status = "pending"
-	item.ErrorCode = ""
-	item.Topic = ""
-	item.ContentVersion = ""
-	item.PeriodID = ""
-	item.ContentHash = ""
-	item.CanonicalContent = ""
-	item.CoveredRecordID = 0
-	item.SentAt = time.Time{}
-	pending := filepath.Join(q.dir, "pending", name)
+	resetInitialJob(&item, now)
 	if err := writeJob(pending, item); err != nil {
 		return err
 	}
@@ -291,9 +289,13 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 	if item.Status != "pending" {
 		if item.Status == "sent" {
 			q.finish(ctx, path, item, start)
-			return
+		} else {
+			q.finalize(ctx, path, item)
 		}
-		q.archive(ctx, path, item)
+		return
+	}
+	if err := q.prepareInitialRefresh(path, item); err != nil {
+		slog.ErrorContext(ctx, "initial notification refresh failed", "error", err)
 		return
 	}
 	if !q.targetEnabled(item.Event.GroupID, item.Target) {
@@ -365,7 +367,7 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 	}
 	// Freeze the exact body before making a non-idempotent external call.
 	if err == nil && freshSnapshot {
-		if err := writeJob(path, *item); err != nil {
+		if err := q.saveJob(path, item); err != nil {
 			slog.ErrorContext(ctx, "checkin notification snapshot save failed", "error", err)
 			return
 		}
@@ -460,7 +462,7 @@ func (q *Queue) finish(ctx context.Context, path string, item *job, start time.T
 	if item.Status == "sent" && item.SentAt.IsZero() {
 		item.SentAt = time.Now().UTC()
 	}
-	if err := writeJob(path, *item); err != nil {
+	if err := q.saveJob(path, item); err != nil {
 		slog.ErrorContext(ctx, "checkin notification state save failed", "record_id", item.Event.RecordID, "error", err)
 		return
 	}
@@ -474,20 +476,98 @@ func (q *Queue) finish(ctx context.Context, path string, item *job, start time.T
 		}
 	}
 	if item.Status != "pending" {
-		q.archive(ctx, path, item)
+		q.finalize(ctx, path, item)
 	}
 }
 
-func (q *Queue) archive(ctx context.Context, path string, item *job) {
+func (q *Queue) prepareInitialRefresh(path string, item *job) error {
+	if item.Event.Initial == "" || item.NextPart != 0 {
+		return nil
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if err := mergeInitialRefresh(path, item); err != nil {
+		return err
+	}
+	if item.RefreshAt.IsZero() {
+		return nil
+	}
+	resetInitialJob(item, item.RefreshAt)
+	return writeJob(path, *item)
+}
+
+func (q *Queue) saveJob(path string, item *job) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if err := mergeInitialRefresh(path, item); err != nil {
+		return err
+	}
+	return writeJob(path, *item)
+}
+
+func (q *Queue) finalize(ctx context.Context, path string, item *job) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if err := mergeInitialRefresh(path, item); err != nil {
+		slog.ErrorContext(ctx, "initial notification refresh merge failed",
+			"record_id", item.Event.RecordID, "error", err)
+		return
+	}
+	if item.Event.Initial != "" && !item.RefreshAt.IsZero() {
+		resetInitialJob(item, item.RefreshAt)
+		if err := writeJob(path, *item); err != nil {
+			slog.ErrorContext(ctx, "initial notification requeue failed",
+				"group_id", item.Event.GroupID, "initial", item.Event.Initial, "error", err)
+		}
+		return
+	}
 	state := "completed"
 	if item.Status == "failed" {
 		state = "failed"
 	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
 	if err := os.Rename(path, filepath.Join(q.dir, state, filepath.Base(path))); err != nil {
 		slog.ErrorContext(ctx, "checkin notification archive failed", "record_id", item.Event.RecordID, "error", err)
 	}
+}
+
+func mergeInitialRefresh(path string, item *job) error {
+	if item.Event.Initial == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read current initial notification: %w", err)
+	}
+	var current job
+	if err := json.Unmarshal(data, &current); err != nil {
+		return fmt.Errorf("decode current initial notification: %w", err)
+	}
+	if current.RefreshAt.After(item.RefreshAt) {
+		item.RefreshAt = current.RefreshAt
+	}
+	return nil
+}
+
+func resetInitialJob(item *job, now time.Time) {
+	item.Event.OccurredAt = now
+	item.Messages = nil
+	item.ExpiresAt = time.Time{}
+	item.NextPart = 0
+	item.Attempts = 0
+	item.NextTry = time.Time{}
+	item.Status = "pending"
+	item.ErrorCode = ""
+	item.Topic = ""
+	item.ContentVersion = ""
+	item.PeriodID = ""
+	item.ContentHash = ""
+	item.CanonicalContent = ""
+	item.CoveredRecordID = 0
+	item.SentAt = time.Time{}
+	item.RefreshAt = time.Time{}
 }
 
 func writeJob(path string, item job) error {

@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -38,6 +39,29 @@ func (s *fakeSender) SendText(_ context.Context, target Target, text string) err
 	s.messages = append(s.messages, text)
 	s.targets = append(s.targets, target)
 	return s.err
+}
+
+type blockingSender struct {
+	started  chan struct{}
+	release  chan struct{}
+	once     sync.Once
+	mu       sync.Mutex
+	messages []string
+}
+
+func (s *blockingSender) SendText(_ context.Context, _ Target, text string) error {
+	block := false
+	s.once.Do(func() {
+		block = true
+		close(s.started)
+	})
+	if block {
+		<-s.release
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messages = append(s.messages, text)
+	return nil
 }
 
 func queueFixture(t *testing.T) (*Queue, *fakeSource, *fakeSender, Event, time.Time) {
@@ -334,6 +358,118 @@ func TestQueueRearmsInitialProgressWhenNotificationIsEnabled(t *testing.T) {
 	queue.processNext(t.Context(), now.Add(time.Minute))
 	if len(sender.messages) != 1 || sender.messages[0] != source.snapshot.Text {
 		t.Fatalf("messages = %#v", sender.messages)
+	}
+}
+
+func TestQueueWakeInitialRefreshesPendingRetry(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	target := Target{ChatID: 99, ChatType: 3}
+	source := &fakeSource{snapshot: Snapshot{
+		Text:      "旧的每日灵修",
+		ExpiresAt: now.Add(time.Hour),
+		Topic:     "daily",
+		Version:   "daily:2026-09-29",
+	}}
+	sender := &fakeSender{err: &deliveryError{code: "http_503", retry: true}}
+	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{1: {target}}, source, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.EnqueueInitialBinding(1, target, now); err != nil {
+		t.Fatal(err)
+	}
+	queue.processNext(t.Context(), now)
+
+	source.snapshot.Text = "最新的每日灵修"
+	sender.err = nil
+	if err := queue.WakeInitial(1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewQueue(queue.dir, queue.targets, source, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.processNext(t.Context(), now.Add(time.Second))
+	if len(sender.messages) != 2 || sender.messages[1] != source.snapshot.Text {
+		t.Fatalf("messages = %#v, want retry with latest snapshot", sender.messages)
+	}
+}
+
+func TestQueueWakeInitialDuringSentStateSaveRemainsPending(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	target := Target{ChatID: 99, ChatType: 3}
+	source := &fakeSource{snapshot: Snapshot{
+		Text:      "旧的每日灵修",
+		ExpiresAt: now.Add(time.Hour),
+		Topic:     "daily",
+		Version:   "daily:2026-09-29",
+	}}
+	sender := &blockingSender{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	queue, err := NewQueue(t.TempDir(), map[uint64][]Target{1: {target}}, source, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.EnqueueInitialBinding(1, target, now); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		queue.processNext(t.Context(), now)
+	}()
+	<-sender.started
+
+	queue.sent.mu.Lock()
+	close(sender.release)
+	dailyPath := filepath.Join(
+		queue.dir,
+		"pending",
+		"00000000000000000000-initial-00000000000000000001-99-3-daily.json",
+	)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		data, readErr := os.ReadFile(dailyPath)
+		var item job
+		if readErr == nil && json.Unmarshal(data, &item) == nil && item.Status == "sent" {
+			break
+		}
+		if time.Now().After(deadline) {
+			queue.sent.mu.Unlock()
+			t.Fatal("daily job did not reach sent-state save window")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := queue.WakeInitial(1, now.Add(time.Minute)); err != nil {
+		queue.sent.mu.Unlock()
+		t.Fatal(err)
+	}
+	queue.sent.mu.Unlock()
+	<-done
+
+	data, err := os.ReadFile(dailyPath)
+	if err != nil {
+		t.Fatalf("daily wake was lost: %v", err)
+	}
+	var pending job
+	if err := json.Unmarshal(data, &pending); err != nil {
+		t.Fatal(err)
+	}
+	if pending.Status != "pending" || len(pending.Messages) != 0 {
+		t.Fatalf("daily wake state = status %q messages %#v", pending.Status, pending.Messages)
+	}
+
+	source.snapshot.Text = "最新的每日灵修"
+	queue.processNext(t.Context(), now.Add(time.Minute))
+	sender.mu.Lock()
+	defer sender.mu.Unlock()
+	if len(sender.messages) != 2 || sender.messages[1] != source.snapshot.Text {
+		t.Fatalf("messages = %#v, want wake to enqueue latest snapshot", sender.messages)
 	}
 }
 
