@@ -54,8 +54,10 @@ type Payload struct {
 	Members    []Member             `json:"members"`
 	Weeks      []learning.WeekInput `json:"weeks"`
 	Checkins   []Checkin            `json:"checkins"`
-	Feedbacks  []Feedback           `json:"feedbacks"`
-	Assets     []Asset              `json:"assets"`
+	// Feedbacks is retained only so version-one backup files still decode.
+	// Feedback is private account data and is no longer exported or restored by group backups.
+	Feedbacks []Feedback `json:"feedbacks,omitempty"`
+	Assets    []Asset    `json:"assets"`
 }
 
 type GroupInfo struct {
@@ -66,13 +68,12 @@ type GroupInfo struct {
 }
 
 type Snapshot struct {
-	Group     GroupInfo
-	Settings  map[string]any
-	Members   []Member
-	Weeks     []learning.WeekInput
-	Checkins  []Checkin
-	Feedbacks []Feedback
-	Assets    []Asset
+	Group    GroupInfo
+	Settings map[string]any
+	Members  []Member
+	Weeks    []learning.WeekInput
+	Checkins []Checkin
+	Assets   []Asset
 }
 
 type CheckinDetail struct {
@@ -86,14 +87,4 @@ type CheckinDetail struct {
 	Username    string
 	MemberName  string
 	IsRetro     bool
-}
-
-type FeedbackExport struct {
-	CreatedAt string
-	Username  string
-	Name      string
-	Contact   string
-	Message   string
-	Page      string
-	UserAgent string
 }

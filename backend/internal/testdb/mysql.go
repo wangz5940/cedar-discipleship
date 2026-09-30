@@ -25,7 +25,7 @@ func Open(t *testing.T) *sql.DB {
 	if !strings.HasPrefix(addr, "127.0.0.1:") {
 		t.Fatal("integration database must be local")
 	}
-	admin, err := sql.Open("mysql", "root@tcp("+addr+")/?parseTime=true&multiStatements=true")
+	admin, err := sql.Open("mysql", DSN(""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func Open(t *testing.T) *sql.DB {
 		admin.Close()
 		t.Fatal(err)
 	}
-	db, err := sql.Open("mysql", "root@tcp("+addr+")/"+name+"?parseTime=true&multiStatements=true")
+	db, err := sql.Open("mysql", DSN(name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,10 +49,19 @@ func Open(t *testing.T) *sql.DB {
 			t.Error(err)
 		}
 	})
-	for _, migration := range []string{"001_init.sql", "002_checkin_partitions.sql", "007_resource_sharing.sql", "015_tenants.sql", "017_audit_log_id.sql"} {
+	for _, migration := range []string{"001_init.sql", "002_checkin_partitions.sql", "007_resource_sharing.sql", "015_tenants.sql", "017_audit_log_id.sql", "018_feedback_workflow.sql"} {
 		Apply(t, db, migration)
 	}
 	return db
+}
+
+func DSN(database string) string {
+	credentials := "root"
+	if password := os.Getenv("CEDAR_TEST_MYSQL_ROOT_PASSWORD"); password != "" {
+		credentials += ":" + password
+	}
+	return credentials + "@tcp(" + os.Getenv("CEDAR_TEST_MYSQL_ADDR") + ")/" +
+		database + "?parseTime=true&multiStatements=true"
 }
 
 func Apply(t *testing.T, db *sql.DB, migration string) {

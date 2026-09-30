@@ -120,7 +120,9 @@ func TestLocalBackupSnapshotPreservesLearningData(t *testing.T) {
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
 		VALUES (1,'a','A',NOW(),NOW());
 		INSERT INTO group_settings(group_id,settings,created_at,updated_at)
-		VALUES (1,'{"task_sections":{"daily":{"mode":"automatic"}}}',NOW(),NOW())`)
+		VALUES (1,'{"task_sections":{"daily":{"mode":"automatic"}}}',NOW(),NOW());
+		INSERT INTO feedbacks(group_id,user_id,name,contact,message,page,user_agent,created_at,updated_at)
+		VALUES (1,NULL,'历史用户','','不进入小组备份','','',NOW(),NOW())`)
 	repo := NewMySQLRepository(db)
 	input := learning.WeekInput{
 		StartDate:      "2026-09-21",
@@ -159,6 +161,9 @@ func TestLocalBackupSnapshotPreservesLearningData(t *testing.T) {
 	daily, ok := sections["daily"].(map[string]any)
 	if !ok || daily["mode"] != "automatic" {
 		t.Fatalf("backup settings changed: %+v", payload.Settings)
+	}
+	if len(payload.Feedbacks) != 0 {
+		t.Fatalf("private feedback leaked into group backup: %+v", payload.Feedbacks)
 	}
 }
 

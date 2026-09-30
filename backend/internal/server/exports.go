@@ -379,40 +379,6 @@ func (a *app) handleAdminImportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "weeks": len(order)})
 }
 
-func (a *app) handleAdminExportFeedbacksCSV(w http.ResponseWriter, r *http.Request) {
-	u := mustUser(r)
-	groupID := requireGroupID(w, u)
-	if groupID == 0 {
-		return
-	}
-	items, err := a.backups.FeedbackExports(r.Context(), groupID, a.location)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "export_feedbacks_failed")
-		return
-	}
-	var buf bytes.Buffer
-	writer := csv.NewWriter(&buf)
-	_ = writer.Write([]string{"提交时间", "账号", "姓名", "联系方式", "页面", "反馈内容", "User-Agent"})
-	for _, item := range items {
-		_ = writer.Write(safeCSVRow(
-			item.CreatedAt,
-			item.Username,
-			item.Name,
-			item.Contact,
-			item.Page,
-			item.Message,
-			item.UserAgent,
-		))
-	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		writeError(w, http.StatusInternalServerError, "export_feedbacks_failed")
-		return
-	}
-	writeAttachmentHeaders(w, fmt.Sprintf("%s-feedbacks.csv", groupExportPrefix(groupID)), "text/csv; charset=utf-8")
-	_, _ = w.Write(buf.Bytes())
-}
-
 func (a *app) handleAdminExportLocalBackupJSON(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)

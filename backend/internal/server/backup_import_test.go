@@ -22,10 +22,6 @@ func (r *backupImportTestRepository) CheckinDetails(context.Context, uint64, *ti
 	return nil, nil
 }
 
-func (r *backupImportTestRepository) FeedbackExports(context.Context, uint64, *time.Location) ([]backup.FeedbackExport, error) {
-	return nil, nil
-}
-
 func (r *backupImportTestRepository) GroupInfo(context.Context, uint64) (*backup.GroupInfo, error) {
 	return &backup.GroupInfo{ID: 1, Code: "group-a"}, nil
 }

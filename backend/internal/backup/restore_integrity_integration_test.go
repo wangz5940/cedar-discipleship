@@ -9,6 +9,36 @@ import (
 	"agp/backend/internal/testdb"
 )
 
+func TestImportLocalBackupIgnoresLegacyFeedbackPayload(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
+		VALUES (1,'a','A',NOW(),NOW());
+		INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES (1,'admin','Admin','admin',NOW(),NOW());
+		INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
+		VALUES (1,1,'Admin',NOW(),NOW(),NOW());
+		INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		VALUES (1,1,'member',1,NOW(),NOW());
+		INSERT INTO feedbacks(group_id,user_id,name,contact,message,page,user_agent,created_at,updated_at)
+		VALUES (1,1,'','','existing private feedback','','',NOW(),NOW())`)
+
+	payload := Payload{
+		Members:   []Member{{Username: "admin", DisplayName: "Admin"}},
+		Feedbacks: []Feedback{{Username: "admin", Message: "legacy backup feedback"}},
+	}
+	if err := NewMySQLRepository(db).ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	var message string
+	if err := db.QueryRow(`SELECT COUNT(*),MAX(message) FROM feedbacks WHERE group_id=1`).Scan(&count, &message); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || message != "existing private feedback" {
+		t.Fatalf("feedback changed during group restore: count=%d message=%q", count, message)
+	}
+}
+
 func TestImportLocalBackupIntegrity(t *testing.T) {
 	t.Run("existing global profiles and group names", func(t *testing.T) {
 		db := testdb.Open(t)

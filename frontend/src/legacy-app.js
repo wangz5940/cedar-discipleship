@@ -54,6 +54,10 @@ import {
   requestLogID,
 } from './runtime/logID';
 import {
+  reportAutomaticFeedback,
+  shouldReportAPIError,
+} from './runtime/errorFeedback';
+import {
   isResourceFileAllowed,
   mergeResourceAssets,
   normalizeResourceCategory,
@@ -319,6 +323,7 @@ const navItems = [
   ['dashboard', '统计', 'Insights'],
   ['groups', '小组', 'Teams'],
   ['resources', '资源', 'Library'],
+  ['feedback', '建议与反馈', 'Feedback'],
   ['settings', '个人设置', 'Settings'],
   ['admin', '管理', 'Admin'],
 ];
@@ -351,8 +356,26 @@ export async function api(path, options = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   const csrf = csrfToken();
   if (csrf && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrf;
-  if (requestOptions.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`/api${path}`, { ...requestOptions, headers, credentials: 'same-origin' });
+  const isFormData = typeof FormData !== 'undefined' && requestOptions.body instanceof FormData;
+  if (requestOptions.body && !isFormData && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  const requestPath = `/api${path}`;
+  const requestMethod = String(requestOptions.method || 'GET').toUpperCase();
+  let res;
+  try {
+    res = await fetch(requestPath, { ...requestOptions, headers, credentials: 'same-origin' });
+  } catch (rawError) {
+    const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+    error.logID = logID;
+    error.requestMethod = requestMethod;
+    error.requestPath = requestPath;
+    void reportAutomaticFeedback(error, {
+      actionContext: `${requestMethod} ${requestPath}`,
+      requestMethod,
+      requestPath,
+      logID,
+    });
+    throw error;
+  }
   const responseLogID = res.headers?.get?.(LOG_ID_HEADER) || '';
   recordResponseLogID(responseLogID);
   const data = await res.json().catch(() => ({}));
@@ -366,6 +389,18 @@ export async function api(path, options = {}) {
     error.status = res.status;
     error.payload = data;
     error.logID = responseLogID || logID;
+    error.requestMethod = requestMethod;
+    error.requestPath = requestPath;
+    if (shouldReportAPIError(requestMethod, res.status, requestPath)) {
+      void reportAutomaticFeedback(error, {
+        actionContext: `${requestMethod} ${requestPath}`,
+        requestMethod,
+        requestPath,
+        status: res.status,
+        errorCode: error.code,
+        logID: error.logID,
+      });
+    }
     throw error;
   }
   return data;
@@ -395,15 +430,46 @@ export async function fetchWithAuth(url, options = {}) {
     ...requestOptions
   } = options;
   const logID = requestLogID(explicitLogID);
-  const res = await fetch(url, {
-    ...requestOptions,
-    headers: authHeaders({ ...(requestOptions.headers || {}), [LOG_ID_HEADER]: logID }),
-    credentials: 'same-origin',
-  });
+  const requestPath = String(url);
+  const requestMethod = String(requestOptions.method || 'GET').toUpperCase();
+  let res;
+  try {
+    res = await fetch(url, {
+      ...requestOptions,
+      headers: authHeaders({ ...(requestOptions.headers || {}), [LOG_ID_HEADER]: logID }),
+      credentials: 'same-origin',
+    });
+  } catch (rawError) {
+    const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+    error.logID = logID;
+    error.requestMethod = requestMethod;
+    error.requestPath = requestPath;
+    void reportAutomaticFeedback(error, {
+      actionContext: `${requestMethod} ${requestPath}`,
+      requestMethod,
+      requestPath,
+      logID,
+    });
+    throw error;
+  }
   recordResponseLogID(res.headers?.get?.(LOG_ID_HEADER));
   if (res.status === 401 && generation === authSessionGeneration() && retryAuth !== false) {
     const refreshed = await refreshSession(logID);
     if (refreshed) return fetchWithAuth(url, { ...requestOptions, retryAuth: false, logID });
+  }
+  if (!res.ok && shouldReportAPIError(requestMethod, res.status, requestPath)) {
+    const error = new Error(`HTTP ${res.status}`);
+    error.status = res.status;
+    error.logID = res.headers?.get?.(LOG_ID_HEADER) || logID;
+    error.requestMethod = requestMethod;
+    error.requestPath = requestPath;
+    void reportAutomaticFeedback(error, {
+      actionContext: `${requestMethod} ${requestPath}`,
+      requestMethod,
+      requestPath,
+      status: res.status,
+      logID: error.logID,
+    });
   }
   return res;
 }
@@ -522,6 +588,9 @@ async function loadAll(options = {}) {
     }
     if (state.tab === 'admin' && !canAdminAccess()) {
       state.tab = 'home';
+    }
+    if (state.adminSection === 'feedback' && !state.user?.is_super_admin) {
+      state.adminSection = 'learning';
     }
     if (state.adminSection === 'bot' && !state.user?.is_super_admin && !state.user?.is_tenant_admin) {
       state.adminSection = 'learning';
@@ -752,6 +821,7 @@ export function toggleSidebar() {
 }
 
 export function setAdminSection(section) {
+  if (section === 'feedback' && !state.user?.is_super_admin) return;
   state.adminSection = section;
   if (['learning', 'library'].includes(section)) loadAdminData();
   render();
@@ -772,7 +842,7 @@ export async function openCalendarMonth(member, month) {
 }
 
 function pageTitle() {
-  const titles = { home: '今日学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', settings: '个人设置', admin: '管理后台', guide: '使用文档' };
+  const titles = { home: '今日学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', feedback: '建议与反馈', settings: '个人设置', admin: '管理后台', guide: '使用文档' };
   if (state.tab === 'admin' && !canAdminAccess()) return titles.home;
   return titles[state.tab] || 'Cedar Discipleship';
 }

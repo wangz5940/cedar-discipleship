@@ -19,10 +19,6 @@ func (r *serviceTestRepository) CheckinDetails(context.Context, uint64, *time.Lo
 	return nil, nil
 }
 
-func (r *serviceTestRepository) FeedbackExports(context.Context, uint64, *time.Location) ([]FeedbackExport, error) {
-	return nil, nil
-}
-
 func (r *serviceTestRepository) GroupInfo(context.Context, uint64) (*GroupInfo, error) {
 	group := r.group
 	return &group, nil
@@ -32,13 +28,12 @@ func (r *serviceTestRepository) LocalBackupSnapshot(context.Context, uint64) (Sn
 	r.snapshotCalls++
 	const generation = "snapshot-1"
 	return Snapshot{
-		Group:     GroupInfo{ID: 1, Code: generation},
-		Settings:  map[string]any{"generation": generation},
-		Weeks:     []learning.WeekInput{{Title: generation}},
-		Members:   []Member{{Username: generation}},
-		Checkins:  []Checkin{{Detail: generation}},
-		Feedbacks: []Feedback{{Message: generation}},
-		Assets:    []Asset{{Title: generation}},
+		Group:    GroupInfo{ID: 1, Code: generation},
+		Settings: map[string]any{"generation": generation},
+		Weeks:    []learning.WeekInput{{Title: generation}},
+		Members:  []Member{{Username: generation}},
+		Checkins: []Checkin{{Detail: generation}},
+		Assets:   []Asset{{Title: generation}},
 	}, nil
 }
 
@@ -201,7 +196,6 @@ func TestServiceLocalBackupUsesOneRepositorySnapshot(t *testing.T) {
 		payload.Weeks[0].Title,
 		payload.Members[0].Username,
 		payload.Checkins[0].Detail,
-		payload.Feedbacks[0].Message,
 		payload.Assets[0].Title,
 	}
 	for index, value := range got {
@@ -211,5 +205,28 @@ func TestServiceLocalBackupUsesOneRepositorySnapshot(t *testing.T) {
 	}
 	if repo.snapshotCalls != 1 {
 		t.Fatalf("snapshot reads = %d, want 1", repo.snapshotCalls)
+	}
+}
+
+func TestServiceAcceptsLegacyFeedbackPayload(t *testing.T) {
+	repo := &serviceTestRepository{group: GroupInfo{ID: 1, Code: "group-a"}}
+	service := NewService(repo)
+	payload := Payload{
+		Version:    CurrentVersion,
+		ExportedAt: "2026-09-30T00:00:00Z",
+		Group:      map[string]any{"id": float64(1), "code": "group-a"},
+		Members:    []Member{{Username: "admin"}},
+		Feedbacks:  []Feedback{{Message: "legacy private feedback"}},
+	}
+	now := time.Now()
+	confirmation, err := service.PrepareLocalBackupImport(t.Context(), 1, 7, payload, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ImportLocalBackup(t.Context(), 1, 7, payload, confirmation, now); err != nil {
+		t.Fatal(err)
+	}
+	if !repo.imported {
+		t.Fatal("compatible backup was not imported")
 	}
 }

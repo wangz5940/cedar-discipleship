@@ -10,6 +10,7 @@ import {
   FileText,
   Lock,
   LogOut,
+  MessageSquareText,
   Play,
   RefreshCw,
   Search,
@@ -51,6 +52,7 @@ import {
 } from '../legacy-app';
 
 const AdminConsole = lazyPage(() => import('./AdminConsole.vue'));
+const FeedbackCenter = lazyPage(() => import('./FeedbackCenter.vue'));
 const PersonalSettings = lazyPage(() => import('./PersonalSettings.vue'));
 const UserGuide = lazyPage(() => import('./UserGuide.vue'));
 const app = useAppStateStore();
@@ -501,6 +503,7 @@ async function refreshResources() {
           </div>
         </section>
 
+        <FeedbackCenter v-else-if="!showGroupPicker && tab === 'feedback'" />
         <PersonalSettings v-else-if="!showGroupPicker && tab === 'settings'" />
         <UserGuide v-else-if="!showGroupPicker && tab === 'guide'" />
 
@@ -548,6 +551,14 @@ async function refreshResources() {
           >
             <BookOpen :size="18" class="app-more-dialog__icon" />
             <span>使用文档</span>
+          </button>
+          <button
+            class="quiet app-more-dialog__action"
+            type="button"
+            @click="setTab('feedback'); showMobileMoreMenu = false;"
+          >
+            <MessageSquareText :size="18" class="app-more-dialog__icon" />
+            <span>建议与反馈</span>
           </button>
           <button
             class="quiet app-more-dialog__action"

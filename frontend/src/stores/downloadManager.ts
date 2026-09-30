@@ -16,6 +16,10 @@ import {
   LOG_ID_HEADER,
   recordResponseLogID,
 } from '../runtime/logID';
+import {
+  reportAutomaticFeedback,
+  shouldReportAPIError,
+} from '../runtime/errorFeedback';
 
 export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'failed';
 
@@ -238,12 +242,25 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
           if (task.resource.url.startsWith('/api/') && token) headers.Authorization = `Bearer ${token}`;
           if (logID) headers[LOG_ID_HEADER] = logID;
           if (offset > 0) headers.Range = `bytes=${offset}-`;
-          response = await fetch(task.resource.url, {
-            headers,
-            credentials: 'same-origin',
-            cache: 'no-store',
-            signal: controller.signal,
-          });
+          try {
+            response = await fetch(task.resource.url, {
+              headers,
+              credentials: 'same-origin',
+              cache: 'no-store',
+              signal: controller.signal,
+            });
+          } catch (rawError) {
+            const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+            if (error.name !== 'AbortError' && logID) {
+              void reportAutomaticFeedback(error, {
+                actionContext: 'resource_download',
+                requestMethod: 'GET',
+                requestPath: task.resource.url,
+                logID,
+              });
+            }
+            throw error;
+          }
           if (!isCurrent()) return;
           if (logID) recordResponseLogID(response.headers.get(LOG_ID_HEADER));
 
@@ -258,7 +275,24 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
             task.receivedBytes = 0;
             continue;
           }
-          if (!response.ok) throw new Error(responseError(response.status));
+          if (!response.ok) {
+            const error = Object.assign(new Error(responseError(response.status)), {
+              status: response.status,
+              logID,
+              requestMethod: 'GET',
+              requestPath: task.resource.url,
+            });
+            if (logID && shouldReportAPIError('GET', response.status, task.resource.url)) {
+              void reportAutomaticFeedback(error, {
+                actionContext: 'resource_download',
+                requestMethod: 'GET',
+                requestPath: task.resource.url,
+                status: response.status,
+                logID,
+              });
+            }
+            throw error;
+          }
 
           if (offset > 0 && response.status === 206) {
             const range = parseContentRange(response.headers.get('Content-Range'));

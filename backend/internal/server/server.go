@@ -24,6 +24,7 @@ import (
 	auditdomain "agp/backend/internal/audit"
 	backupdomain "agp/backend/internal/backup"
 	checkindomain "agp/backend/internal/checkin"
+	feedbackdomain "agp/backend/internal/feedback"
 	learningdomain "agp/backend/internal/learning"
 	"agp/backend/internal/logctx"
 	ministrydomain "agp/backend/internal/ministry"
@@ -53,6 +54,7 @@ type app struct {
 	assets        *assetdomain.Service
 	backups       *backupdomain.Service
 	checkins      *checkindomain.Service
+	feedbacks     *feedbackdomain.Service
 	learning      *learningdomain.Service
 	ministry      *ministrydomain.Service
 	statistics    *statisticsdomain.Service
@@ -160,7 +162,11 @@ func Run() error {
 			assetdomain.NewLocalStorage(cfg.ResourceRoot),
 			"",
 		),
-		checkins:      checkinSvc,
+		checkins: checkinSvc,
+		feedbacks: feedbackdomain.NewService(
+			feedbackdomain.NewMySQLRepository(db),
+			feedbackdomain.NewLocalStorage(cfg.ResourceRoot),
+		),
 		learning:      learningdomain.NewService(learningdomain.NewMySQLRepository(db)),
 		ministry:      ministrydomain.NewService(ministrydomain.NewMySQLRepository(db)),
 		statistics:    statisticsdomain.NewService(statisticsdomain.NewMySQLRepository(db)),
@@ -317,6 +323,12 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/default-group", a.auth(a.handleSetDefaultGroup))
 	mux.HandleFunc("PUT /api/personal-settings", a.auth(a.handleUpdatePersonalSettings))
 	mux.HandleFunc("POST /api/auth/change-password", a.auth(a.handleChangePassword))
+	mux.HandleFunc("POST /api/feedback", a.auth(a.handleCreateFeedback))
+	mux.HandleFunc("POST /api/feedback/automatic", a.auth(a.handleAutomaticFeedback))
+	mux.HandleFunc("GET /api/feedback/automatic-settings", a.auth(a.handleAutomaticFeedbackSettings))
+	mux.HandleFunc("GET /api/feedback", a.auth(a.handleListOwnFeedback))
+	mux.HandleFunc("GET /api/feedback/{id}", a.auth(a.handleOwnFeedbackDetail))
+	mux.HandleFunc("GET /api/feedback/{id}/attachments/{attachment_id}", a.auth(a.handleOwnFeedbackAttachment))
 
 	mux.HandleFunc("GET /api/app/bootstrap", a.auth(a.handleBootstrap))
 	mux.HandleFunc("GET /api/today", a.auth(a.handleToday))
@@ -401,7 +413,6 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/exports/daily-summary", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportDailySummaryCSV)))
 	mux.HandleFunc("GET /api/admin/exports/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportStudyWeeksExcel)))
 	mux.HandleFunc("POST /api/admin/imports/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminImportStudyWeeksExcel)))
-	mux.HandleFunc("GET /api/admin/exports/feedbacks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportFeedbacksCSV)))
 	mux.HandleFunc("GET /api/admin/exports/local-backup", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportLocalBackupJSON)))
 	mux.HandleFunc("POST /api/admin/imports/local-backup", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminImportLocalBackupJSON)))
 	mux.HandleFunc("POST /api/admin/members", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminCreateMember)))
@@ -437,6 +448,12 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/super-admin/recite-attempts", a.auth(a.requireSuper(a.handleSuperListReciteAttempts)))
 	mux.HandleFunc("DELETE /api/super-admin/recite-attempts/{id}", a.auth(a.requireSuper(a.handleSuperDeleteReciteAttempt)))
 	mux.HandleFunc("GET /api/super-admin/audit-logs", a.auth(a.requireSuper(a.handleAllAuditLogs)))
+	mux.HandleFunc("GET /api/super-admin/feedback", a.auth(a.requireSuper(a.handleSuperListFeedback)))
+	mux.HandleFunc("PUT /api/super-admin/feedback/automatic-settings", a.auth(a.requireSuper(a.handleSuperUpdateAutomaticFeedbackSettings)))
+	mux.HandleFunc("GET /api/super-admin/feedback/{id}", a.auth(a.requireSuper(a.handleSuperFeedbackDetail)))
+	mux.HandleFunc("GET /api/super-admin/feedback/{id}/attachments/{attachment_id}", a.auth(a.requireSuper(a.handleSuperFeedbackAttachment)))
+	mux.HandleFunc("PATCH /api/super-admin/feedback/{id}/status", a.auth(a.requireSuper(a.handleSuperUpdateFeedbackStatus)))
+	mux.HandleFunc("POST /api/super-admin/feedback/{id}/replies", a.auth(a.requireSuper(a.handleSuperReplyFeedback)))
 	mux.HandleFunc("GET /api/super-admin/bot-management", a.auth(a.requireBotAdmin(a.handleBotManagement)))
 	mux.HandleFunc("POST /api/super-admin/bot-robots", a.auth(a.requireBotAdmin(a.handleBotRobot)))
 	mux.HandleFunc("DELETE /api/super-admin/bot-robots/{id}", a.auth(a.requireBotAdmin(a.handleBotRobotDelete)))

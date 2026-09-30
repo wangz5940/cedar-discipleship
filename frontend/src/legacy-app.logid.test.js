@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, fetchWithAuth } from './legacy-app';
 import { clearAccessToken, setAccessToken } from './runtime/authSession';
+import { resetAutomaticFeedbackStateForTest } from './runtime/errorFeedback';
 import { clearLatestLogID, latestLogID } from './runtime/logID';
 
 const logID = '0123456789abcdef0123456789abcdef';
@@ -16,7 +17,19 @@ describe('API log ID propagation', () => {
   beforeEach(() => {
     clearAccessToken();
     clearLatestLogID();
+    resetAutomaticFeedbackStateForTest();
     vi.stubGlobal('document', { cookie: 'agp_csrf=csrf-value' });
+    vi.stubGlobal('window', {
+      location: { origin: 'http://localhost', pathname: '/', search: '' },
+      innerWidth: 1280,
+      innerHeight: 800,
+      screen: { width: 1440, height: 900 },
+    });
+    vi.stubGlobal('navigator', {
+      userAgent: 'Test Browser',
+      language: 'zh-CN',
+      userAgentData: { platform: 'Test OS' },
+    });
   });
 
   afterEach(() => {
@@ -35,6 +48,17 @@ describe('API log ID propagation', () => {
     expect(options).not.toHaveProperty('logID');
     expect(options).not.toHaveProperty('retryAuth');
     expect(latestLogID()).toBe(logID);
+  });
+
+  it('lets the browser set multipart boundaries for form data', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ ok: true }));
+    vi.stubGlobal('fetch', fetch);
+    const body = new FormData();
+    body.append('message', '建议');
+
+    await api('/feedback', { method: 'POST', body, logID });
+
+    expect(fetch.mock.calls[0][1].headers).not.toHaveProperty('Content-Type');
   });
 
   it('reuses the action ID across refresh and retry', async () => {
@@ -72,5 +96,26 @@ describe('API log ID propagation', () => {
       status: 400,
       logID,
     });
+  });
+
+  it('automatically reports server errors with the failing request log ID', async () => {
+    setAccessToken('active');
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ error: 'book_open_failed' }, 500))
+      .mockResolvedValueOnce(response({
+        settings: { enabled: true, muted_error_types: [] },
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(api('/assets/7/playback', { logID })).rejects.toMatchObject({
+      code: 'book_open_failed',
+      logID,
+    });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+
+    expect(fetch.mock.calls[1][0]).toBe('/api/feedback/automatic-settings');
+    expect(fetch.mock.calls[2][0]).toBe('/api/feedback/automatic');
+    expect(fetch.mock.calls[2][1].body.get('error_log_id')).toBe(logID);
   });
 });

@@ -16,7 +16,8 @@
   - `internal/ministry/`：专项小组领域模块，负责成员身份可见性、加入/退出、幂等审批、站内通知、分享审批、进展记录和附件绑定；`internal/server/ministry.go` 负责当前租户鉴权、HTTP 参数、附件上传和审计适配。
   - `internal/user/`：已承接当前用户装载、可见小组、用户角色、成员列表、登录用户查询、默认小组、密码更新、管理员成员创建/移除、组管理员授权/撤销、小组默认密码批量更新、超级管理员 bootstrap、小组/用户/组长管理等用户读写边界；`internal/server/accounts.go`、`internal/server/auth_handlers.go`、`internal/server/admin.go` 和 `internal/server/super_admin.go` 保留鉴权中间件、token、密码校验、审计和 HTTP 适配。
   - `internal/audit/`：已承接审计日志写入和小组审计日志查询；`internal/server/accounts.go` 保留请求 IP/User-Agent 采集包装，`internal/server/admin.go` 保留审计日志 HTTP 响应适配。
-  - `internal/backup/`：已承接管理端导出/导入数据源，包括打卡明细 CSV、每日汇总 CSV、反馈 CSV、学习周 Excel 批量导入，以及本地备份 JSON 的导出/导入事务；`internal/server/exports.go` 只保留文件解析、附件响应、审计和错误码适配。
+  - `internal/feedback/`：负责反馈内容、处理状态、管理员回复、自动附带的诊断信息、自动错误反馈治理和私密图片存储；旧 `feedbacks` 表原地升级，反馈不再进入小组导出和备份。
+  - `internal/backup/`：已承接管理端导出/导入数据源，包括打卡明细 CSV、每日汇总 CSV、学习周 Excel 批量导入，以及本地备份 JSON 的导出/导入事务；`internal/server/exports.go` 只保留文件解析、附件响应、审计和错误码适配。
   - `internal/server/`：当前 HTTP API 的兼容适配层，保留已上线接口、鉴权、参数解析和响应格式；业务 SQL 已迁入领域模块，当前仅保留启动迁移和分区维护等应用基础设施 SQL。
   - `migrations/`：MySQL 8.0 初始化 SQL。
   - `Dockerfile`：Go 后端镜像。

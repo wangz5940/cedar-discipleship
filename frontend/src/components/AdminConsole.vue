@@ -62,6 +62,7 @@ import {
 const MinistryCatalogAdmin = lazyPage(() => import('./MinistryCatalogAdmin.vue'));
 const TenantManagement = lazyPage(() => import('./TenantManagement.vue'));
 const BotManagementAdmin = lazyPage(() => import('./BotManagementAdmin.vue'));
+const FeedbackAdmin = lazyPage(() => import('./FeedbackAdmin.vue'));
 const ReciteHistoryAdmin = lazyPage(() => import('./ReciteHistoryAdmin.vue'));
 const ResourceGovernance = lazyPage(() => import('./ResourceGovernance.vue'));
 const app = useAppStateStore();
@@ -112,6 +113,9 @@ const canManageMinistryCatalog = computed(() => Boolean(user.value?.is_super_adm
 const canManageRoles = computed(() => canManageStudyGroup(user.value));
 watch(() => Boolean(user.value?.is_super_admin || user.value?.is_tenant_admin), (canManageHistory) => {
   if (!canManageHistory && adminSection.value === 'recite-history') setAdminSection('learning');
+});
+watch(() => Boolean(user.value?.is_super_admin), (isSuperAdmin) => {
+  if (!isSuperAdmin && adminSection.value === 'feedback') setAdminSection('learning');
 });
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const conflictAlreadyInGroup = computed(() => members.value.some(
@@ -639,6 +643,17 @@ async function runLocalBackupImport() {
         机器人管理
       </button>
       <button
+        v-if="user?.is_super_admin"
+        :class="adminSection === 'feedback' ? 'primary' : 'quiet'"
+        type="button"
+        role="tab"
+        :aria-selected="adminSection === 'feedback'"
+        :tabindex="adminSection === 'feedback' ? 0 : -1"
+        @click="setAdminSection('feedback')"
+      >
+        反馈处理
+      </button>
+      <button
         v-if="user?.is_super_admin || user?.is_tenant_admin"
         :class="adminSection === 'recite-history' ? 'primary' : 'quiet'"
         type="button"
@@ -743,6 +758,7 @@ async function runLocalBackupImport() {
     <TenantManagement v-else-if="adminSection === 'tenant' && (user?.is_super_admin || user?.is_tenant_admin)" />
     <MinistryCatalogAdmin v-else-if="adminSection === 'ministry' && canManageMinistryCatalog" />
     <BotManagementAdmin v-else-if="adminSection === 'bot' && (user?.is_super_admin || user?.is_tenant_admin)" />
+    <FeedbackAdmin v-else-if="adminSection === 'feedback' && user?.is_super_admin" />
     <ReciteHistoryAdmin v-else-if="adminSection === 'recite-history' && (user?.is_super_admin || user?.is_tenant_admin)" :group-id="currentGroupID" :members="members" />
 
     <section v-else-if="adminSection === 'learning'">
@@ -1009,7 +1025,6 @@ async function runLocalBackupImport() {
                     <button type="button" @click="runAdminExport('/admin/exports/checkins-detail', 'checkins-detail.csv', '打卡明细 CSV 已开始下载')">导出打卡明细 CSV</button>
                     <button type="button" @click="runAdminExport('/admin/exports/daily-summary', 'daily-summary.csv', '每日汇总 CSV 已开始下载')">导出每日汇总 CSV</button>
                     <button type="button" @click="runAdminExport('/admin/exports/study-weeks', 'study-weeks.xlsx', '门训任务 Excel 已开始下载')">导出门训任务 Excel</button>
-                    <button type="button" @click="runAdminExport('/admin/exports/feedbacks', 'feedbacks.csv', '反馈 CSV 已开始下载')">导出反馈 CSV</button>
                     <button type="button" @click="runAdminExport('/admin/exports/local-backup', 'local-backup.json', '本地备份 JSON 已开始下载')">导出本地备份 JSON</button>
                   </div>
                 </div>

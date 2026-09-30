@@ -21,6 +21,7 @@
 - 统计中心：小组完成率、成员矩阵、本月累计排行，并支持导出柱状图 PNG
 - 学习内容管理：按组配置每日内容、周任务、音视频、读物、背经、提纲图
 - 资源库：资源按学习小组独立存储，支持跨组授权、逻辑导入、依赖图谱和导入历史
+- 建议与反馈：支持文字、私密图片、程序错误自动上报与按类型静默、个人提交历史及超级管理员处理回复
 - 内容查看器：统一预览 Markdown / PDF / 视频 / 图片，并支持同主题资料“上一篇 / 下一篇”连续浏览
 - 历史迁移：支持把旧 `config.json` 和 `records.json` 导入 MySQL 平台
 
@@ -60,6 +61,7 @@
 │   ├── ops-commands.md
 │   ├── deploy-new-environment.md
 │   ├── migrate-other-groups.md
+│   ├── privacy-feedback.md
 │   └── implementation-notes.md
 ├── data/
 │   ├── mysql/

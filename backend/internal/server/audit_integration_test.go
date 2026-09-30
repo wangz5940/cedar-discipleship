@@ -5,6 +5,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -110,7 +111,9 @@ func TestDeleteGroupPreservesAuditHistory(t *testing.T) {
 		INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
 		VALUES(9,'admin','管理员','admin',NOW(),NOW());
 		INSERT INTO audit_logs(group_id,actor_user_id,action,target_type,target_id,created_at)
-		VALUES(7,9,'save_learning_config','group_settings',7,NOW())`)
+		VALUES(7,9,'save_learning_config','group_settings',7,NOW());
+		INSERT INTO feedbacks(group_id,user_id,name,contact,message,page,user_agent,created_at,updated_at)
+		VALUES(7,9,'','','保留反馈','','',NOW(),NOW())`)
 
 	service := user.NewService(user.NewMySQLRepository(db))
 	if _, err := service.DeleteGroup(t.Context(), 7, time.Now().UTC()); err != nil {
@@ -123,6 +126,13 @@ func TestDeleteGroupPreservesAuditHistory(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("audit history count = %d, want 1", count)
+	}
+	var feedbackGroupID sql.NullInt64
+	if err := db.QueryRow(`SELECT group_id FROM feedbacks WHERE user_id=9`).Scan(&feedbackGroupID); err != nil {
+		t.Fatalf("query preserved feedback: %v", err)
+	}
+	if feedbackGroupID.Valid {
+		t.Fatalf("feedback group ID = %d, want NULL", feedbackGroupID.Int64)
 	}
 	var groupCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM study_groups WHERE id=7`).Scan(&groupCount); err != nil {

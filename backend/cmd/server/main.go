@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	writer := io.Writer(os.Stderr)
 	if path := strings.TrimSpace(os.Getenv("AGP_LOG_FILE")); path != "" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			log.Fatalf("create log directory: %v", err)
@@ -23,12 +24,15 @@ func main() {
 		}
 		defer file.Close()
 
-		writer := io.MultiWriter(os.Stderr, file)
-		log.SetOutput(writer)
-		slog.SetDefault(slog.New(slog.NewTextHandler(writer, nil)))
+		writer = io.MultiWriter(os.Stderr, file)
 	}
-	slog.SetDefault(slog.New(logctx.NewHandler(slog.Default().Handler())))
+	configureLogging(writer)
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func configureLogging(writer io.Writer) {
+	slog.SetDefault(slog.New(logctx.NewHandler(slog.NewTextHandler(writer, nil))))
+	log.SetOutput(writer)
 }

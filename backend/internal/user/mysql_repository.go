@@ -147,7 +147,7 @@ func (r *MySQLRepository) DeleteGroup(ctx context.Context, id uint64, at time.Ti
 		`DELETE FROM assets WHERE group_id=?`,
 		`DELETE FROM checkin_records WHERE group_id=?`,
 		`DELETE FROM recite_attempts WHERE group_id=?`,
-		`DELETE FROM feedbacks WHERE group_id=?`,
+		`UPDATE feedbacks SET group_id=NULL,updated_at=? WHERE group_id=?`,
 		`DELETE FROM study_tasks WHERE group_id=?`,
 		`DELETE FROM study_weeks WHERE group_id=?`,
 		`DELETE FROM group_settings WHERE group_id=?`,

@@ -1,5 +1,5 @@
 <script setup>
-import { BarChart2, Book, BookOpen, Download, Folder, LogOut, Settings, User, Users } from '@lucide/vue';
+import { BarChart2, Book, BookOpen, Download, Folder, LogOut, MessageSquareText, Settings, User, Users } from '@lucide/vue';
 
 defineProps({
   navItems: { type: Array, default: () => [] },
@@ -13,7 +13,7 @@ defineProps({
 defineEmits(['navigate', 'downloads', 'logout']);
 
 function navIcon(id) {
-  return { home: Book, dashboard: BarChart2, groups: Users, resources: Folder, settings: User }[id] || Book;
+  return { home: Book, dashboard: BarChart2, groups: Users, resources: Folder, feedback: MessageSquareText, settings: User }[id] || Book;
 }
 </script>
 

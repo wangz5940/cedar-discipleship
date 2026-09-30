@@ -64,31 +64,6 @@ func (r *MySQLRepository) CheckinDetails(ctx context.Context, groupID uint64, lo
 	return items, rows.Err()
 }
 
-func (r *MySQLRepository) FeedbackExports(ctx context.Context, groupID uint64, loc *time.Location) ([]FeedbackExport, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT f.created_at,COALESCE(u.username,''),f.name,f.contact,f.message,f.page,f.user_agent
-		FROM feedbacks f
-		LEFT JOIN users u ON u.id=f.user_id
-		LEFT JOIN group_members gm ON gm.user_id=f.user_id AND gm.group_id=? AND gm.status=1
-		WHERE f.group_id=? OR (f.group_id IS NULL AND gm.id IS NOT NULL)
-		ORDER BY f.id DESC`, groupID, groupID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var items []FeedbackExport
-	for rows.Next() {
-		var item FeedbackExport
-		var created time.Time
-		if err := rows.Scan(&created, &item.Username, &item.Name, &item.Contact, &item.Message, &item.Page, &item.UserAgent); err != nil {
-			return nil, err
-		}
-		item.CreatedAt = created.In(loc).Format("2006-01-02 15:04:05")
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
 func (r *MySQLRepository) GroupInfo(ctx context.Context, groupID uint64) (*GroupInfo, error) {
 	return backupGroupInfo(ctx, r.db, groupID)
 }
@@ -176,34 +151,6 @@ func backupCheckins(ctx context.Context, q queryer, groupID uint64) ([]Checkin, 
 	return items, rows.Err()
 }
 
-func (r *MySQLRepository) BackupFeedbacks(ctx context.Context, groupID uint64) ([]Feedback, error) {
-	return backupFeedbacks(ctx, r.db, groupID)
-}
-
-func backupFeedbacks(ctx context.Context, q queryer, groupID uint64) ([]Feedback, error) {
-	rows, err := q.QueryContext(ctx, `SELECT COALESCE(u.username,''),f.name,f.contact,f.message,f.page,f.user_agent,f.created_at
-		FROM feedbacks f
-		LEFT JOIN users u ON u.id=f.user_id
-		LEFT JOIN group_members gm ON gm.user_id=f.user_id AND gm.group_id=? AND gm.status=1
-		WHERE f.group_id=? OR (f.group_id IS NULL AND gm.id IS NOT NULL)
-		ORDER BY f.id`, groupID, groupID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Feedback
-	for rows.Next() {
-		var item Feedback
-		var created time.Time
-		if err := rows.Scan(&item.Username, &item.Name, &item.Contact, &item.Message, &item.Page, &item.UserAgent, &created); err != nil {
-			return nil, err
-		}
-		item.CreatedAt = created.Format(time.RFC3339)
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
 func (r *MySQLRepository) BackupAssets(ctx context.Context, groupID uint64) ([]Asset, error) {
 	return backupAssets(ctx, r.db, groupID)
 }
@@ -253,10 +200,6 @@ func (r *MySQLRepository) LocalBackupSnapshot(ctx context.Context, groupID uint6
 	if err != nil {
 		return Snapshot{}, err
 	}
-	feedbacks, err := backupFeedbacks(ctx, tx, groupID)
-	if err != nil {
-		return Snapshot{}, err
-	}
 	assets, err := backupAssets(ctx, tx, groupID)
 	if err != nil {
 		return Snapshot{}, err
@@ -265,13 +208,12 @@ func (r *MySQLRepository) LocalBackupSnapshot(ctx context.Context, groupID uint6
 		return Snapshot{}, err
 	}
 	return Snapshot{
-		Group:     *group,
-		Settings:  settings,
-		Members:   members,
-		Weeks:     weeks,
-		Checkins:  checkins,
-		Feedbacks: feedbacks,
-		Assets:    assets,
+		Group:    *group,
+		Settings: settings,
+		Members:  members,
+		Weeks:    weeks,
+		Checkins: checkins,
+		Assets:   assets,
 	}, nil
 }
 
@@ -356,9 +298,6 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 		mapBackupTaskIDs(originalWeek, drafts, newTaskIDs, taskIDs)
 	}
 	if err := r.replaceCheckinsTx(ctx, tx, groupID, actorID, userIDs, weekIDs, taskIDs, payload.Checkins, now); err != nil {
-		return err
-	}
-	if err := r.replaceFeedbacksTx(ctx, tx, groupID, userIDs, payload.Feedbacks, now); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1365,24 +1304,6 @@ func resolveCheckinTargetTx(
 		return nil, nil, err
 	}
 	return taskID, weekID, nil
-}
-
-func (r *MySQLRepository) replaceFeedbacksTx(ctx context.Context, tx *sql.Tx, groupID uint64, userIDs map[string]uint64, feedbacks []Feedback, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM feedbacks WHERE group_id=?`, groupID); err != nil {
-		return err
-	}
-	for _, feedback := range feedbacks {
-		var userID any
-		if id := userIDs[normalizeUsername(feedback.Username)]; id > 0 {
-			userID = id
-		}
-		createdAt := parseTimeOrNow(feedback.CreatedAt, now)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO feedbacks (group_id,user_id,name,contact,message,page,user_agent,created_at)
-			VALUES (?,?,?,?,?,?,?,?)`, groupID, userID, feedback.Name, feedback.Contact, feedback.Message, feedback.Page, feedback.UserAgent, createdAt); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func groupDefaultPasswordHashTx(ctx context.Context, tx *sql.Tx, groupID uint64) (string, error) {

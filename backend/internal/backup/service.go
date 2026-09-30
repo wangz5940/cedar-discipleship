@@ -54,10 +54,6 @@ func (s *Service) CheckinDetails(ctx context.Context, groupID uint64, loc *time.
 	return s.repo.CheckinDetails(ctx, groupID, loc)
 }
 
-func (s *Service) FeedbackExports(ctx context.Context, groupID uint64, loc *time.Location) ([]FeedbackExport, error) {
-	return s.repo.FeedbackExports(ctx, groupID, loc)
-}
-
 func (s *Service) LocalBackup(ctx context.Context, groupID uint64, exportedAt string) (Payload, error) {
 	snapshot, err := s.repo.LocalBackupSnapshot(ctx, groupID)
 	if err != nil {
@@ -72,12 +68,11 @@ func (s *Service) LocalBackup(ctx context.Context, groupID uint64, exportedAt st
 			"name":        snapshot.Group.Name,
 			"description": snapshot.Group.Description,
 		},
-		Settings:  snapshot.Settings,
-		Members:   snapshot.Members,
-		Weeks:     snapshot.Weeks,
-		Checkins:  snapshot.Checkins,
-		Feedbacks: snapshot.Feedbacks,
-		Assets:    snapshot.Assets,
+		Settings: snapshot.Settings,
+		Members:  snapshot.Members,
+		Weeks:    snapshot.Weeks,
+		Checkins: snapshot.Checkins,
+		Assets:   snapshot.Assets,
 	}, nil
 }
 
@@ -150,7 +145,6 @@ func (s *Service) validateLocalBackup(ctx context.Context, groupID uint64, paylo
 		len(payload.Members) == 0 &&
 		len(payload.Weeks) == 0 &&
 		len(payload.Checkins) == 0 &&
-		len(payload.Feedbacks) == 0 &&
 		len(payload.Assets) == 0 {
 		return ErrBackupContentRequired
 	}

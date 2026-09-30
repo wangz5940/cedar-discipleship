@@ -27,7 +27,7 @@ func migrationOptions(t *testing.T, db *sql.DB, config string) options {
 		t.Fatal(err)
 	}
 	opt := defaultOptions()
-	opt.dsn = fmt.Sprintf("root@tcp(%s)/%s?parseTime=true", os.Getenv("CEDAR_TEST_MYSQL_ADDR"), name)
+	opt.dsn = testdb.DSN(name)
 	opt.groupCode = "review"
 	opt.groupName = "Review"
 	opt.defaultPassword = "test-password"
