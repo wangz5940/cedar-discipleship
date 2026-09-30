@@ -86,7 +86,7 @@ export function nextDailyDevotionPlan(
   fromDate = '',
 ): DailyDevotionPlan {
   const plans = dailyDevotionPlans(config);
-  const previous = plans.find((plan) => plan.date === fromDate) || plans.at(-1) || null;
+  const previous = plans.find((plan) => plan.date === fromDate) || plans.slice(-1)[0] || null;
   const baseDate = validScheduleDate(fromDate)
     ? fromDate
     : (previous?.date || formatLocalDate(new Date()));

@@ -8,6 +8,18 @@ import {
 } from './downloads';
 
 describe('download runtime helpers', () => {
+  it('keeps URL filenames usable when Array.at is unavailable', () => {
+    const original = Object.getOwnPropertyDescriptor(Array.prototype, 'at')!;
+    let resource;
+    try {
+      Object.defineProperty(Array.prototype, 'at', { value: undefined, configurable: true });
+      resource = normalizeDownloadResource({ url: '/api/files/lesson.pdf', source: 'learning' });
+    } finally {
+      Object.defineProperty(Array.prototype, 'at', original);
+    }
+    expect(resource.name).toBe('lesson.pdf');
+  });
+
   it('normalizes database-backed resources', () => {
     expect(normalizeDownloadResource({
       id: 12,

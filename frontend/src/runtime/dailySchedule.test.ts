@@ -212,4 +212,18 @@ describe('daily devotion custom plans', () => {
     });
   });
 
+  it('finds the latest plan when Array.at is unavailable', () => {
+    const original = Object.getOwnPropertyDescriptor(Array.prototype, 'at')!;
+    let plan;
+    try {
+      Object.defineProperty(Array.prototype, 'at', { value: undefined, configurable: true });
+      plan = nextDailyDevotionPlan({ plans: [
+        { date: '2026-09-22', page_start: 20, page_end: 22 },
+      ] }, 'pdf');
+    } finally {
+      Object.defineProperty(Array.prototype, 'at', original);
+    }
+    expect(plan).toMatchObject({ date: '2026-09-23', page_start: '22' });
+  });
+
 });

@@ -90,7 +90,7 @@ export function normalizeDownloadURL(value: unknown): string {
 
 export function sanitizeDownloadFilename(value: unknown): string {
   const pathParts = String(value || '').trim().replace(/\\/g, '/').split('/');
-  const base = pathParts.at(-1) || 'download';
+  const base = pathParts.slice(-1)[0] || 'download';
   const safe = base
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/[<>:"/\\|?*]/g, '_')
@@ -193,7 +193,7 @@ export function filenameFromDisposition(value: string | null, fallback: string):
 
 function filenameFromURL(value: string): string {
   const clean = value.split('#')[0].split('?')[0];
-  const raw = clean.split('/').at(-1) || '';
+  const raw = clean.split('/').slice(-1)[0] || '';
   try {
     return decodeURIComponent(raw);
   } catch {

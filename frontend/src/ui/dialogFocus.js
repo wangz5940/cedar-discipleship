@@ -31,7 +31,7 @@ export const vDialogFocus = {
       panel.setAttribute('aria-label', panel.querySelector('h2, h3')?.textContent?.trim() || '对话窗口');
     }
     record.onKey = (event) => {
-      if (stack.at(-1) !== record) return;
+      if (stack.slice(-1)[0] !== record) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -39,7 +39,7 @@ export const vDialogFocus = {
       } else if (event.key === 'Tab') {
         const items = focusable(panel);
         const first = items[0];
-        const last = items.at(-1);
+        const last = items.slice(-1)[0];
         if (!first) { event.preventDefault(); panel.focus(); }
         else if (event.shiftKey && (document.activeElement === first || !items.includes(document.activeElement))) {
           event.preventDefault(); last.focus();
@@ -50,7 +50,7 @@ export const vDialogFocus = {
     };
     document.addEventListener('keydown', record.onKey, true);
     queueMicrotask(() => {
-      if (stack.at(-1) === record && panel.isConnected) {
+      if (stack.slice(-1)[0] === record && panel.isConnected) {
         (panel.querySelector('[data-dialog-autofocus]') || focusable(panel)[0] || panel).focus();
       }
     });
@@ -63,7 +63,7 @@ export const vDialogFocus = {
     const record = records.get(panel);
     if (!record) return;
     document.removeEventListener('keydown', record.onKey, true);
-    const wasTop = stack.at(-1) === record;
+    const wasTop = stack.slice(-1)[0] === record;
     const index = stack.indexOf(record);
     if (index >= 0) stack.splice(index, 1);
     if (!stack.length) {
@@ -72,7 +72,7 @@ export const vDialogFocus = {
       document.body.style.overscrollBehavior = savedOverscroll;
     }
     if (wasTop) {
-      const parent = stack.at(-1)?.panel;
+      const parent = stack.slice(-1)[0]?.panel;
       if (record.previous?.isConnected && (!parent || parent.contains(record.previous))) record.previous.focus();
       else parent?.focus();
     }

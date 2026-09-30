@@ -2303,7 +2303,7 @@ function lastExistingWeek() {
     .sort((left, right) => String(left.end).localeCompare(String(right.end))
       || String(left.start).localeCompare(String(right.start))
       || Number(left.id || 0) - Number(right.id || 0))
-    .at(-1)
+    .slice(-1)[0]
     || null;
 }
 

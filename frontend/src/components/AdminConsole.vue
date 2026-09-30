@@ -493,7 +493,7 @@ function updateCustomDevotionFile(value) {
 }
 
 function addDailyPlan() {
-  const lastPlan = configuredDailyPlans.value.at(-1) || null;
+  const lastPlan = configuredDailyPlans.value.slice(-1)[0] || null;
   const baseDate = lastPlan?.date || shiftDailyPlanDate(dailyPlanDate.value, -1);
   const plan = nextDailyDevotionPlan(
     devotion.value,
