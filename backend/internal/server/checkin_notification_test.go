@@ -12,6 +12,7 @@ import (
 
 	auditdomain "agp/backend/internal/audit"
 	checkindomain "agp/backend/internal/checkin"
+	"agp/backend/internal/logctx"
 	notificationdomain "agp/backend/internal/notification"
 )
 
@@ -82,6 +83,7 @@ func TestCreateCheckinNotification(t *testing.T) {
 			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
 				ID: 2, CurrentGroupID: 1,
 			}))
+			request = request.WithContext(logctx.WithLogID(request.Context(), "0123456789abcdef0123456789abcdef"))
 			response := httptest.NewRecorder()
 			a.handleCreateCheckin(response, request)
 			if response.Code != tt.wantStatus || len(notifier.events) != tt.wantEnqueues {
@@ -91,6 +93,9 @@ func TestCreateCheckinNotification(t *testing.T) {
 				event := notifier.events[0]
 				if event.RecordID != 42 || event.GroupID != 1 || event.LogicalDate != "2026-01-01" {
 					t.Fatalf("wrong notification event: %#v", event)
+				}
+				if event.LogID != "0123456789abcdef0123456789abcdef" {
+					t.Fatalf("notification log ID = %q", event.LogID)
 				}
 			}
 		})

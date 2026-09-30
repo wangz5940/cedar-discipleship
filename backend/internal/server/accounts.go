@@ -19,6 +19,7 @@ import (
 	"time"
 
 	auditdomain "agp/backend/internal/audit"
+	"agp/backend/internal/logctx"
 	userdomain "agp/backend/internal/user"
 )
 
@@ -265,6 +266,7 @@ func (a *app) audit(groupID, actorID uint64, action, targetType string, targetID
 		After:      after,
 		IP:         clientIP(r),
 		UserAgent:  r.UserAgent(),
+		LogID:      logctx.LogID(r.Context()),
 	}, time.Now())
 	if err != nil {
 		attrs := []any{

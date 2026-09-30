@@ -11,12 +11,16 @@ describe('shared session refresh', () => {
   it('shares one refresh between parallel consumers', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({ token: 'renewed', user: { id: 1 } }));
     vi.stubGlobal('fetch', fetch);
-    const first = refreshAccessSession();
-    const second = refreshAccessSession();
+    const logID = '0123456789abcdef0123456789abcdef';
+    const first = refreshAccessSession(logID);
+    const second = refreshAccessSession(logID);
     expect(first).toBe(second);
     await expect(first).resolves.toEqual({ token: 'renewed', user: { id: 1 } });
     expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch.mock.calls[0][1].headers).toEqual({ 'X-CSRF-Token': 'csrf-value' });
+    expect(fetch.mock.calls[0][1].headers).toEqual({
+      'X-CSRF-Token': 'csrf-value',
+      'X-Log-ID': logID,
+    });
     expect(getAccessToken()).toBe('renewed');
   });
 

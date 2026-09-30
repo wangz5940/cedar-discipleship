@@ -5,7 +5,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -205,13 +205,14 @@ func (a *app) writeMinistryAttendanceError(w http.ResponseWriter, r *http.Reques
 
 func (a *app) logMinistryAttendanceError(r *http.Request, err error) {
 	user := mustUser(r)
-	log.Printf(
-		"ministry attendance request failed method=%s path=%s user_id=%d group_id=%d ministry_group_id=%d err=%v",
-		r.Method,
-		r.URL.Path,
-		user.ID,
-		user.CurrentGroupID,
-		pathUint64(r, "id"),
-		err,
+	slog.ErrorContext(
+		r.Context(),
+		"ministry attendance request failed",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"user_id", user.ID,
+		"group_id", user.CurrentGroupID,
+		"ministry_group_id", pathUint64(r, "id"),
+		"error", err,
 	)
 }

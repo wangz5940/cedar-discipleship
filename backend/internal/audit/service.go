@@ -38,6 +38,7 @@ func (s *Service) Create(ctx context.Context, input CreateLogInput, now time.Tim
 		AfterJSON:  afterJSON,
 		IP:         truncateRunes(input.IP, 64),
 		UserAgent:  truncateRunes(input.UserAgent, 512),
+		LogID:      truncateRunes(input.LogID, 32),
 		CreatedAt:  now.UTC().Format("2006-01-02 15:04:05.000"),
 	})
 }
@@ -72,6 +73,7 @@ func toLogVOs(items []Log) []LogVO {
 			TargetID:         item.TargetID,
 			Before:           optionalRawJSON(item.BeforeJSON),
 			After:            optionalRawJSON(item.AfterJSON),
+			LogID:            item.LogID,
 			CreatedAt:        item.CreatedAt,
 		})
 	}

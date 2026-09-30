@@ -19,6 +19,7 @@ import (
 	"time"
 
 	assetdomain "agp/backend/internal/asset"
+	"agp/backend/internal/logctx"
 	statisticsdomain "agp/backend/internal/statistics"
 )
 
@@ -365,13 +366,24 @@ func TestResourceSharingAdminRoutesRequireGroupAdmin(t *testing.T) {
 func TestWithRequestLoggingRecordsErrorResponses(t *testing.T) {
 	var output bytes.Buffer
 	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	slog.SetDefault(slog.New(logctx.NewHandler(slog.NewTextHandler(&output, nil))))
 	defer slog.SetDefault(previous)
 
+	const logID = "0123456789abcdef0123456789abcdef"
 	handler := withRequestLogging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := logctx.LogID(r.Context()); got != logID {
+			t.Fatalf("request log ID = %q, want %q", got, logID)
+		}
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 	}))
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/assets/16/download", nil))
+	request := httptest.NewRequest("GET", "/api/assets/16/download", nil)
+	request.Header.Set(logctx.Header, logID)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get(logctx.Header); got != logID {
+		t.Fatalf("response log ID = %q, want %q", got, logID)
+	}
 
 	line := output.String()
 	for _, want := range []string{
@@ -380,10 +392,31 @@ func TestWithRequestLoggingRecordsErrorResponses(t *testing.T) {
 		"path=/api/assets/16/download",
 		"status=401",
 		"error_code=unauthorized",
+		"log_id=" + logID,
 	} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("log output %q does not contain %q", line, want)
 		}
+	}
+}
+
+func TestWithRequestLoggingReplacesInvalidLogID(t *testing.T) {
+	t.Parallel()
+
+	handler := withRequestLogging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !logctx.Valid(logctx.LogID(r.Context())) {
+			t.Fatalf("request log ID = %q, want generated ID", logctx.LogID(r.Context()))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.Header.Set(logctx.Header, "caller-controlled-value")
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get(logctx.Header); !logctx.Valid(got) {
+		t.Fatalf("response log ID = %q, want generated ID", got)
 	}
 }
 

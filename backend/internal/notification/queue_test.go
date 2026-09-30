@@ -93,6 +93,7 @@ func stateFiles(t *testing.T, queue *Queue, state string) int {
 func TestQueuePersistsAndDeduplicates(t *testing.T) {
 	t.Parallel()
 	queue, source, sender, event, now := queueFixture(t)
+	event.LogID = "0123456789abcdef0123456789abcdef"
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
@@ -112,6 +113,17 @@ func TestQueuePersistsAndDeduplicates(t *testing.T) {
 	info, err := files[0].Info()
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("job file permissions = %v, err=%v", info, err)
+	}
+	payload, err := os.ReadFile(filepath.Join(queue.dir, "pending", files[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted job
+	if err := json.Unmarshal(payload, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Event.LogID != event.LogID {
+		t.Fatalf("persisted log ID = %q, want %q", persisted.Event.LogID, event.LogID)
 	}
 	restarted, err := NewQueue(queue.dir, queue.targets, source, sender)
 	if err != nil {

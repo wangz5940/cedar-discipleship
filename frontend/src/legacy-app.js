@@ -48,6 +48,12 @@ import {
   setAccessToken,
 } from './runtime/authSession';
 import {
+  createLogID,
+  LOG_ID_HEADER,
+  recordResponseLogID,
+  requestLogID,
+} from './runtime/logID';
+import {
   isResourceFileAllowed,
   mergeResourceAssets,
   normalizeResourceCategory,
@@ -334,31 +340,40 @@ function statisticsContextKey() {
 
 export async function api(path, options = {}) {
   const generation = authSessionGeneration();
-  const headers = { ...(options.headers || {}) };
+  const {
+    logID: explicitLogID,
+    retryAuth = true,
+    ...requestOptions
+  } = options;
+  const logID = requestLogID(explicitLogID);
+  const headers = { ...(requestOptions.headers || {}), [LOG_ID_HEADER]: logID };
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const csrf = csrfToken();
   if (csrf && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrf;
-  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`/api${path}`, { ...options, headers, credentials: 'same-origin' });
+  if (requestOptions.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`/api${path}`, { ...requestOptions, headers, credentials: 'same-origin' });
+  const responseLogID = res.headers?.get?.(LOG_ID_HEADER) || '';
+  recordResponseLogID(responseLogID);
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && generation === authSessionGeneration() && path !== '/auth/refresh' && options.retryAuth !== false) {
-    const refreshed = await refreshSession();
-    if (refreshed) return api(path, { ...options, retryAuth: false });
+  if (res.status === 401 && generation === authSessionGeneration() && path !== '/auth/refresh' && retryAuth !== false) {
+    const refreshed = await refreshSession(logID);
+    if (refreshed) return api(path, { ...requestOptions, retryAuth: false, logID });
   }
   if (!res.ok) {
     const error = new Error(data.error || `HTTP ${res.status}`);
     error.code = data.error || '';
     error.status = res.status;
     error.payload = data;
+    error.logID = responseLogID || logID;
     throw error;
   }
   return data;
 }
 
-async function refreshSession() {
+async function refreshSession(logID) {
   const generation = authSessionGeneration();
-  const result = await refreshAccessSession();
+  const result = await refreshAccessSession(logID);
   if (generation !== authSessionGeneration()) return false;
   state.token = result?.token || '';
   if (result) state.user = result.user || null;
@@ -374,14 +389,21 @@ function authHeaders(headers = {}) {
 
 export async function fetchWithAuth(url, options = {}) {
   const generation = authSessionGeneration();
+  const {
+    logID: explicitLogID,
+    retryAuth = true,
+    ...requestOptions
+  } = options;
+  const logID = requestLogID(explicitLogID);
   const res = await fetch(url, {
-    ...options,
-    headers: authHeaders(options.headers || {}),
+    ...requestOptions,
+    headers: authHeaders({ ...(requestOptions.headers || {}), [LOG_ID_HEADER]: logID }),
     credentials: 'same-origin',
   });
-  if (res.status === 401 && generation === authSessionGeneration() && options.retryAuth !== false) {
-    const refreshed = await refreshSession();
-    if (refreshed) return fetchWithAuth(url, { ...options, retryAuth: false });
+  recordResponseLogID(res.headers?.get?.(LOG_ID_HEADER));
+  if (res.status === 401 && generation === authSessionGeneration() && retryAuth !== false) {
+    const refreshed = await refreshSession(logID);
+    if (refreshed) return fetchWithAuth(url, { ...requestOptions, retryAuth: false, logID });
   }
   return res;
 }
@@ -1397,13 +1419,15 @@ export async function toggleCheckin(task, member) {
     toast('禁止打卡未来日期内容');
     return;
   }
+  const logID = createLogID();
   try {
     if (task.ownRecord) {
-      await api(`/checkins/${task.ownRecord.id}`, { method: 'DELETE' });
+      await api(`/checkins/${task.ownRecord.id}`, { method: 'DELETE', logID });
       toast('已取消完成记录');
     } else {
       await api('/checkins', {
         method: 'POST',
+        logID,
         body: JSON.stringify({
           task_type: task.type,
           part: task.part || '',
@@ -2598,10 +2622,13 @@ export async function removeMember(member) {
 
 export async function logout(options = {}) {
   if (options.remote !== false) {
+    const logID = createLogID();
     await fetch('/api/auth/logout', {
       method: 'POST',
-      headers: { 'X-CSRF-Token': csrfToken() },
+      headers: { 'X-CSRF-Token': csrfToken(), [LOG_ID_HEADER]: logID },
       credentials: 'same-origin',
+    }).then((response) => {
+      recordResponseLogID(response.headers?.get?.(LOG_ID_HEADER));
     }).catch(() => {});
   }
   clearAccessToken();

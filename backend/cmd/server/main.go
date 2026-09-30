@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"agp/backend/internal/app"
+	"agp/backend/internal/logctx"
 )
 
 func main() {
@@ -26,6 +27,7 @@ func main() {
 		log.SetOutput(writer)
 		slog.SetDefault(slog.New(slog.NewTextHandler(writer, nil)))
 	}
+	slog.SetDefault(slog.New(logctx.NewHandler(slog.Default().Handler())))
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

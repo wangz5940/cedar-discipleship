@@ -50,6 +50,7 @@ func TestServiceCreateRedactsSensitiveValues(t *testing.T) {
 		},
 		IP:        strings.Repeat("界", 70),
 		UserAgent: strings.Repeat("a", 600),
+		LogID:     "0123456789abcdef0123456789abcdef",
 	}, time.Date(2026, 9, 29, 1, 2, 3, 4_000_000, time.UTC))
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -74,6 +75,9 @@ func TestServiceCreateRedactsSensitiveValues(t *testing.T) {
 	}
 	if len([]rune(repo.created.IP)) != 64 || len([]rune(repo.created.UserAgent)) != 512 {
 		t.Fatalf("metadata lengths = ip %d, user agent %d", len([]rune(repo.created.IP)), len([]rune(repo.created.UserAgent)))
+	}
+	if repo.created.LogID != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("log ID = %q", repo.created.LogID)
 	}
 }
 

@@ -2,7 +2,7 @@ package server
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -77,13 +77,14 @@ func (a *app) handleDashboardMonthlyRanking(w http.ResponseWriter, r *http.Reque
 	}
 	settings, err := a.groupLearningConfig(r.Context(), groupID)
 	if err != nil {
-		log.Printf(
-			"dashboard active rule load failed method=%s path=%s user_id=%d group_id=%d err=%v",
-			r.Method,
-			r.URL.Path,
-			u.ID,
-			groupID,
-			err,
+		slog.ErrorContext(
+			r.Context(),
+			"dashboard active rule load failed",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"user_id", u.ID,
+			"group_id", groupID,
+			"error", err,
 		)
 		writeError(w, http.StatusInternalServerError, "monthly_ranking_failed")
 		return
@@ -113,13 +114,14 @@ func (a *app) handleDashboardActiveRule(w http.ResponseWriter, r *http.Request) 
 		current := activeMemberRuleFromSettings(currentSettings)
 		beforeRule = &current
 	} else {
-		log.Printf(
-			"dashboard active rule audit snapshot failed method=%s path=%s user_id=%d group_id=%d err=%v",
-			r.Method,
-			r.URL.Path,
-			u.ID,
-			groupID,
-			err,
+		slog.WarnContext(
+			r.Context(),
+			"dashboard active rule audit snapshot failed",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"user_id", u.ID,
+			"group_id", groupID,
+			"error", err,
 		)
 	}
 	settings := map[string]any{
@@ -127,13 +129,14 @@ func (a *app) handleDashboardActiveRule(w http.ResponseWriter, r *http.Request) 
 		"task_types": rule.TaskTypes,
 	}
 	if err := a.learning.SaveActiveMemberRule(r.Context(), groupID, settings); err != nil {
-		log.Printf(
-			"dashboard active rule save failed method=%s path=%s user_id=%d group_id=%d err=%v",
-			r.Method,
-			r.URL.Path,
-			u.ID,
-			groupID,
-			err,
+		slog.ErrorContext(
+			r.Context(),
+			"dashboard active rule save failed",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"user_id", u.ID,
+			"group_id", groupID,
+			"error", err,
 		)
 		writeError(w, http.StatusInternalServerError, "active_member_rule_failed")
 		return

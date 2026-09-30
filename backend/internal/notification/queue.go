@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"agp/backend/internal/logctx"
 )
 
 const maxRetryDelay = 5 * time.Minute
@@ -266,7 +268,8 @@ func (q *Queue) enqueue(name string, event Event, target Target) error {
 	if err := writeJob(filepath.Join(q.dir, "pending", name), pending); err != nil {
 		return err
 	}
-	slog.Info("checkin notification queued", "record_id", event.RecordID, "group_id", event.GroupID,
+	ctx := logctx.WithLogID(context.Background(), event.LogID)
+	slog.InfoContext(ctx, "checkin notification queued", "record_id", event.RecordID, "group_id", event.GroupID,
 		"initial", event.Initial)
 	return nil
 }
@@ -314,11 +317,12 @@ func (q *Queue) processNext(ctx context.Context, now time.Time) {
 			}
 			return
 		}
+		itemContext := logctx.WithLogID(ctx, item.Event.LogID)
 		refreshPending := item.Event.Initial != "" && !item.RefreshAt.IsZero()
 		if item.Status == "pending" && !refreshPending &&
 			!item.ExpiresAt.IsZero() && !now.Before(item.ExpiresAt) {
 			item.Status, item.ErrorCode = "skipped", "period_expired"
-			q.finish(ctx, path, &item, time.Now())
+			q.finish(itemContext, path, &item, time.Now())
 			continue
 		}
 		if blocked[item.Target] {
@@ -329,7 +333,7 @@ func (q *Queue) processNext(ctx context.Context, now time.Time) {
 		if item.Status == "pending" && now.Before(item.NextTry) {
 			continue
 		}
-		q.process(ctx, path, &item, now)
+		q.process(itemContext, path, &item, now)
 		return
 	}
 }

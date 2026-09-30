@@ -13,6 +13,7 @@ import (
 
 	"agp/backend/internal/audit"
 	"agp/backend/internal/learning"
+	"agp/backend/internal/logctx"
 	"agp/backend/internal/testdb"
 	"agp/backend/internal/user"
 )
@@ -41,6 +42,7 @@ func TestLearningConfigAuditRecordsOnlyChangedFields(t *testing.T) {
 		DisplayName:    "管理员",
 		CurrentGroupID: 1,
 	}))
+	request = request.WithContext(logctx.WithLogID(request.Context(), "0123456789abcdef0123456789abcdef"))
 
 	response := httptest.NewRecorder()
 	application.handleAdminSaveLearningConfig(response, request)
@@ -48,21 +50,25 @@ func TestLearningConfigAuditRecordsOnlyChangedFields(t *testing.T) {
 		t.Fatalf("first save status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
 
-	var beforeJSON, afterJSON string
-	if err := db.QueryRow(`SELECT before_json,after_json FROM audit_logs
+	var beforeJSON, afterJSON, logID string
+	if err := db.QueryRow(`SELECT before_json,after_json,log_id FROM audit_logs
 		WHERE group_id=1 AND action='save_learning_config' ORDER BY id DESC LIMIT 1`).
-		Scan(&beforeJSON, &afterJSON); err != nil {
+		Scan(&beforeJSON, &afterJSON, &logID); err != nil {
 		t.Fatalf("query audit: %v", err)
 	}
 	assertJSONEqual(t, `{"checkin_notifications":{"daily_enabled":true}}`, beforeJSON)
 	assertJSONEqual(t, `{"checkin_notifications":{"daily_enabled":false}}`, afterJSON)
+	if logID != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("stored log ID = %q", logID)
+	}
 	items, err := application.audits.ListByGroup(t.Context(), 1, 100)
 	if err != nil {
 		t.Fatalf("list audits: %v", err)
 	}
 	if len(items) != 1 ||
 		items[0].ActorUsername != "admin" ||
-		items[0].ActorDisplayName != "管理员" {
+		items[0].ActorDisplayName != "管理员" ||
+		items[0].LogID != logID {
 		t.Fatalf("listed audit = %#v", items)
 	}
 

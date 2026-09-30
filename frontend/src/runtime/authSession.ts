@@ -1,3 +1,9 @@
+import {
+  LOG_ID_HEADER,
+  recordResponseLogID,
+  requestLogID,
+} from './logID';
+
 let accessToken = '';
 let sessionGeneration = 0;
 type RefreshedSession = { token: string; user?: unknown };
@@ -21,16 +27,21 @@ export function authSessionGeneration(): number {
   return sessionGeneration;
 }
 
-export function refreshAccessSession(): Promise<RefreshedSession | null> {
+export function refreshAccessSession(explicitLogID?: string): Promise<RefreshedSession | null> {
   if (refreshPromise) return refreshPromise;
   const generation = sessionGeneration;
+  const logID = requestLogID(explicitLogID);
   const pending = Promise.resolve().then(async () => {
     try {
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken() },
+        headers: {
+          'X-CSRF-Token': csrfToken(),
+          [LOG_ID_HEADER]: logID,
+        },
         credentials: 'same-origin',
       });
+      recordResponseLogID(response.headers.get(LOG_ID_HEADER));
       const data = await response.json().catch(() => ({}));
       if (generation !== sessionGeneration) return null;
       if (!response.ok || !data.token) {

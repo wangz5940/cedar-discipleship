@@ -14,6 +14,7 @@ type Event struct {
 	LogicalDate string    `json:"logical_date"`
 	OccurredAt  time.Time `json:"occurred_at"`
 	Initial     string    `json:"initial,omitempty"`
+	LogID       string    `json:"log_id,omitempty"`
 }
 
 type Entry struct {

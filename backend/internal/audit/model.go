@@ -13,5 +13,6 @@ type Log struct {
 	AfterJSON        string
 	IP               string
 	UserAgent        string
+	LogID            string
 	CreatedAt        string
 }

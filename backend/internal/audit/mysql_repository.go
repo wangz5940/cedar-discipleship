@@ -15,15 +15,15 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 }
 
 func (r *MySQLRepository) Create(ctx context.Context, log Log) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO audit_logs (group_id,actor_user_id,action,target_type,target_id,before_json,after_json,ip,user_agent,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		nullableID(log.GroupID), log.ActorID, log.Action, log.TargetType, nullableID(log.TargetID), nullableString(log.BeforeJSON), nullableString(log.AfterJSON), log.IP, log.UserAgent, log.CreatedAt)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO audit_logs (group_id,actor_user_id,action,target_type,target_id,before_json,after_json,ip,user_agent,log_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		nullableID(log.GroupID), log.ActorID, log.Action, log.TargetType, nullableID(log.TargetID), nullableString(log.BeforeJSON), nullableString(log.AfterJSON), log.IP, log.UserAgent, log.LogID, log.CreatedAt)
 	return err
 }
 
 func (r *MySQLRepository) ListByGroup(ctx context.Context, groupID uint64, limit int) ([]Log, error) {
 	return r.list(ctx, `SELECT a.id,a.group_id,a.actor_user_id,
 		COALESCE(u.username,''),COALESCE(u.display_name,''),
-		a.action,a.target_type,a.target_id,a.before_json,a.after_json,a.created_at
+		a.action,a.target_type,a.target_id,a.before_json,a.after_json,a.log_id,a.created_at
 		FROM audit_logs a
 		LEFT JOIN users u ON u.id=a.actor_user_id
 		WHERE a.group_id=? ORDER BY a.id DESC LIMIT ?`, groupID, limit)
@@ -32,7 +32,7 @@ func (r *MySQLRepository) ListByGroup(ctx context.Context, groupID uint64, limit
 func (r *MySQLRepository) ListAll(ctx context.Context, limit int) ([]Log, error) {
 	return r.list(ctx, `SELECT a.id,a.group_id,a.actor_user_id,
 		COALESCE(u.username,''),COALESCE(u.display_name,''),
-		a.action,a.target_type,a.target_id,a.before_json,a.after_json,a.created_at
+		a.action,a.target_type,a.target_id,a.before_json,a.after_json,a.log_id,a.created_at
 		FROM audit_logs a
 		LEFT JOIN users u ON u.id=a.actor_user_id
 		ORDER BY a.id DESC LIMIT ?`, limit)
@@ -62,6 +62,7 @@ func (r *MySQLRepository) list(ctx context.Context, query string, args ...any) (
 			&targetID,
 			&beforeJSON,
 			&afterJSON,
+			&item.LogID,
 			&created,
 		); err != nil {
 			return nil, err

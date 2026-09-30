@@ -12,6 +12,7 @@ import (
 
 	checkindomain "agp/backend/internal/checkin"
 	learningdomain "agp/backend/internal/learning"
+	"agp/backend/internal/logctx"
 	notificationdomain "agp/backend/internal/notification"
 )
 
@@ -128,6 +129,7 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	if a.notifications != nil {
 		err := a.notifications.Enqueue(notificationdomain.Event{
 			RecordID: id, GroupID: groupID, LogicalDate: req.LogicalDate, OccurredAt: time.Now().UTC(),
+			LogID: logctx.LogID(r.Context()),
 		})
 		if err != nil {
 			slog.ErrorContext(r.Context(), "checkin notification enqueue failed",

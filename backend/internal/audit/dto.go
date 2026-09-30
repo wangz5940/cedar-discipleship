@@ -12,6 +12,7 @@ type CreateLogInput struct {
 	After      any
 	IP         string
 	UserAgent  string
+	LogID      string
 }
 
 type LogVO struct {
@@ -25,5 +26,6 @@ type LogVO struct {
 	TargetID         uint64          `json:"target_id"`
 	Before           json.RawMessage `json:"before,omitempty"`
 	After            json.RawMessage `json:"after,omitempty"`
+	LogID            string          `json:"log_id,omitempty"`
 	CreatedAt        string          `json:"created_at"`
 }

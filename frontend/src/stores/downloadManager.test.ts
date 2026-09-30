@@ -70,6 +70,9 @@ describe('download lifecycle', () => {
     release([new Blob(['abc'])]);
     await running;
     expect(click).toHaveBeenCalledOnce();
+    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({
+      'X-Log-ID': expect.stringMatching(/^[0-9a-f]{32}$/),
+    });
     expect(store.history).toHaveLength(1);
     expect(store.history[0].size).toBe(3);
     expect(store.tasks).toEqual([]);

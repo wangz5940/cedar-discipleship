@@ -11,6 +11,11 @@ import {
 } from '../runtime/downloads';
 import { getAccessToken, refreshAccessSession } from '../runtime/authSession';
 import { saveBlob } from '../runtime/browserDownload';
+import {
+  createLogID,
+  LOG_ID_HEADER,
+  recordResponseLogID,
+} from '../runtime/logID';
 
 export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'failed';
 
@@ -218,6 +223,7 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
         this.scope === runScope && controllers.get(taskID) === controller
         && !controller.signal.aborted && this.tasks.includes(task) && task.status === 'downloading'
       );
+      const logID = task.resource.url.startsWith('/api/') ? createLogID() : '';
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       try {
         let offset = await storage.chunkSize(taskID);
@@ -230,6 +236,7 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
           const headers: Record<string, string> = {};
           const token = getAccessToken();
           if (task.resource.url.startsWith('/api/') && token) headers.Authorization = `Bearer ${token}`;
+          if (logID) headers[LOG_ID_HEADER] = logID;
           if (offset > 0) headers.Range = `bytes=${offset}-`;
           response = await fetch(task.resource.url, {
             headers,
@@ -238,9 +245,10 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
             signal: controller.signal,
           });
           if (!isCurrent()) return;
+          if (logID) recordResponseLogID(response.headers.get(LOG_ID_HEADER));
 
           if (response.status === 401 && task.resource.url.startsWith('/api/') && attempt === 0) {
-            const refreshed = await refreshAccessSession();
+            const refreshed = await refreshAccessSession(logID);
             if (refreshed) continue;
           }
           if (response.status === 416 && offset > 0 && attempt === 0) {

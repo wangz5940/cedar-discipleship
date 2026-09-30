@@ -9,6 +9,7 @@ import (
 
 	auditdomain "agp/backend/internal/audit"
 	learningdomain "agp/backend/internal/learning"
+	"agp/backend/internal/logctx"
 )
 
 type serverAuditRepository struct {
@@ -77,6 +78,7 @@ func TestAuditSurvivesCanceledRequestContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	request := httptest.NewRequest(http.MethodPost, "/api/checkins", nil).WithContext(ctx)
+	request = request.WithContext(logctx.WithLogID(request.Context(), "0123456789abcdef0123456789abcdef"))
 
 	application.audit(7, 9, "create_checkin", "checkin_records", 11, nil, map[string]any{"task_type": "daily_devotion"}, request)
 
@@ -85,6 +87,9 @@ func TestAuditSurvivesCanceledRequestContext(t *testing.T) {
 	}
 	if repo.contextErr != nil {
 		t.Fatalf("audit context error = %v, want nil", repo.contextErr)
+	}
+	if got := repo.logs[0].LogID; got != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("audit log ID = %q", got)
 	}
 }
 

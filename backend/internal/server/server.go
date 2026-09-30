@@ -25,6 +25,7 @@ import (
 	backupdomain "agp/backend/internal/backup"
 	checkindomain "agp/backend/internal/checkin"
 	learningdomain "agp/backend/internal/learning"
+	"agp/backend/internal/logctx"
 	ministrydomain "agp/backend/internal/ministry"
 	notificationdomain "agp/backend/internal/notification"
 	statisticsdomain "agp/backend/internal/statistics"
@@ -489,6 +490,19 @@ func (w *statusResponseWriter) statusCode() int {
 
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logID := strings.TrimSpace(r.Header.Get(logctx.Header))
+		if !logctx.Valid(logID) {
+			var err error
+			logID, err = logctx.New()
+			if err != nil {
+				slog.ErrorContext(r.Context(), "log ID generation failed", "error", err)
+				writeError(w, http.StatusInternalServerError, "internal_server_error")
+				return
+			}
+		}
+		w.Header().Set(logctx.Header, logID)
+		r = r.WithContext(logctx.WithLogID(r.Context(), logID))
+
 		start := time.Now()
 		recorder := &statusResponseWriter{ResponseWriter: w}
 		var panicValue any

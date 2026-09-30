@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -887,14 +887,15 @@ func (a *app) writeMinistryError(w http.ResponseWriter, r *http.Request, err err
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		user := mustUser(r)
-		log.Printf(
-			"ministry request failed method=%s path=%s user_id=%d group_id=%d ministry_group_id=%d err=%v",
-			r.Method,
-			r.URL.Path,
-			user.ID,
-			user.CurrentGroupID,
-			pathUint64(r, "id"),
-			err,
+		slog.ErrorContext(
+			r.Context(),
+			"ministry request failed",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"user_id", user.ID,
+			"group_id", user.CurrentGroupID,
+			"ministry_group_id", pathUint64(r, "id"),
+			"error", err,
 		)
 		writeError(w, http.StatusInternalServerError, "ministry_failed")
 	}
