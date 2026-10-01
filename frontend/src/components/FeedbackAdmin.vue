@@ -23,6 +23,7 @@ const statuses = [
 const statusFilter = ref('');
 const items = ref([]);
 const selected = ref(null);
+const openingID = ref(0);
 const loading = ref(false);
 const detailLoading = ref(false);
 const savingStatus = ref(false);
@@ -63,6 +64,10 @@ const technicalDiagnostics = computed(() => Object.fromEntries(
   Object.entries(selected.value?.diagnostics || {})
     .filter(([key]) => !semanticDiagnosticKeys.has(key)),
 ));
+const selectedDetailRow = computed(() => {
+  const index = items.value.findIndex((item) => item.id === openingID.value);
+  return Math.max(index, 0) * 2 + 2;
+});
 
 function statusLabel(status) {
   return statuses.find(([value]) => value === status)?.[1] || status;
@@ -123,7 +128,10 @@ async function loadList(preferredID = 0) {
     items.value = data.items || [];
     const targetID = preferredID || selected.value?.id || items.value[0]?.id;
     if (targetID && items.value.some((item) => item.id === targetID)) await openItem(targetID);
-    else selected.value = null;
+    else {
+      selected.value = null;
+      openingID.value = 0;
+    }
   } catch (error) {
     toast(error.message);
   } finally {
@@ -196,6 +204,7 @@ async function loadAttachmentPreviews(detail) {
 }
 
 async function openItem(id) {
+  openingID.value = id;
   detailLoading.value = true;
   try {
     const data = await api(`/super-admin/feedback/${id}`);
@@ -204,6 +213,7 @@ async function openItem(id) {
       attachments: await loadAttachmentPreviews(data.feedback),
     };
   } catch (error) {
+    openingID.value = selected.value?.id || 0;
     toast(error.message);
   } finally {
     detailLoading.value = false;
@@ -306,11 +316,12 @@ onBeforeUnmount(clearDetailURLs);
         <div v-if="loading && !items.length" class="empty">正在加载...</div>
         <div v-else-if="!items.length" class="empty">当前没有反馈</div>
         <button
-          v-for="item in items"
+          v-for="(item, index) in items"
           v-else
           :key="item.id"
           type="button"
-          :class="{ active: selected?.id === item.id }"
+          :class="{ active: openingID === item.id }"
+          :style="{ gridRow: index * 2 + 1 }"
           @click="openItem(item.id)"
         >
           <span class="feedback-admin__list-main">
@@ -321,13 +332,17 @@ onBeforeUnmount(clearDetailURLs);
             </small>
           </span>
           <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
-          <ChevronRight :size="17" />
+          <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
         </button>
       </aside>
 
-      <section class="panel feedback-admin__detail">
+      <section
+        v-if="openingID"
+        class="panel feedback-admin__detail"
+        :style="{ gridRow: selectedDetailRow }"
+      >
         <div v-if="detailLoading" class="empty">正在加载详情...</div>
-        <div v-else-if="!selected" class="empty">选择一条反馈查看详情</div>
+        <div v-else-if="!selected || selected.id !== openingID" class="empty">详情加载失败</div>
         <template v-else>
           <header class="feedback-admin__detail-head">
             <div>
@@ -422,13 +437,15 @@ onBeforeUnmount(clearDetailURLs);
 .feedback-admin__muted-item { display: inline-flex; align-items: center; gap: 2px; padding-left: 8px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); }
 .feedback-admin__muted-item code { overflow-wrap: anywhere; }
 .feedback-admin__muted-item button { width: 30px; height: 30px; min-height: 30px; padding: 0; }
-.feedback-admin__workspace { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.4fr); gap: 18px; align-items: start; }
-.feedback-admin__list { min-width: 0; border-top: 1px solid var(--cd-border); }
+.feedback-admin__workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: start; border-top: 1px solid var(--cd-border); }
+.feedback-admin__list { display: contents; }
 .feedback-admin__list > button { display: grid; width: 100%; min-height: 82px; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--cd-border); border-radius: 0; background: transparent; color: var(--cd-text); text-align: left; box-shadow: none; }
 .feedback-admin__list > button.active { color: var(--cd-primary); }
+.feedback-admin__list > button svg { transition: transform .16s ease; }
+.feedback-admin__list > button svg.expanded { transform: rotate(90deg); }
 .feedback-admin__list-main { display: grid; min-width: 0; gap: 3px; }
 .feedback-admin__list-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feedback-admin__detail { min-width: 0; }
+.feedback-admin__detail { min-width: 0; margin: -1px 0 14px; border-top: 2px solid var(--cd-primary); }
 .feedback-admin__detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .feedback-admin__detail-head h3, .feedback-admin__detail-head p { margin: 0; }
 .feedback-admin__message { margin: 18px 0; white-space: pre-wrap; line-height: 1.7; }
@@ -457,9 +474,6 @@ onBeforeUnmount(clearDetailURLs);
 .status-pending { color: var(--cd-warning); }
 .status-processing, .status-needs_info { color: var(--cd-primary); }
 .status-resolved { color: var(--cd-success); }
-@media (max-width: 900px) {
-  .feedback-admin__workspace { grid-template-columns: 1fr; }
-}
 @media (max-width: 600px) {
   .feedback-admin__title { align-items: stretch; flex-direction: column; }
   .feedback-admin__title .inline { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
