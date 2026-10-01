@@ -348,6 +348,7 @@ export async function api(path, options = {}) {
   const {
     logID: explicitLogID,
     retryAuth = true,
+    feedbackContext = {},
     ...requestOptions
   } = options;
   const logID = requestLogID(explicitLogID);
@@ -369,6 +370,7 @@ export async function api(path, options = {}) {
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
     void reportAutomaticFeedback(error, {
+      ...feedbackContext,
       actionContext: `${requestMethod} ${requestPath}`,
       requestMethod,
       requestPath,
@@ -381,7 +383,9 @@ export async function api(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && generation === authSessionGeneration() && path !== '/auth/refresh' && retryAuth !== false) {
     const refreshed = await refreshSession(logID);
-    if (refreshed) return api(path, { ...requestOptions, retryAuth: false, logID });
+    if (refreshed) return api(path, {
+      ...requestOptions, retryAuth: false, logID, feedbackContext,
+    });
   }
   if (!res.ok) {
     const error = new Error(data.error || `HTTP ${res.status}`);
@@ -393,6 +397,7 @@ export async function api(path, options = {}) {
     error.requestPath = requestPath;
     if (shouldReportAPIError(requestMethod, res.status, requestPath)) {
       void reportAutomaticFeedback(error, {
+        ...feedbackContext,
         actionContext: `${requestMethod} ${requestPath}`,
         requestMethod,
         requestPath,
@@ -427,6 +432,7 @@ export async function fetchWithAuth(url, options = {}) {
   const {
     logID: explicitLogID,
     retryAuth = true,
+    feedbackContext = {},
     ...requestOptions
   } = options;
   const logID = requestLogID(explicitLogID);
@@ -445,6 +451,7 @@ export async function fetchWithAuth(url, options = {}) {
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
     void reportAutomaticFeedback(error, {
+      ...feedbackContext,
       actionContext: `${requestMethod} ${requestPath}`,
       requestMethod,
       requestPath,
@@ -455,7 +462,11 @@ export async function fetchWithAuth(url, options = {}) {
   recordResponseLogID(res.headers?.get?.(LOG_ID_HEADER));
   if (res.status === 401 && generation === authSessionGeneration() && retryAuth !== false) {
     const refreshed = await refreshSession(logID);
-    if (refreshed) return fetchWithAuth(url, { ...requestOptions, retryAuth: false, logID });
+    if (refreshed) {
+      return fetchWithAuth(url, {
+        ...requestOptions, retryAuth: false, logID, feedbackContext,
+      });
+    }
   }
   if (!res.ok && shouldReportAPIError(requestMethod, res.status, requestPath)) {
     const error = new Error(`HTTP ${res.status}`);
@@ -464,6 +475,7 @@ export async function fetchWithAuth(url, options = {}) {
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
     void reportAutomaticFeedback(error, {
+      ...feedbackContext,
       actionContext: `${requestMethod} ${requestPath}`,
       requestMethod,
       requestPath,
@@ -1305,7 +1317,12 @@ export async function openContentTarget(target) {
     syncViewerStore();
     render();
     try {
-      const playback = await api(`/assets/${videoAssetMatch[1]}/playback`);
+      const playback = await api(`/assets/${videoAssetMatch[1]}/playback`, {
+        feedbackContext: {
+          actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
+          resourceTitle: title,
+        },
+      });
       if (state.viewer !== pendingViewer) return;
       pendingViewer.url = playback.url;
       pendingViewer.fallbackURL = playback.fallback_url || '';
@@ -1320,7 +1337,12 @@ export async function openContentTarget(target) {
   closeViewer();
   const requestID = viewerRequestID;
   if (sourceAPIPath) {
-    const res = await fetchWithAuth(sourceAPIPath);
+    const res = await fetchWithAuth(sourceAPIPath, {
+      feedbackContext: {
+        actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
+        resourceTitle: title,
+      },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
     const pdfHeader = hasPDFSignature(new Uint8Array(await blob.slice(0, 1024).arrayBuffer()));
@@ -1423,7 +1445,12 @@ export async function openViewerItemInNewWindow(item, popup = null) {
       ? String(sourceAPIPath || '').match(/^\/api\/assets\/(\d+)\/download$/)
       : null;
     if (videoAssetMatch) {
-      const playback = await api(`/assets/${videoAssetMatch[1]}/playback`);
+      const playback = await api(`/assets/${videoAssetMatch[1]}/playback`, {
+        feedbackContext: {
+          actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
+          resourceTitle: title,
+        },
+      });
       if (popup && !popup.closed) {
         popup.location.replace(playback.url);
       } else {
@@ -1432,7 +1459,12 @@ export async function openViewerItemInNewWindow(item, popup = null) {
       return;
     }
     if (sourceAPIPath) {
-      const res = await fetchWithAuth(sourceAPIPath);
+      const res = await fetchWithAuth(sourceAPIPath, {
+        feedbackContext: {
+          actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
+          resourceTitle: title,
+        },
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const blobType = inferResourceTypeFromMime(blob.type, type);
@@ -1492,12 +1524,25 @@ export async function toggleCheckin(task, member) {
   const logID = createLogID();
   try {
     if (task.ownRecord) {
-      await api(`/checkins/${task.ownRecord.id}`, { method: 'DELETE', logID });
+      await api(`/checkins/${task.ownRecord.id}`, {
+        method: 'DELETE',
+        logID,
+        feedbackContext: {
+          actionLabel: '取消打卡',
+          taskTitle: task.title || task.detail || task.part || '学习任务',
+          logicalDate: state.selectedDate,
+        },
+      });
       toast('已取消完成记录');
     } else {
       await api('/checkins', {
         method: 'POST',
         logID,
+        feedbackContext: {
+          actionLabel: '完成打卡',
+          taskTitle: task.title || task.detail || task.part || '学习任务',
+          logicalDate: state.selectedDate,
+        },
         body: JSON.stringify({
           task_type: task.type,
           part: task.part || '',

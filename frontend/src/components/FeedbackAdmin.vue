@@ -39,6 +39,30 @@ const selectedErrorMuted = computed(() => (
   selectedErrorType.value
   && automaticSettings.value.muted_error_types.includes(selectedErrorType.value)
 ));
+const semanticDiagnosticKeys = new Set([
+  'business_action',
+  'resource_title',
+  'task_title',
+  'logical_date',
+  'group_name',
+  'user_display_name',
+]);
+const selectedContext = computed(() => {
+  const item = selected.value || {};
+  const diagnostics = item.diagnostics || {};
+  return {
+    group: item.group_name || diagnostics.group_name || '',
+    user: item.member_name || diagnostics.user_display_name
+      || item.display_name || item.legacy_name || item.username || '',
+    action: diagnostics.business_action || '',
+    content: diagnostics.resource_title || diagnostics.task_title || '',
+    date: diagnostics.logical_date || '',
+  };
+});
+const technicalDiagnostics = computed(() => Object.fromEntries(
+  Object.entries(selected.value?.diagnostics || {})
+    .filter(([key]) => !semanticDiagnosticKeys.has(key)),
+));
 
 function statusLabel(status) {
   return statuses.find(([value]) => value === status)?.[1] || status;
@@ -62,6 +86,16 @@ function diagnosticLabel(key) {
     request_path: '请求路径',
     http_status: '状态码',
     error_code: '错误码',
+    business_action: '业务动作',
+    resource_title: '资源名称',
+    task_title: '任务名称',
+    logical_date: '业务日期',
+    script_url: '脚本地址',
+    line: '行号',
+    column: '列号',
+    event_target: '事件目标',
+    group_name: '小组',
+    user_display_name: '用户',
   }[key] || key;
 }
 
@@ -280,9 +314,11 @@ onBeforeUnmount(clearDetailURLs);
           @click="openItem(item.id)"
         >
           <span class="feedback-admin__list-main">
-            <strong>#{{ item.id }} · {{ item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>
+            <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>
             <span>{{ item.message }}</span>
-            <small class="muted">{{ item.source === 'automatic' ? '自动上报 · ' : '' }}{{ formatDate(item.updated_at) }}</small>
+            <small class="muted">
+              {{ item.source === 'automatic' ? '自动上报 · ' : '' }}{{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}
+            </small>
           </span>
           <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
           <ChevronRight :size="17" />
@@ -295,7 +331,7 @@ onBeforeUnmount(clearDetailURLs);
         <template v-else>
           <header class="feedback-admin__detail-head">
             <div>
-              <h3>{{ selected.display_name || selected.legacy_name || selected.username || '历史用户' }}</h3>
+              <h3>{{ selected.member_name || selected.display_name || selected.legacy_name || selected.username || '历史用户' }}</h3>
               <p class="small muted">{{ selected.source === 'automatic' ? '自动上报 · ' : '' }}{{ formatDate(selected.created_at) }}</p>
             </div>
             <select aria-label="处理状态" :value="selected.status" :disabled="savingStatus" @change="updateStatus($event.target.value)">
@@ -304,6 +340,16 @@ onBeforeUnmount(clearDetailURLs);
           </header>
 
           <p class="feedback-admin__message">{{ selected.message }}</p>
+          <section v-if="selected.source === 'automatic'" class="feedback-admin__context" aria-label="自动反馈业务概览">
+            <h3>业务概览</h3>
+            <dl>
+              <template v-if="selectedContext.group"><dt>小组</dt><dd>{{ selectedContext.group }}</dd></template>
+              <template v-if="selectedContext.user"><dt>用户</dt><dd>{{ selectedContext.user }}</dd></template>
+              <template v-if="selectedContext.action"><dt>动作</dt><dd>{{ selectedContext.action }}</dd></template>
+              <template v-if="selectedContext.content"><dt>内容</dt><dd>{{ selectedContext.content }}</dd></template>
+              <template v-if="selectedContext.date"><dt>日期</dt><dd>{{ selectedContext.date }}</dd></template>
+            </dl>
+          </section>
           <div v-if="selected.attachments?.length" class="feedback-admin__images">
             <a v-for="image in selected.attachments" :key="image.id" :href="image.url" target="_blank" rel="noopener">
               <img :src="image.url" :alt="image.original_name" />
@@ -328,9 +374,9 @@ onBeforeUnmount(clearDetailURLs);
             <dl>
               <dt>Log ID</dt><dd class="feedback-admin__log-id">{{ selected.log_id || '未记录' }}</dd>
               <dt>账号</dt><dd>{{ selected.username || '历史记录未绑定账号' }}<template v-if="selected.user_id"> (#{{ selected.user_id }})</template></dd>
-              <dt>小组 ID</dt><dd>{{ selected.group_id || '无' }}</dd>
-              <template v-if="Object.keys(selected.diagnostics || {}).length">
-                <template v-for="(value, key) in selected.diagnostics" :key="key">
+              <dt>小组</dt><dd>{{ selected.group_name || '无' }}<template v-if="selected.group_id"> (#{{ selected.group_id }})</template></dd>
+              <template v-if="Object.keys(technicalDiagnostics).length">
+                <template v-for="(value, key) in technicalDiagnostics" :key="key">
                   <dt>{{ diagnosticLabel(key) }}</dt><dd>{{ value }}</dd>
                 </template>
               </template>
@@ -386,6 +432,11 @@ onBeforeUnmount(clearDetailURLs);
 .feedback-admin__detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .feedback-admin__detail-head h3, .feedback-admin__detail-head p { margin: 0; }
 .feedback-admin__message { margin: 18px 0; white-space: pre-wrap; line-height: 1.7; }
+.feedback-admin__context { margin: 18px 0; padding: 14px 0; border-top: 1px solid var(--cd-border); border-bottom: 1px solid var(--cd-border); }
+.feedback-admin__context h3 { margin: 0 0 10px; font-size: 16px; }
+.feedback-admin__context dl { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 6px 12px; margin: 0; }
+.feedback-admin__context dt { color: var(--cd-muted); }
+.feedback-admin__context dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .feedback-admin__images { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 .feedback-admin__images a { aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--cd-radius-base); }
 .feedback-admin__images img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -414,6 +465,7 @@ onBeforeUnmount(clearDetailURLs);
   .feedback-admin__title .inline { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
   .feedback-admin__automation { align-items: flex-start; flex-direction: column; gap: 8px; }
   .feedback-admin__metadata dl { grid-template-columns: 1fr; gap: 3px; }
+  .feedback-admin__context dl { grid-template-columns: 64px minmax(0, 1fr); }
   .feedback-admin__metadata dd { margin-bottom: 7px; }
   .feedback-admin__reply button { width: 100%; min-height: 48px; }
 }

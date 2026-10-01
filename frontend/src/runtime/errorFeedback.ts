@@ -9,11 +9,19 @@ import {
 
 type ErrorContext = {
   actionContext?: string;
+  actionLabel?: string;
+  resourceTitle?: string;
+  taskTitle?: string;
+  logicalDate?: string;
   requestMethod?: string;
   requestPath?: string;
   status?: number;
   errorCode?: string;
   logID?: string;
+  scriptURL?: string;
+  line?: number;
+  column?: number;
+  eventTarget?: string;
 };
 
 type ReportableError = Error & {
@@ -58,6 +66,17 @@ export function shouldReportAPIError(method: string, status: number, path: strin
 
 function normalizeErrorType(value: unknown): string {
   return limited(value, 128).toLowerCase();
+}
+
+function automaticFeedbackMessage(context: ErrorContext, actionContext: string): string {
+  const action = limited(context.actionLabel, 64);
+  const resourceTitle = limited(context.resourceTitle, 256);
+  const taskTitle = limited(context.taskTitle, 256);
+  if (!action) return `系统自动上报：${actionContext}发生错误`;
+  const content = resourceTitle
+    ? `《${resourceTitle}》`
+    : taskTitle ? `“${taskTitle}”` : '';
+  return `系统自动上报：${action}${content}时发生错误`;
 }
 
 async function automaticFeedbackSettings(): Promise<AutomaticFeedbackSettings | null> {
@@ -115,7 +134,20 @@ export async function reportAutomaticFeedback(
     const errorType = normalizeErrorType(errorCode || errorName);
     const errorMessage = limited(error.message || errorCode || 'unknown_error', 512);
     const actionContext = limited(context.actionContext || 'application', 128);
-    const signature = [errorType, errorMessage, requestMethod, requestPath].join('|');
+    const actionLabel = limited(context.actionLabel, 64);
+    const resourceTitle = limited(context.resourceTitle, 256);
+    const taskTitle = limited(context.taskTitle, 256);
+    const logicalDate = limited(context.logicalDate, 32);
+    const signature = [
+      errorType,
+      errorMessage,
+      requestMethod,
+      requestPath,
+      actionLabel,
+      resourceTitle,
+      taskTitle,
+      logicalDate,
+    ].join('|');
     const now = Date.now();
     for (const [key, reportedAt] of recentReports) {
       if (now - reportedAt > duplicateWindowMs) recentReports.delete(key);
@@ -139,9 +171,17 @@ export async function reportAutomaticFeedback(
       request_path: requestPath,
       http_status: String(context.status || error.status || ''),
       error_code: errorCode,
+      business_action: actionLabel,
+      resource_title: resourceTitle,
+      task_title: taskTitle,
+      logical_date: logicalDate,
+      script_url: limited(context.scriptURL, 512),
+      line: context.line ? String(context.line) : '',
+      column: context.column ? String(context.column) : '',
+      event_target: limited(context.eventTarget, 128),
     };
     const form = new FormData();
-    form.append('message', `系统自动上报：${actionContext}发生错误`);
+    form.append('message', automaticFeedbackMessage(context, actionContext));
     form.append('diagnostics', JSON.stringify(diagnostics));
     if (errorLogID) form.append('error_log_id', errorLogID);
 
@@ -169,6 +209,10 @@ export function installAutomaticFeedbackReporting() {
   window.addEventListener('error', (event) => {
     void reportAutomaticFeedback(event.error || event.message, {
       actionContext: 'runtime_error',
+      scriptURL: event.filename,
+      line: event.lineno,
+      column: event.colno,
+      eventTarget: event.target instanceof Element ? event.target.tagName : '',
     });
   });
   window.addEventListener('unhandledrejection', (event) => {
@@ -182,4 +226,5 @@ export function resetAutomaticFeedbackStateForTest() {
   recentReports.clear();
   settingsRequest = null;
   reporting = false;
+  installed = false;
 }

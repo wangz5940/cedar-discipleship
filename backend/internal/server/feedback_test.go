@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	auditdomain "agp/backend/internal/audit"
 	feedbackdomain "agp/backend/internal/feedback"
 	"agp/backend/internal/logctx"
+	userdomain "agp/backend/internal/user"
 )
 
 type feedbackHandlerRepository struct {
@@ -182,17 +184,20 @@ func TestOwnFeedbackDetailDoesNotExposeAnotherUser(t *testing.T) {
 }
 
 func TestAutomaticFeedbackUsesFailingRequestLogID(t *testing.T) {
-	t.Parallel()
+	var logOutput bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(logctx.NewHandler(slog.NewTextHandler(&logOutput, nil))))
+	defer slog.SetDefault(previousLogger)
 
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	if err := form.WriteField("message", "系统自动上报：资源打开发生错误"); err != nil {
+	if err := form.WriteField("message", "系统自动上报：阅读资源时发生错误"); err != nil {
 		t.Fatal(err)
 	}
 	if err := form.WriteField("error_log_id", "fedcba9876543210fedcba9876543210"); err != nil {
 		t.Fatal(err)
 	}
-	if err := form.WriteField("diagnostics", `{"request_method":"GET","request_path":"/api/assets/7/download","http_status":"404","error_code":"asset_not_found"}`); err != nil {
+	if err := form.WriteField("diagnostics", `{"request_method":"GET","request_path":"/api/assets/7/download","http_status":"404","error_code":"asset_not_found","business_action":"阅读","resource_title":"马可福音","group_name":"伪造小组","user_display_name":"伪造用户"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := form.Close(); err != nil {
@@ -212,7 +217,11 @@ func TestAutomaticFeedbackUsesFailingRequestLogID(t *testing.T) {
 	request = request.WithContext(context.WithValue(
 		request.Context(),
 		currentUserKey,
-		currentUser{ID: 11, CurrentGroupID: 7},
+		currentUser{
+			ID: 11, Username: "member", DisplayName: "成员账号", MemberName: "小泽",
+			CurrentGroupID: 7,
+			Groups:         []userdomain.Group{{ID: 7, Name: "科大门训"}},
+		},
 	))
 	request = request.WithContext(logctx.WithLogID(
 		request.Context(),
@@ -230,6 +239,29 @@ func TestAutomaticFeedbackUsesFailingRequestLogID(t *testing.T) {
 	}
 	if repo.item.LogID != "fedcba9876543210fedcba9876543210" {
 		t.Fatalf("log ID = %q", repo.item.LogID)
+	}
+	if repo.item.Message != "系统自动上报：科大门训的小泽在阅读《马可福音》时发生错误" {
+		t.Fatalf("message = %q", repo.item.Message)
+	}
+	var diagnostics map[string]string
+	if err := json.Unmarshal([]byte(repo.item.DiagnosticsJSON), &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	if diagnostics["group_name"] != "科大门训" || diagnostics["user_display_name"] != "小泽" {
+		t.Fatalf("diagnostics identity = %#v", diagnostics)
+	}
+	for _, expected := range []string{
+		`msg="automatic feedback created"`,
+		"feedback_id=73",
+		"error_log_id=fedcba9876543210fedcba9876543210",
+		"group_name=科大门训",
+		"user_display_name=小泽",
+		"business_action=阅读",
+		"resource_title=马可福音",
+	} {
+		if !strings.Contains(logOutput.String(), expected) {
+			t.Fatalf("log output %q does not contain %q", logOutput.String(), expected)
+		}
 	}
 }
 

@@ -19,6 +19,8 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 			(11,'member-a','成员甲','member-a',NOW(),NOW()),
 			(12,'member-b','成员乙','member-b',NOW(),NOW()),
 			(99,'admin','管理员','admin',NOW(),NOW());
+		INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
+		VALUES(1,11,'组内成员甲',NOW(),NOW(),NOW());
 		INSERT INTO feedbacks(group_id,user_id,name,contact,message,page,user_agent,created_at)
 		VALUES(1,NULL,'历史用户','legacy@example.com','历史反馈','home','legacy-agent',NOW())`)
 
@@ -78,6 +80,9 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 	}
 	if adminItems[0].LogID != "0123456789abcdef0123456789abcdef" {
 		t.Fatalf("new feedback log ID = %q", adminItems[0].LogID)
+	}
+	if adminItems[0].GroupName != "反馈组" || adminItems[0].MemberName != "组内成员甲" {
+		t.Fatalf("new feedback identity = %#v", adminItems[0])
 	}
 	if adminItems[1].UserID != 0 || adminItems[1].LegacyName != "历史用户" {
 		t.Fatalf("legacy feedback = %#v", adminItems[1])

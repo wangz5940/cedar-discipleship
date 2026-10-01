@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAccessToken, setAccessToken } from './authSession';
 import {
+  installAutomaticFeedbackReporting,
   reportAutomaticFeedback,
   resetAutomaticFeedbackStateForTest,
   shouldReportAPIError,
@@ -69,6 +70,76 @@ describe('automatic error feedback', () => {
       request_path: '/api/assets/7/download',
       http_status: '404',
       error_code: 'asset_not_found',
+    });
+  });
+
+  it('reports readable business action and content context', async () => {
+    const fetch = vi.fn().mockImplementation(async (url) => (
+      url === '/api/feedback/automatic-settings'
+        ? new Response(JSON.stringify({
+          settings: { enabled: true, muted_error_types: [] },
+        }), { status: 200 })
+        : new Response(null, { status: 201 })
+    ));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(reportAutomaticFeedback(new Error('save_failed'), {
+      actionContext: 'POST /api/checkins',
+      actionLabel: '完成打卡',
+      taskTitle: '阅读《马可福音》第三章',
+      logicalDate: '2026-10-01',
+    })).resolves.toBe(true);
+
+    const form = fetch.mock.calls[1][1].body;
+    expect(form.get('message')).toBe('系统自动上报：完成打卡“阅读《马可福音》第三章”时发生错误');
+    expect(JSON.parse(form.get('diagnostics'))).toMatchObject({
+      business_action: '完成打卡',
+      task_title: '阅读《马可福音》第三章',
+      logical_date: '2026-10-01',
+    });
+  });
+
+  it('preserves browser error event location metadata', async () => {
+    const listeners: Record<string, (event: Event) => void> = {};
+    const fetch = vi.fn().mockImplementation(async (url) => {
+      if (url === '/api/feedback/automatic-settings') {
+        return new Response(JSON.stringify({
+          settings: { enabled: true, muted_error_types: [] },
+        }), { status: 200 });
+      }
+      return new Response(null, { status: 201 });
+    });
+    vi.stubGlobal('fetch', fetch);
+    vi.stubGlobal('Element', class Element {});
+    vi.stubGlobal('window', {
+      location: { origin: 'http://localhost', pathname: '/reader', search: '?book=7' },
+      innerWidth: 390,
+      innerHeight: 844,
+      screen: { width: 430, height: 932 },
+      addEventListener: vi.fn((type, listener) => {
+        listeners[type] = listener;
+      }),
+    });
+
+    installAutomaticFeedbackReporting();
+    listeners.error({
+      message: 'Script error.',
+      filename: 'https://cdn.example.test/reader.js',
+      lineno: 42,
+      colno: 17,
+      error: new TypeError('reader failed'),
+      target: null,
+    } as unknown as ErrorEvent);
+
+    await vi.waitFor(() => {
+      expect(fetch.mock.calls.some(([url]) => url === '/api/feedback/automatic')).toBe(true);
+    });
+    const automaticCall = fetch.mock.calls.find(([url]) => url === '/api/feedback/automatic');
+    const diagnostics = JSON.parse(automaticCall?.[1].body.get('diagnostics'));
+    expect(diagnostics).toMatchObject({
+      script_url: 'https://cdn.example.test/reader.js',
+      line: '42',
+      column: '17',
     });
   });
 

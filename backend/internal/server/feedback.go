@@ -17,6 +17,47 @@ import (
 
 const feedbackMultipartMemory = int64(8 << 20)
 
+func automaticFeedbackIdentity(user currentUser) (string, string) {
+	displayName := strings.TrimSpace(user.MemberName)
+	if displayName == "" {
+		displayName = strings.TrimSpace(user.DisplayName)
+	}
+	if displayName == "" {
+		displayName = strings.TrimSpace(user.Username)
+	}
+	for _, group := range user.Groups {
+		if group.ID == user.CurrentGroupID {
+			return displayName, strings.TrimSpace(group.Name)
+		}
+	}
+	return displayName, ""
+}
+
+func readableAutomaticFeedbackMessage(diagnostics map[string]string, fallback string) string {
+	action := strings.TrimSpace(diagnostics["business_action"])
+	if action == "" {
+		return fallback
+	}
+	content := ""
+	if title := strings.TrimSpace(diagnostics["resource_title"]); title != "" {
+		content = "《" + title + "》"
+	} else if title := strings.TrimSpace(diagnostics["task_title"]); title != "" {
+		content = "“" + title + "”"
+	}
+	groupName := strings.TrimSpace(diagnostics["group_name"])
+	userDisplayName := strings.TrimSpace(diagnostics["user_display_name"])
+	subject := userDisplayName
+	if groupName != "" && userDisplayName != "" {
+		subject = groupName + "的" + userDisplayName
+	} else if groupName != "" {
+		subject = groupName
+	}
+	if subject != "" {
+		subject += "在"
+	}
+	return "系统自动上报：" + subject + action + content + "时发生错误"
+}
+
 func (a *app) handleCreateFeedback(w http.ResponseWriter, r *http.Request) {
 	a.handleFeedbackCreate(w, r, feedbackdomain.SourceManual)
 }
@@ -79,6 +120,11 @@ func (a *app) handleFeedbackCreate(w http.ResponseWriter, r *http.Request, sourc
 		diagnostics = make(map[string]string)
 	}
 	diagnostics["user_agent"] = r.UserAgent()
+	if source == feedbackdomain.SourceAutomatic {
+		userDisplayName, groupName := automaticFeedbackIdentity(user)
+		diagnostics["user_display_name"] = userDisplayName
+		diagnostics["group_name"] = groupName
+	}
 	files := r.MultipartForm.File["images"]
 	if len(files) > feedbackdomain.MaxImages {
 		writeError(w, http.StatusRequestEntityTooLarge, feedbackdomain.ErrTooManyImages.Error())
@@ -119,6 +165,9 @@ func (a *app) handleFeedbackCreate(w http.ResponseWriter, r *http.Request, sourc
 		Diagnostics: diagnostics,
 		Images:      uploads,
 	}
+	if source == feedbackdomain.SourceAutomatic {
+		input.Message = readableAutomaticFeedbackMessage(diagnostics, input.Message)
+	}
 	var item *feedbackdomain.UserView
 	var err error
 	if source == feedbackdomain.SourceAutomatic {
@@ -136,6 +185,19 @@ func (a *app) handleFeedbackCreate(w http.ResponseWriter, r *http.Request, sourc
 			return
 		}
 		item = result.Feedback
+		slog.InfoContext(r.Context(), "automatic feedback created",
+			"feedback_id", item.ID,
+			"error_log_id", input.LogID,
+			"group_id", user.CurrentGroupID,
+			"group_name", diagnostics["group_name"],
+			"user_id", user.ID,
+			"user_display_name", diagnostics["user_display_name"],
+			"business_action", diagnostics["business_action"],
+			"resource_title", diagnostics["resource_title"],
+			"task_title", diagnostics["task_title"],
+			"error_name", diagnostics["error_name"],
+			"error_code", diagnostics["error_code"],
+		)
 	} else {
 		item, err = a.feedbacks.Create(r.Context(), input, time.Now())
 	}

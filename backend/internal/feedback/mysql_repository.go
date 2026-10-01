@@ -235,6 +235,7 @@ func (r *MySQLRepository) find(ctx context.Context, clause string, args ...any) 
 func (r *MySQLRepository) list(ctx context.Context, clause string, args ...any) ([]Feedback, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT
 		f.id,f.group_id,f.user_id,COALESCE(u.username,''),COALESCE(u.display_name,''),
+		COALESCE(gm.member_name,''),COALESCE(g.name,''),
 		f.name,f.contact,f.message,COALESCE(NULLIF(f.source,''),'manual'),
 		COALESCE(NULLIF(f.status,''),'pending'),f.log_id,
 		COALESCE(CAST(f.diagnostics_json AS CHAR),''),
@@ -243,6 +244,8 @@ func (r *MySQLRepository) list(ctx context.Context, clause string, args ...any) 
 		(SELECT COUNT(*) FROM feedback_replies fr WHERE fr.feedback_id=f.id)
 		FROM feedbacks f
 		LEFT JOIN users u ON u.id=f.user_id
+		LEFT JOIN study_groups g ON g.id=f.group_id
+		LEFT JOIN group_members gm ON gm.group_id=f.group_id AND gm.user_id=f.user_id
 		`+clause, args...)
 	if err != nil {
 		return nil, err
@@ -255,6 +258,7 @@ func (r *MySQLRepository) list(ctx context.Context, clause string, args ...any) 
 		var groupID, userID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID, &groupID, &userID, &item.Username, &item.DisplayName,
+			&item.MemberName, &item.GroupName,
 			&item.LegacyName, &item.LegacyContact, &item.Message, &item.Source, &item.Status, &item.LogID,
 			&item.DiagnosticsJSON, &item.CreatedAt, &item.UpdatedAt,
 			&item.AttachmentCount, &item.ReplyCount,

@@ -30,6 +30,8 @@ type Feedback struct {
 	UserID          uint64
 	Username        string
 	DisplayName     string
+	MemberName      string
+	GroupName       string
 	LegacyName      string
 	LegacyContact   string
 	Message         string
@@ -126,6 +128,8 @@ type AdminView struct {
 	UserID        uint64            `json:"user_id,omitempty"`
 	Username      string            `json:"username,omitempty"`
 	DisplayName   string            `json:"display_name,omitempty"`
+	MemberName    string            `json:"member_name,omitempty"`
+	GroupName     string            `json:"group_name,omitempty"`
 	LegacyName    string            `json:"legacy_name,omitempty"`
 	LegacyContact string            `json:"legacy_contact,omitempty"`
 	LogID         string            `json:"log_id,omitempty"`

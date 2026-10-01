@@ -254,6 +254,8 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
             if (error.name !== 'AbortError' && logID) {
               void reportAutomaticFeedback(error, {
                 actionContext: 'resource_download',
+                actionLabel: '下载',
+                resourceTitle: task.resource.title,
                 requestMethod: 'GET',
                 requestPath: task.resource.url,
                 logID,
@@ -285,6 +287,8 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
             if (logID && shouldReportAPIError('GET', response.status, task.resource.url)) {
               void reportAutomaticFeedback(error, {
                 actionContext: 'resource_download',
+                actionLabel: '下载',
+                resourceTitle: task.resource.title,
                 requestMethod: 'GET',
                 requestPath: task.resource.url,
                 status: response.status,

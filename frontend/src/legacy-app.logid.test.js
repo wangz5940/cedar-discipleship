@@ -108,7 +108,13 @@ describe('API log ID propagation', () => {
       .mockResolvedValueOnce(new Response(null, { status: 201 }));
     vi.stubGlobal('fetch', fetch);
 
-    await expect(api('/assets/7/playback', { logID })).rejects.toMatchObject({
+    await expect(api('/assets/7/playback', {
+      logID,
+      feedbackContext: {
+        actionLabel: '阅读',
+        resourceTitle: '马可福音',
+      },
+    })).rejects.toMatchObject({
       code: 'book_open_failed',
       logID,
     });
@@ -117,5 +123,11 @@ describe('API log ID propagation', () => {
     expect(fetch.mock.calls[1][0]).toBe('/api/feedback/automatic-settings');
     expect(fetch.mock.calls[2][0]).toBe('/api/feedback/automatic');
     expect(fetch.mock.calls[2][1].body.get('error_log_id')).toBe(logID);
+    expect(fetch.mock.calls[0][1]).not.toHaveProperty('feedbackContext');
+    expect(fetch.mock.calls[2][1].body.get('message')).toContain('阅读《马可福音》');
+    expect(JSON.parse(fetch.mock.calls[2][1].body.get('diagnostics'))).toMatchObject({
+      business_action: '阅读',
+      resource_title: '马可福音',
+    });
   });
 });
