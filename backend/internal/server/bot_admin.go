@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -138,6 +139,29 @@ func (a *app) handleBotRobotDelete(w http.ResponseWriter, r *http.Request) {
 	user := mustUser(r)
 	a.audit(0, user.ID, "delete_bot_robot", "potato_robot", 0, nil, map[string]any{"robot_id": r.PathValue("id")}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *app) handleBotNotificationFailuresDelete(w http.ResponseWriter, r *http.Request) {
+	if a.botManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "bot_not_configured")
+		return
+	}
+	robotID := r.PathValue("id")
+	cleared, err := a.botManager.ClearFailed(robotID)
+	if errors.Is(err, notificationdomain.ErrRobotNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "bot notification failure cleanup failed",
+			"robot_id", robotID, "error", err)
+		writeError(w, http.StatusInternalServerError, "bot_notification_cleanup_failed")
+		return
+	}
+	user := mustUser(r)
+	a.audit(0, user.ID, "clear_bot_notification_failures", "potato_robot", 0,
+		nil, map[string]any{"robot_id": robotID, "cleared": cleared}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"cleared": cleared})
 }
 
 func (a *app) handleBotBinding(w http.ResponseWriter, r *http.Request) {

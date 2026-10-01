@@ -9,6 +9,7 @@ const studyGroups = ref([]);
 const loading = ref(false);
 const savingBinding = ref('');
 const savingRobot = ref(false);
+const clearingFailed = ref('');
 const newRobot = ref({ id: '', name: '', token: '' });
 
 onMounted(load);
@@ -49,6 +50,24 @@ async function removeRobot(robot) {
   if (!window.confirm(`确定删除机器人“${robot.name || robot.id}”？`)) return;
   try { await api(`/super-admin/bot-robots/${encodeURIComponent(robot.id)}`, { method: 'DELETE' }); showToast('机器人已删除'); await load(); }
   catch (error) { showToast({ robot_not_found: '机器人不存在', robot_cannot_remove: '部署配置的机器人不能删除', bot_robot_delete_failed: '机器人删除失败' }[error.message] || error.message); }
+}
+
+async function clearFailedNotifications(robot) {
+  const failed = Number(robot.queue?.failed || 0);
+  if (!failed || !window.confirm(`确定清理机器人“${robot.name || robot.id}”的 ${failed} 条失败通知记录？`)) return;
+  clearingFailed.value = robot.id || 'default';
+  try {
+    const result = await api(`/super-admin/bot-robots/${encodeURIComponent(robot.id || 'default')}/failed-notifications`, { method: 'DELETE' });
+    showToast(`已清理 ${Number(result.cleared || 0)} 条失败通知记录`);
+    await load();
+  } catch (error) {
+    showToast({
+      robot_not_found: '机器人不存在',
+      bot_notification_cleanup_failed: '失败通知记录清理失败',
+    }[error.message] || error.message);
+  } finally {
+    clearingFailed.value = '';
+  }
 }
 
 function bindingKey(robot, chat) {
@@ -144,6 +163,25 @@ async function assign(robot, chat, event) {
           <button v-if="robot.source === 'registration'" class="secondary icon-button" type="button" title="删除机器人" @click="removeRobot(robot)"><Trash2 :size="16" /></button>
         </header>
 
+        <div class="bot-queue-status">
+          <span>待发送 {{ robot.queue?.pending ?? 0 }}</span>
+          <span>已归档 {{ robot.queue?.completed ?? 0 }}</span>
+          <span :class="{ 'has-failures': (robot.queue?.failed ?? 0) > 0 }">
+            失败 {{ robot.queue?.failed ?? 0 }}
+          </span>
+          <button
+            v-if="(robot.queue?.failed ?? 0) > 0"
+            class="secondary icon-button"
+            type="button"
+            title="清理失败通知记录"
+            aria-label="清理失败通知记录"
+            :disabled="clearingFailed === (robot.id || 'default')"
+            @click="clearFailedNotifications(robot)"
+          >
+            <Trash2 :size="16" />
+          </button>
+        </div>
+
         <div v-if="!Array.isArray(robot.chats) || !robot.chats.length" class="empty bot-empty">
           {{ robot.error_code === 'authentication_failed' ? '认证失败，无法读取群聊' : robot.error_code === 'chat_list_failed' ? '群聊列表暂时读取失败' : '该机器人尚未加入群聊' }}
         </div>
@@ -190,6 +228,9 @@ section { min-width: 0; }
 .bot-status.is-healthy { background: rgba(34, 197, 94, .12); color: #15803d; }
 .bot-status.is-degraded { background: rgba(245, 158, 11, .14); color: #a16207; }
 .bot-status.is-unavailable { background: rgba(239, 68, 68, .12); color: #b91c1c; }
+.bot-queue-status { display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 8px 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.bot-queue-status .has-failures { color: #b91c1c; font-weight: 700; }
+.bot-queue-status .icon-button { margin-left: auto; }
 .bot-chat-row { min-width: 0; padding: 16px 20px; }
 .bot-chat-main { min-width: 0; }
 .bot-chat-main strong, .bot-chat-main .muted { overflow-wrap: anywhere; }
@@ -200,6 +241,7 @@ section { min-width: 0; }
   .bot-registration-grid { grid-template-columns: 1fr; }
   .bot-robot-header { align-items: flex-start; padding: 14px; }
   .bot-status { max-width: 38%; text-align: center; }
+  .bot-queue-status { gap: 12px; padding-inline: 14px; }
   .bot-chat-row { align-items: stretch; flex-direction: column; gap: 12px; padding: 14px; }
   .bot-group-binding { width: 100%; }
   .bot-group-binding select { min-height: 40px; padding-block: 8px; }

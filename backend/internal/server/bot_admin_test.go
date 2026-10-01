@@ -22,9 +22,16 @@ type fakeBotManager struct {
 	registered  []notificationdomain.RobotRegistration
 	register    notificationdomain.RobotStatus
 	err         error
+	cleared     int
+	clearedIDs  []string
 }
 
 func (m *fakeBotManager) Remove(string) error { return m.err }
+
+func (m *fakeBotManager) ClearFailed(robotID string) (int, error) {
+	m.clearedIDs = append(m.clearedIDs, robotID)
+	return m.cleared, m.err
+}
 
 func (m *fakeBotManager) Robots(context.Context) []notificationdomain.RobotStatus {
 	return m.robots
@@ -125,6 +132,44 @@ func TestBotRobotMapsRegistrationErrors(t *testing.T) {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body)
 			}
 		})
+	}
+}
+
+func TestBotRobotClearsFailedNotificationArchive(t *testing.T) {
+	t.Parallel()
+
+	manager := &fakeBotManager{cleared: 7}
+	app := &app{
+		botManager: manager,
+		audits:     auditdomain.NewService(notificationAuditRepository{}),
+	}
+	request := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/super-admin/bot-robots/primary/failed-notifications",
+		nil,
+	)
+	request.SetPathValue("id", "primary")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID: 1, IsSuperAdmin: true,
+	}))
+	response := httptest.NewRecorder()
+
+	app.handleBotNotificationFailuresDelete(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+	if len(manager.clearedIDs) != 1 || manager.clearedIDs[0] != "primary" {
+		t.Fatalf("cleared robot IDs = %#v", manager.clearedIDs)
+	}
+	var payload struct {
+		Cleared int `json:"cleared"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Cleared != 7 {
+		t.Fatalf("cleared = %d, want 7", payload.Cleared)
 	}
 }
 

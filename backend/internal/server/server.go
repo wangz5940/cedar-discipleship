@@ -69,6 +69,7 @@ type app struct {
 		Robots(context.Context) []notificationdomain.RobotStatus
 		Register(context.Context, notificationdomain.RobotRegistration) (notificationdomain.RobotStatus, error)
 		Remove(string) error
+		ClearFailed(string) (int, error)
 		Assign(context.Context, string, notificationdomain.Target, uint64, time.Time) error
 		BindingGroupID(string, int64) uint64
 	}
@@ -457,6 +458,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/super-admin/bot-management", a.auth(a.requireBotAdmin(a.handleBotManagement)))
 	mux.HandleFunc("POST /api/super-admin/bot-robots", a.auth(a.requireBotAdmin(a.handleBotRobot)))
 	mux.HandleFunc("DELETE /api/super-admin/bot-robots/{id}", a.auth(a.requireBotAdmin(a.handleBotRobotDelete)))
+	mux.HandleFunc("DELETE /api/super-admin/bot-robots/{id}/failed-notifications", a.auth(a.requireBotAdmin(a.handleBotNotificationFailuresDelete)))
 	mux.HandleFunc("PUT /api/super-admin/bot-bindings", a.auth(a.requireBotAdmin(a.handleBotBinding)))
 }
 

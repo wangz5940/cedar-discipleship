@@ -184,6 +184,28 @@ func (q *Queue) Stats() (QueueStats, error) {
 	return stats, nil
 }
 
+func (q *Queue) ClearFailed() (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	dir := filepath.Join(q.dir, "failed")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, fmt.Errorf("read failed notification queue: %w", err)
+	}
+	cleared := 0
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+			return cleared, fmt.Errorf("remove failed notification: %w", err)
+		}
+		cleared++
+	}
+	return cleared, nil
+}
+
 func (q *Queue) WakeInitial(groupID uint64, now time.Time) error {
 	for _, target := range q.targetsForGroup(groupID) {
 		for _, topic := range []string{"daily", "weekly"} {

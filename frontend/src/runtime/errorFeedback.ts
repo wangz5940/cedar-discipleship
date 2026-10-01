@@ -1,5 +1,5 @@
 import { authHeaders, csrfToken, getAccessToken } from './authSession';
-import { collectFeedbackDiagnostics } from './feedbackDiagnostics';
+import { collectFeedbackDiagnostics, isLoopbackHostname } from './feedbackDiagnostics';
 import {
   createLogID,
   latestLogID,
@@ -111,7 +111,13 @@ export async function reportAutomaticFeedback(
   context: ErrorContext = {},
 ): Promise<boolean> {
   const token = getAccessToken();
-  if (!token || reporting || typeof window === 'undefined' || typeof navigator === 'undefined') {
+  if (
+    !token
+    || reporting
+    || typeof window === 'undefined'
+    || typeof navigator === 'undefined'
+    || isLoopbackHostname(window.location.hostname)
+  ) {
     return false;
   }
 

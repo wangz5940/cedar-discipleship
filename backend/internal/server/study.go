@@ -121,6 +121,8 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		return
 	}
 	if err != nil {
+		slog.ErrorContext(r.Context(), "study week save failed",
+			"group_id", groupID, "week_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "week_task_save_failed")
 		return
 	}

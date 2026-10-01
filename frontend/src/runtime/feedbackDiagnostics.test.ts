@@ -11,7 +11,12 @@ describe('feedback diagnostics', () => {
   it('collects only the documented browser fields', () => {
     recordResponseLogID('0123456789abcdef0123456789abcdef');
     vi.stubGlobal('window', {
-      location: { pathname: '/app', search: '?view=feedback' },
+      location: {
+        origin: 'https://cedar.example.test',
+        hostname: 'cedar.example.test',
+        pathname: '/app',
+        search: '?view=feedback',
+      },
       innerWidth: 390,
       innerHeight: 844,
       screen: { width: 430, height: 932 },
@@ -25,6 +30,8 @@ describe('feedback diagnostics', () => {
     expect(collectFeedbackDiagnostics('feedback')).toEqual({
       app_version: expect.any(String),
       page: '/app?view=feedback',
+      page_origin: 'https://cedar.example.test',
+      environment: 'production',
       action_context: 'feedback',
       recent_log_id: '0123456789abcdef0123456789abcdef',
       user_agent: 'Example Browser',

@@ -15,7 +15,12 @@ describe('automatic error feedback', () => {
     setAccessToken('access-token');
     vi.stubGlobal('document', { cookie: 'agp_csrf=csrf-value' });
     vi.stubGlobal('window', {
-      location: { origin: 'http://localhost', pathname: '/reader', search: '?book=7' },
+      location: {
+        origin: 'https://cedar.example.test',
+        hostname: 'cedar.example.test',
+        pathname: '/reader',
+        search: '?book=7',
+      },
       innerWidth: 390,
       innerHeight: 844,
       screen: { width: 430, height: 932 },
@@ -112,7 +117,12 @@ describe('automatic error feedback', () => {
     vi.stubGlobal('fetch', fetch);
     vi.stubGlobal('Element', class Element {});
     vi.stubGlobal('window', {
-      location: { origin: 'http://localhost', pathname: '/reader', search: '?book=7' },
+      location: {
+        origin: 'https://cedar.example.test',
+        hostname: 'cedar.example.test',
+        pathname: '/reader',
+        search: '?book=7',
+      },
       innerWidth: 390,
       innerHeight: 844,
       screen: { width: 430, height: 932 },
@@ -163,6 +173,26 @@ describe('automatic error feedback', () => {
     await expect(reportAutomaticFeedback(new Error('other'))).resolves.toBe(false);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['localhost', 'dev.localhost', '127.0.0.1', '0.0.0.0', '::1'])(
+    'does not report errors from loopback host %s',
+    async (hostname) => {
+      vi.stubGlobal('window', {
+        location: {
+          origin: `http://${hostname}`,
+          hostname,
+          pathname: '/reader',
+          search: '',
+        },
+      });
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+
+      await expect(reportAutomaticFeedback(new Error('local failure'))).resolves.toBe(false);
+
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it('skips reporting when automatic feedback is disabled or the error type is muted', async () => {
     const disabledFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({

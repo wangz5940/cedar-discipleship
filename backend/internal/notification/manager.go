@@ -84,6 +84,10 @@ func (m *Manager) Stats() (QueueStats, error) {
 	return m.queue.Stats()
 }
 
+func (m *Manager) ClearFailed() (int, error) {
+	return m.queue.ClearFailed()
+}
+
 func (m *Manager) Assign(ctx context.Context, target Target, groupID uint64, now time.Time) error {
 	if groupID > 0 {
 		chats, err := m.client.ListChats(ctx)

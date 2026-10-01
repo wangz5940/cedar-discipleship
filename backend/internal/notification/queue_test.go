@@ -90,6 +90,43 @@ func stateFiles(t *testing.T, queue *Queue, state string) int {
 	return len(files)
 }
 
+func TestClearFailedRemovesOnlyFailedJSONJobs(t *testing.T) {
+	t.Parallel()
+
+	queue, _, _, _, _ := queueFixture(t)
+	for _, path := range []string{
+		filepath.Join(queue.dir, "failed", "one.json"),
+		filepath.Join(queue.dir, "failed", "two.json"),
+		filepath.Join(queue.dir, "failed", "keep.txt"),
+		filepath.Join(queue.dir, "pending", "pending.json"),
+		filepath.Join(queue.dir, "completed", "completed.json"),
+	} {
+		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cleared, err := queue.ClearFailed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared != 2 {
+		t.Fatalf("cleared = %d, want 2", cleared)
+	}
+	for _, path := range []string{
+		filepath.Join(queue.dir, "failed", "keep.txt"),
+		filepath.Join(queue.dir, "pending", "pending.json"),
+		filepath.Join(queue.dir, "completed", "completed.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("preserved file %s: %v", path, err)
+		}
+	}
+	if got := stateFiles(t, queue, "failed"); got != 1 {
+		t.Fatalf("failed entries = %d, want non-JSON file only", got)
+	}
+}
+
 func TestQueuePersistsAndDeduplicates(t *testing.T) {
 	t.Parallel()
 	queue, source, sender, event, now := queueFixture(t)

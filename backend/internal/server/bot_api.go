@@ -17,6 +17,11 @@ import (
 
 const botHistoryStart = "2026-04-06"
 
+func logBotAPIError(r *http.Request, stage string, groupID uint64, err error) {
+	slog.ErrorContext(r.Context(), "bot api request failed",
+		"stage", stage, "group_id", groupID, "error", err)
+}
+
 func (a *app) botAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		provided := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
@@ -45,6 +50,7 @@ func (a *app) botGroup(r *http.Request) (userdomain.Group, error) {
 func (a *app) handleBotGroups(w http.ResponseWriter, r *http.Request) {
 	groups, err := a.users.AllGroups(r.Context())
 	if err != nil {
+		logBotAPIError(r, "list_groups", 0, err)
 		writeError(w, http.StatusInternalServerError, "bot_groups_failed")
 		return
 	}
@@ -98,11 +104,13 @@ func (a *app) handleBotConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logBotAPIError(r, "load_config_data", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_config_failed")
 		return
 	}
 	settings, err := a.groupLearningConfig(r.Context(), group.ID)
 	if err != nil {
+		logBotAPIError(r, "load_learning_config", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_config_failed")
 		return
 	}
@@ -120,6 +128,7 @@ func (a *app) handleBotAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logBotAPIError(r, "load_asset_group", 0, err)
 		writeError(w, http.StatusInternalServerError, "bot_asset_failed")
 		return
 	}
@@ -130,6 +139,7 @@ func (a *app) handleBotAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	settings, err := a.groupLearningConfig(r.Context(), group.ID)
 	if err != nil {
+		logBotAPIError(r, "load_asset_config", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_asset_failed")
 		return
 	}
@@ -170,19 +180,20 @@ func botDevotionAssetAllowed(settings map[string]any, id uint64) bool {
 }
 
 func (a *app) handleBotState(w http.ResponseWriter, r *http.Request) {
-	_, members, schedule, err := a.botGroupData(r)
+	group, members, schedule, err := a.botGroupData(r)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "bot_group_not_found")
 		return
 	}
 	if err != nil {
+		logBotAPIError(r, "load_state_data", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_state_failed")
 		return
 	}
-	group, _ := a.botGroup(r)
 	to := time.Now().In(a.location).Format("2006-01-02")
 	records, err := a.checkins.List(r.Context(), group.ID, botHistoryStart, to, 0, 100000)
 	if err != nil {
+		logBotAPIError(r, "list_state_checkins", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_state_failed")
 		return
 	}
@@ -225,6 +236,7 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logBotAPIError(r, "load_events_group", 0, err)
 		writeError(w, http.StatusInternalServerError, "bot_group_failed")
 		return
 	}
@@ -250,6 +262,7 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 		WHERE c.group_id=? AND (c.updated_at>? OR (c.updated_at=? AND c.id>?))
 		ORDER BY c.updated_at,c.id LIMIT 500`, group.ID, updatedAt, updatedAt, afterID)
 	if err != nil {
+		logBotAPIError(r, "query_events", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_events_failed")
 		return
 	}
@@ -263,6 +276,7 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 		var isRetro bool
 		var deletedAt sql.NullTime
 		if err := rows.Scan(&id, &taskID, &weekID, &name, &logicalDate, &checkinTime, &taskType, &detail, &part, &taskTitle, &isRetro, &changedAt, &deletedAt); err != nil {
+			logBotAPIError(r, "scan_events", group.ID, err)
 			writeError(w, http.StatusInternalServerError, "bot_events_failed")
 			return
 		}
@@ -279,6 +293,7 @@ func (a *app) handleBotEvents(w http.ResponseWriter, r *http.Request) {
 		lastTime, lastID = changedAt, id
 	}
 	if err := rows.Err(); err != nil {
+		logBotAPIError(r, "iterate_events", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_events_failed")
 		return
 	}
@@ -384,6 +399,7 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logBotAPIError(r, "load_checkin_group", 0, err)
 		writeError(w, http.StatusInternalServerError, "bot_group_failed")
 		return
 	}
@@ -399,6 +415,7 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	}
 	members, err := a.users.Members(r.Context(), group.ID)
 	if err != nil {
+		logBotAPIError(r, "list_checkin_members", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "bot_members_failed")
 		return
 	}
@@ -443,6 +460,7 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 	if taskType != "daily_devotion" && taskType != "daily_scripture" {
 		weeks, loadErr := a.learning.ListWeeks(r.Context(), group.ID)
 		if loadErr != nil {
+			logBotAPIError(r, "list_checkin_weeks", group.ID, loadErr)
 			writeError(w, http.StatusInternalServerError, "bot_week_failed")
 			return
 		}
@@ -458,6 +476,7 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		}
 		tasks, loadErr := a.learning.WeekTasks(r.Context(), group.ID, record.WeekID)
 		if loadErr != nil {
+			logBotAPIError(r, "list_checkin_tasks", group.ID, loadErr)
 			writeError(w, http.StatusInternalServerError, "bot_tasks_failed")
 			return
 		}
@@ -482,7 +501,7 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, errCheckinConfig) {
-		slog.ErrorContext(r.Context(), "bot checkin learning config lookup failed", "group_id", group.ID, "error", err)
+		logBotAPIError(r, "load_checkin_config", group.ID, err)
 		writeError(w, http.StatusInternalServerError, "checkin_save_failed")
 		return
 	}
@@ -521,6 +540,7 @@ func (a *app) handleBotDeleteCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logBotAPIError(r, "load_delete_group", 0, err)
 		writeError(w, http.StatusInternalServerError, "bot_group_failed")
 		return
 	}

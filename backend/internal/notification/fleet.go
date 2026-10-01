@@ -557,6 +557,22 @@ func (f *Fleet) BindingGroupID(robotID string, chatID int64) uint64 {
 	return 0
 }
 
+func (f *Fleet) ClearFailed(robotID string) (int, error) {
+	if strings.TrimSpace(robotID) == "" {
+		robotID = defaultRobotID
+	}
+	f.mu.RLock()
+	robot, ok := f.robots[robotID]
+	if ok && robot.removing {
+		ok = false
+	}
+	f.mu.RUnlock()
+	if !ok {
+		return 0, ErrRobotNotFound
+	}
+	return robot.manager.ClearFailed()
+}
+
 func (f *Fleet) Register(ctx context.Context, req RobotRegistration) (RobotStatus, error) {
 	req.Token = strings.TrimSpace(req.Token)
 	if !tokenPattern.MatchString(req.Token) {
