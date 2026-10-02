@@ -1529,6 +1529,7 @@ export async function toggleCheckin(task, member) {
     return;
   }
   const logID = createLogID();
+  const logicalDate = state.selectedDate;
   try {
     if (task.ownRecord) {
       await api(`/checkins/${task.ownRecord.id}`, {
@@ -1537,7 +1538,7 @@ export async function toggleCheckin(task, member) {
         feedbackContext: () => ({
           actionLabel: '取消打卡',
           taskTitle: task.title || task.detail || task.part || '学习任务',
-          logicalDate: state.selectedDate,
+          logicalDate,
         }),
       });
       toast('已取消完成记录');
@@ -1548,7 +1549,7 @@ export async function toggleCheckin(task, member) {
         feedbackContext: () => ({
           actionLabel: '完成打卡',
           taskTitle: task.title || task.detail || task.part || '学习任务',
-          logicalDate: state.selectedDate,
+          logicalDate,
         }),
         body: JSON.stringify({
           task_type: task.type,

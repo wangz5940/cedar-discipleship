@@ -177,6 +177,39 @@ describe('main data context', () => {
     });
   });
 
+  it('reports the original checkin date after the selected date changes', async () => {
+    await login('member', 'password');
+    await setSelectedDate('2026-08-01');
+    vi.stubGlobal('window', {
+      location: { origin: 'https://cedar.example.test', hostname: 'cedar.example.test', pathname: '/', search: '' },
+      screen: { width: 390, height: 844 },
+    });
+    vi.stubGlobal('navigator', { userAgent: 'Test Browser' });
+    const request = fetch.getMockImplementation();
+    let finishCheckin;
+    let finishReport;
+    const reporting = new Promise((resolve) => { finishReport = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (url === '/api/checkins') {
+        return new Promise((resolve) => { finishCheckin = resolve; });
+      }
+      if (url === '/api/feedback/automatic-settings') return Response.json({ settings: { enabled: true } });
+      if (url === '/api/feedback/automatic') {
+        finishReport(JSON.parse(options.body.get('diagnostics')));
+        return new Response(null, { status: 201 });
+      }
+      return request(url, options);
+    }));
+
+    const checkin = toggleCheckin({ type: 'daily_devotion', title: '每日阅读' });
+    await setSelectedDate('2026-08-02');
+    finishCheckin(Response.json({ error: 'checkin_save_failed' }, { status: 500 }));
+    await checkin;
+
+    expect(await reporting).toMatchObject({ logical_date: '2026-08-01', task_title: '每日阅读' });
+    expect(useCheckinWorkbenchStore().selectedDate).toBe('2026-08-02');
+  });
+
   it.each([
     ['complete', 200], ['cancel', 200], ['complete', 500], ['cancel', 500],
   ])('preserves %s checkin behavior on HTTP %s when feedback title collection throws', async (action, status) => {
