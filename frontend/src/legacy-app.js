@@ -1437,6 +1437,7 @@ export async function openContentTarget(target) {
 }
 
 export async function openViewerItemInNewWindow(item, popup = null) {
+  const title = item.title || item.label || '阅读内容';
   try {
     const sourceURL = resolveContentSourceURL(item);
     const sourceAPIPath = sameOriginAPIPath(sourceURL, window.location.origin);
@@ -1486,6 +1487,13 @@ export async function openViewerItemInNewWindow(item, popup = null) {
     }
   } catch (error) {
     if (popup && !popup.closed) popup.close();
+    if (!error?.requestPath && !/^HTTP \d+$/.test(String(error?.message || ''))) {
+      void reportAutomaticFeedback(error, {
+        actionContext: 'content_new_window',
+        actionLabel: '在新页面打开',
+        resourceTitle: title,
+      });
+    }
     toast(`打开失败：${error.message}`);
   }
 }
