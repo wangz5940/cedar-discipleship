@@ -252,14 +252,14 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
           } catch (rawError) {
             const error = rawError instanceof Error ? rawError : new Error(String(rawError));
             if (error.name !== 'AbortError' && logID) {
-              void reportAutomaticFeedback(error, {
+              void reportAutomaticFeedback(error, () => ({
                 actionContext: 'resource_download',
                 actionLabel: '下载',
                 resourceTitle: task.resource.title,
                 requestMethod: 'GET',
                 requestPath: task.resource.url,
                 logID,
-              });
+              }));
             }
             throw error;
           }
@@ -285,15 +285,15 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
               requestPath: task.resource.url,
             });
             if (logID && shouldReportAPIError('GET', response.status, task.resource.url)) {
-              void reportAutomaticFeedback(error, {
+              void reportAutomaticFeedback(error, () => ({
                 actionContext: 'resource_download',
                 actionLabel: '下载',
                 resourceTitle: task.resource.title,
                 requestMethod: 'GET',
                 requestPath: task.resource.url,
-                status: response.status,
+                status: error.status,
                 logID,
-              });
+              }));
             }
             throw error;
           }

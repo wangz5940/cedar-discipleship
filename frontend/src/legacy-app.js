@@ -369,13 +369,13 @@ export async function api(path, options = {}) {
     error.logID = logID;
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
-    void reportAutomaticFeedback(error, {
-      ...feedbackContext,
+    void reportAutomaticFeedback(error, () => ({
+      ...(typeof feedbackContext === 'function' ? feedbackContext() : feedbackContext),
       actionContext: `${requestMethod} ${requestPath}`,
       requestMethod,
       requestPath,
       logID,
-    });
+    }));
     throw error;
   }
   const responseLogID = res.headers?.get?.(LOG_ID_HEADER) || '';
@@ -396,15 +396,15 @@ export async function api(path, options = {}) {
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
     if (shouldReportAPIError(requestMethod, res.status, requestPath)) {
-      void reportAutomaticFeedback(error, {
-        ...feedbackContext,
+      void reportAutomaticFeedback(error, () => ({
+        ...(typeof feedbackContext === 'function' ? feedbackContext() : feedbackContext),
         actionContext: `${requestMethod} ${requestPath}`,
         requestMethod,
         requestPath,
         status: res.status,
         errorCode: error.code,
         logID: error.logID,
-      });
+      }));
     }
     throw error;
   }
@@ -450,13 +450,13 @@ export async function fetchWithAuth(url, options = {}) {
     error.logID = logID;
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
-    void reportAutomaticFeedback(error, {
-      ...feedbackContext,
+    void reportAutomaticFeedback(error, () => ({
+      ...(typeof feedbackContext === 'function' ? feedbackContext() : feedbackContext),
       actionContext: `${requestMethod} ${requestPath}`,
       requestMethod,
       requestPath,
       logID,
-    });
+    }));
     throw error;
   }
   recordResponseLogID(res.headers?.get?.(LOG_ID_HEADER));
@@ -474,14 +474,14 @@ export async function fetchWithAuth(url, options = {}) {
     error.logID = res.headers?.get?.(LOG_ID_HEADER) || logID;
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
-    void reportAutomaticFeedback(error, {
-      ...feedbackContext,
+    void reportAutomaticFeedback(error, () => ({
+      ...(typeof feedbackContext === 'function' ? feedbackContext() : feedbackContext),
       actionContext: `${requestMethod} ${requestPath}`,
       requestMethod,
       requestPath,
       status: res.status,
       logID: error.logID,
-    });
+    }));
   }
   return res;
 }
@@ -1318,10 +1318,10 @@ export async function openContentTarget(target) {
     render();
     try {
       const playback = await api(`/assets/${videoAssetMatch[1]}/playback`, {
-        feedbackContext: {
+        feedbackContext: () => ({
           actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
           resourceTitle: title,
-        },
+        }),
       });
       if (state.viewer !== pendingViewer) return;
       pendingViewer.url = playback.url;
@@ -1338,10 +1338,10 @@ export async function openContentTarget(target) {
   const requestID = viewerRequestID;
   if (sourceAPIPath) {
     const res = await fetchWithAuth(sourceAPIPath, {
-      feedbackContext: {
+      feedbackContext: () => ({
         actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
         resourceTitle: title,
-      },
+      }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
@@ -1437,7 +1437,6 @@ export async function openContentTarget(target) {
 }
 
 export async function openViewerItemInNewWindow(item, popup = null) {
-  const title = item.title || item.label || '阅读内容';
   try {
     const sourceURL = resolveContentSourceURL(item);
     const sourceAPIPath = sameOriginAPIPath(sourceURL, window.location.origin);
@@ -1447,10 +1446,10 @@ export async function openViewerItemInNewWindow(item, popup = null) {
       : null;
     if (videoAssetMatch) {
       const playback = await api(`/assets/${videoAssetMatch[1]}/playback`, {
-        feedbackContext: {
+        feedbackContext: () => ({
           actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
-          resourceTitle: title,
-        },
+          resourceTitle: item.title || item.label || '阅读内容',
+        }),
       });
       if (popup && !popup.closed) {
         popup.location.replace(playback.url);
@@ -1461,10 +1460,10 @@ export async function openViewerItemInNewWindow(item, popup = null) {
     }
     if (sourceAPIPath) {
       const res = await fetchWithAuth(sourceAPIPath, {
-        feedbackContext: {
+        feedbackContext: () => ({
           actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
-          resourceTitle: title,
-        },
+          resourceTitle: item.title || item.label || '阅读内容',
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
@@ -1488,11 +1487,11 @@ export async function openViewerItemInNewWindow(item, popup = null) {
   } catch (error) {
     if (popup && !popup.closed) popup.close();
     if (!error?.requestPath && !/^HTTP \d+$/.test(String(error?.message || ''))) {
-      void reportAutomaticFeedback(error, {
+      void reportAutomaticFeedback(error, () => ({
         actionContext: 'content_new_window',
         actionLabel: '在新页面打开',
-        resourceTitle: title,
-      });
+        resourceTitle: item.title || item.label || '阅读内容',
+      }));
     }
     toast(`打开失败：${error.message}`);
   }
@@ -1535,22 +1534,22 @@ export async function toggleCheckin(task, member) {
       await api(`/checkins/${task.ownRecord.id}`, {
         method: 'DELETE',
         logID,
-        feedbackContext: {
+        feedbackContext: () => ({
           actionLabel: '取消打卡',
           taskTitle: task.title || task.detail || task.part || '学习任务',
           logicalDate: state.selectedDate,
-        },
+        }),
       });
       toast('已取消完成记录');
     } else {
       await api('/checkins', {
         method: 'POST',
         logID,
-        feedbackContext: {
+        feedbackContext: () => ({
           actionLabel: '完成打卡',
           taskTitle: task.title || task.detail || task.part || '学习任务',
           logicalDate: state.selectedDate,
-        },
+        }),
         body: JSON.stringify({
           task_type: task.type,
           part: task.part || '',

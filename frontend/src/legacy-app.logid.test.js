@@ -130,4 +130,61 @@ describe('API log ID propagation', () => {
       resource_title: '马可福音',
     });
   });
+
+  describe.each([
+    ['api', (options) => api('/checkins', options)],
+    ['fetchWithAuth', (options) => fetchWithAuth('/api/assets/7/download', options)],
+  ])('%s feedback isolation', (name, request) => {
+    beforeEach(() => setAccessToken('active'));
+
+    it('does not collect feedback context on success', async () => {
+      const context = vi.fn(() => { throw new Error('context_failed'); });
+      const res = response({ ok: true });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res));
+      const result = await request({ feedbackContext: context });
+      expect(result).toEqual(name === 'api' ? { ok: true } : res);
+      expect(context).not.toHaveBeenCalled();
+      expect(fetch.mock.calls[0][1]).not.toHaveProperty('feedbackContext');
+    });
+
+    it.each(['object', 'callback'])('preserves the HTTP error or response when %s context throws', async (kind) => {
+      const read = vi.fn(() => { throw new Error('context_failed'); });
+      const feedbackContext = kind === 'object' ? { get resourceTitle() { return read(); } } : read;
+      const res = response({ error: 'save_failed' }, 500);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res));
+      const result = request({ feedbackContext });
+      if (name === 'api') {
+        await expect(result).rejects.toMatchObject({ message: 'save_failed', status: 500, logID });
+      } else {
+        await expect(result).resolves.toBe(res);
+      }
+      expect(read).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+
+    it('preserves the original network error when context collection fails', async () => {
+      const error = new TypeError('network_offline');
+      const read = vi.fn(() => { throw new Error('context_failed'); });
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(error));
+      await expect(request({
+        feedbackContext: { get resourceTitle() { return read(); } },
+      })).rejects.toBe(error);
+      expect(read).toHaveBeenCalledOnce();
+    });
+
+    it('reports callback context without changing the request result', async () => {
+      const res = response({ error: 'save_failed' }, 500);
+      vi.stubGlobal('fetch', vi.fn()
+        .mockResolvedValueOnce(res)
+        .mockResolvedValueOnce(response({ settings: { enabled: true } }))
+        .mockResolvedValueOnce(new Response(null, { status: 201 })));
+      const result = request({
+        feedbackContext: () => ({ actionLabel: '阅读', resourceTitle: '门训书籍' }),
+      });
+      if (name === 'api') await expect(result).rejects.toMatchObject({ code: 'save_failed' });
+      else await expect(result).resolves.toBe(res);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+      expect(fetch.mock.calls[2][1].body.get('message')).toContain('阅读《门训书籍》');
+    });
+  });
 });

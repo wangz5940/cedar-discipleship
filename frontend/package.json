@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run --no-file-parallelism",
+    "lint": "eslint . --max-warnings=0",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "eslint": "9.39.5",
+    "globals": "17.13.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "vue-tsc": "^3.3.10"

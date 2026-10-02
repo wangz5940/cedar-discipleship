@@ -72,6 +72,14 @@ For any change to existing code paths, routing, defaults, shared helpers, data c
 
 This skill is mandatory unless the task is provably isolated from existing behavior. Existing behavior is the default contract; change it only when the user explicitly requests that behavior change.
 
+### 兼容验证证据
+
+- 修改前列出受影响入口、旧行为和本次明确允许改变的行为；共享辅助函数的调用方也必须纳入。
+- 涉及阅读、导航、下载、打卡或共享请求逻辑时，直接调用实际业务入口验证结果，例如打开的 URL、页码、下载状态、原始错误或完成记录；仅验证辅助函数参数不足以证明兼容。
+- 日志、诊断上下文采集和自动反馈必须隔离自身异常；其失败不得阻断成功操作、替换原始业务错误或改变完成状态。
+- JavaScript 必须通过 `npm run lint` 的未定义变量检查，TypeScript/Vue 必须通过 `npm run typecheck`；不得把未声明的业务变量加入 globals 来绕过检查。
+- PR 按入口记录验证方式、实际结果和未覆盖项。健康检查或测试总数不能代替场景证据；模拟浏览器测试不能宣称为真机验收，未实测浏览器和设备必须明确标注。
+
 ## 6. Upstream Before Changes
 
 Before changing this project, check the latest `master` commit of `wangz5940/cedar-discipleship` and compare its relevant code with the current branch. Bring over upstream functionality while preserving the optimized frontend UI and existing local features. Do not treat a local upstream file copy as proof that it is current.

@@ -108,21 +108,23 @@ async function automaticFeedbackSettings(): Promise<AutomaticFeedbackSettings | 
 
 export async function reportAutomaticFeedback(
   rawError: unknown,
-  context: ErrorContext = {},
+  contextInput: ErrorContext | (() => ErrorContext) = {},
 ): Promise<boolean> {
-  const token = getAccessToken();
-  if (
-    !token
-    || reporting
-    || typeof window === 'undefined'
-    || typeof navigator === 'undefined'
-    || isLoopbackHostname(window.location.hostname)
-  ) {
+  try {
+    if (
+      !getAccessToken()
+      || reporting
+      || typeof window === 'undefined'
+      || typeof navigator === 'undefined'
+      || isLoopbackHostname(window.location.hostname)
+    ) return false;
+  } catch {
     return false;
   }
 
   reporting = true;
   try {
+    const context = typeof contextInput === 'function' ? contextInput() : contextInput;
     const error = (
       rawError instanceof Error ? rawError : new Error(String(rawError))
     ) as ReportableError;
@@ -213,18 +215,18 @@ export function installAutomaticFeedbackReporting() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
   window.addEventListener('error', (event) => {
-    void reportAutomaticFeedback(event.error || event.message, {
+    void reportAutomaticFeedback(event.error || event.message, () => ({
       actionContext: 'runtime_error',
       scriptURL: event.filename,
       line: event.lineno,
       column: event.colno,
       eventTarget: event.target instanceof Element ? event.target.tagName : '',
-    });
+    }));
   });
   window.addEventListener('unhandledrejection', (event) => {
-    void reportAutomaticFeedback(event.reason, {
+    void reportAutomaticFeedback(event.reason, () => ({
       actionContext: 'unhandled_promise',
-    });
+    }));
   });
 }
 

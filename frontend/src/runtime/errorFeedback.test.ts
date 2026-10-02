@@ -219,4 +219,72 @@ describe('automatic error feedback', () => {
     expect(shouldReportAPIError('POST', 500, '/api/feedback/automatic')).toBe(false);
     expect(shouldReportAPIError('GET', 500, '/api/feedback/automatic-settings')).toBe(false);
   });
+
+  it('resolves lazy business context inside the reporting boundary', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ settings: { enabled: true } }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+    const context = vi.fn(() => ({ actionLabel: '阅读', resourceTitle: '每日灵修' }));
+
+    await expect(reportAutomaticFeedback(new Error('broken'), context)).resolves.toBe(true);
+
+    expect(context).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[1][1].body.get('message')).toBe('系统自动上报：阅读《每日灵修》时发生错误');
+  });
+
+  it('skips context collection without authentication', async () => {
+    clearAccessToken();
+    const context = vi.fn(() => { throw new Error('context_failed'); });
+    await expect(reportAutomaticFeedback(new Error('broken'), context)).resolves.toBe(false);
+    expect(context).not.toHaveBeenCalled();
+  });
+
+  it('contains context and diagnostic getter failures and releases the reporting lock', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ settings: { enabled: false } }));
+    vi.stubGlobal('fetch', fetch);
+    const context = vi.fn(() => { throw new Error('context_failed'); });
+    await expect(reportAutomaticFeedback(new Error('broken'), context)).resolves.toBe(false);
+    expect(context).toHaveBeenCalledOnce();
+    await expect(reportAutomaticFeedback(new Error('broken'), {
+      get resourceTitle(): string { throw new Error('getter_failed'); },
+    })).resolves.toBe(false);
+    await expect(reportAutomaticFeedback(new Error('next'))).resolves.toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('contains browser preflight failures', async () => {
+    vi.stubGlobal('window', { get location() { throw new Error('location_failed'); } });
+    await expect(reportAutomaticFeedback(new Error('broken'))).resolves.toBe(false);
+  });
+
+  it('keeps an active reporting lock when a concurrent report is skipped', async () => {
+    let release!: (value: Response) => void;
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }))
+      .mockResolvedValue(new Response(null, { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+    const first = reportAutomaticFeedback(new Error('first'));
+    await expect(reportAutomaticFeedback(new Error('second'))).resolves.toBe(false);
+    await expect(reportAutomaticFeedback(new Error('third'))).resolves.toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+    release(Response.json({ settings: { enabled: true } }));
+    await expect(first).resolves.toBe(true);
+  });
+
+  it('contains diagnostic collection and feedback transport failures', async () => {
+    const fetch = vi.fn().mockImplementation(async (url) => {
+      if (url === '/api/feedback/automatic-settings') {
+        return Response.json({ settings: { enabled: true } });
+      }
+      throw new Error('feedback_offline');
+    });
+    vi.stubGlobal('fetch', fetch);
+    vi.stubGlobal('navigator', { get userAgent() { throw new Error('diagnostics_failed'); } });
+    await expect(reportAutomaticFeedback(new Error('first'))).resolves.toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+    vi.stubGlobal('navigator', { userAgent: 'Test Browser' });
+    await expect(reportAutomaticFeedback(new Error('second'))).resolves.toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
 });
