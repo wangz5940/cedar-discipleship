@@ -152,12 +152,9 @@ async function exportStatsChart() {
 <template>
   <Teleport v-if="visible" defer to="#vue-checkin-workbench">
     <div class="checkin-page">
-      <!-- Page Header: Title + Date Controls -->
+      <!-- Plan subtitle and date controls -->
       <div class="pagehead spread page-header">
-        <div>
-          <h1>{{ isToday ? '今日学习' : '学习任务' }}</h1>
-          <p v-if="title && title !== '今日学习' && title !== '学习任务'" class="muted">{{ title }}</p>
-        </div>
+        <p v-if="title && title !== '今日学习' && title !== '学习任务'" class="muted">{{ title }}</p>
         <DateNavigator
           :label="selectedDateLabel"
           :is-today="isToday"
@@ -185,9 +182,8 @@ async function exportStatsChart() {
       <!-- Main Layout Grid: Task Board + Right Rail -->
       <div class="grid">
         <div>
-          <div class="sectiontitle spread">
-            <h2>{{ isToday ? '今日任务' : '所选日期任务' }}</h2>
-            <span v-if="isFuture" class="small future-note">
+          <div v-if="isFuture" class="sectiontitle spread">
+            <span class="small future-note">
               未来日期不能查看或打卡
             </span>
           </div>
