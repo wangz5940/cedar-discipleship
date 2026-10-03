@@ -74,6 +74,7 @@ const {
   showGroupPicker,
   resources,
   resourceLibrary,
+  weeks,
   canAdmin,
   learningConfig,
   calendar,
@@ -174,6 +175,7 @@ async function submitLogin() {
 function optionText(item) {
   return item.title || item.original_name || '未命名资源';
 }
+const resourceDownloadsEnabled = computed(() => learningConfig.value?.resource_download_enabled !== false);
 
 function openAsset(asset) {
   previewLibraryItem({
@@ -243,10 +245,12 @@ function enqueueResources(items) {
 }
 
 function downloadResource(asset) {
+  if (!resourceDownloadsEnabled.value) return;
   enqueueResources([asset]);
 }
 
 function downloadSelectedResources() {
+  if (!resourceDownloadsEnabled.value) return;
   const selected = resources.value.filter(resourceSelected);
   if (!selected.length) {
     showToast('请先选择要下载的资源');
@@ -433,7 +437,7 @@ async function refreshResources() {
           <button type="button" :class="{ active: tab === 'resources' }" :aria-current="tab === 'resources' ? 'page' : undefined" @click="setTab('resources')">学习资料</button>
         </nav>
 
-        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :open-ovcm="openOvcmFromSearch" />
+        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :weeks="weeks" :open-ovcm="openOvcmFromSearch" />
 
         <!-- Cedar Public Library (tab === 'resources') -->
         <section v-if="!showGroupPicker && tab === 'resources'">
@@ -443,7 +447,7 @@ async function refreshResources() {
               <p class="muted">共 {{ filteredResources.length }} 项资料，选择一份开始学习</p>
             </div>
             <div class="inline app-resource-page-actions">
-              <div v-if="selectedResourceKeys.size" class="inline app-resource-selection">
+              <div v-if="resourceDownloadsEnabled && selectedResourceKeys.size" class="inline app-resource-selection">
                 <span class="pill">已选 {{ selectedResourceKeys.size }} 项</span>
                 <button class="primary" type="button" @click="downloadSelectedResources">
                   批量下载
@@ -468,7 +472,7 @@ async function refreshResources() {
                 <RefreshCw :size="18" :class="{ spin: resourceRefreshing }" />
               </button>
             </form>
-            <label class="app-resource-select app-resource-select-all">
+            <label v-if="resourceDownloadsEnabled" class="app-resource-select app-resource-select-all">
               <input type="checkbox" :checked="allVisibleResourcesSelected" :disabled="!filteredResources.length" @change="toggleAllResources" />
               <span>全选</span>
             </label>
@@ -509,7 +513,7 @@ async function refreshResources() {
                       <FileText v-else :size="16" />
                     </div>
                     <span class="pill app-resource-card__pill">{{ resourceTypeLabel(asset) }}</span>
-                    <label class="app-resource-select">
+                    <label v-if="resourceDownloadsEnabled" class="app-resource-select">
                       <input type="checkbox" :checked="resourceSelected(asset)" @change="toggleResourceSelection(asset)" />
                       <span>选择</span>
                     </label>
@@ -525,7 +529,7 @@ async function refreshResources() {
                   <button class="quiet app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
                     <Eye :size="15" aria-hidden="true" /> 查看
                   </button>
-                  <button class="primary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
+                  <button v-if="resourceDownloadsEnabled" class="primary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
                     <Download :size="16" aria-hidden="true" />
                     <span class="app-resource-stack-card__download-label">下载</span>
                   </button>

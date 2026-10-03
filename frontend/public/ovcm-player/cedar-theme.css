@@ -1,0 +1,16 @@
+/* Keep the original player interactions and segment colors; use Cedar's palette. */
+:root {
+  --color-brand-50: #f2f4f8;
+  --color-brand-100: #e9edf3;
+  --color-brand-200: #d1d9e5;
+  --color-brand-300: #b8c5d7;
+  --color-brand-400: #7f97b5;
+  --color-brand-500: #365b87;
+  --color-brand-600: #23416a;
+  --color-brand-700: #1b3558;
+  --color-brand-800: #172c48;
+  --color-brand-900: #192029;
+}
+
+/* The learning player provides viewing controls only. */
+a[download], [title^="下载"], [aria-label^="下载"], [title*="Download"], [aria-label*="Download"] { display: none !important; }

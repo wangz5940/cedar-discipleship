@@ -313,6 +313,14 @@ func (r *MySQLRepository) SaveLearningConfigWithSnapshots(
 	if err := preserveDailyScheduleHistory(existing, settings); err != nil {
 		return nil, nil, err
 	}
+	if enabled, ok := existing["resource_download_enabled"]; ok {
+		if settings == nil {
+			settings = map[string]any{}
+		}
+		settings["resource_download_enabled"] = enabled
+	} else {
+		delete(settings, "resource_download_enabled")
+	}
 	if rule, ok := existing["active_member_rule"]; ok {
 		if settings == nil {
 			settings = map[string]any{}
@@ -341,6 +349,21 @@ func (r *MySQLRepository) SaveActiveMemberRule(ctx context.Context, groupID uint
 		ON DUPLICATE KEY UPDATE
 		  settings=JSON_SET(IF(JSON_TYPE(settings)='OBJECT',settings,JSON_OBJECT()),'$.active_member_rule',
 		    JSON_EXTRACT(VALUES(settings),'$.active_member_rule')),
+		  updated_at=VALUES(updated_at)`, groupID, string(payload), now, now)
+	return err
+}
+
+func (r *MySQLRepository) SaveResourceDownloadEnabled(ctx context.Context, groupID uint64, enabled bool) error {
+	payload, err := json.Marshal(map[string]any{"resource_download_enabled": enabled})
+	if err != nil {
+		return err
+	}
+	now := nowSQL()
+	_, err = r.db.ExecContext(ctx, `INSERT INTO group_settings(group_id,settings,created_at,updated_at)
+		VALUES (?,?,?,?)
+		ON DUPLICATE KEY UPDATE
+		  settings=JSON_SET(IF(JSON_TYPE(settings)='OBJECT',settings,JSON_OBJECT()),'$.resource_download_enabled',
+		    JSON_EXTRACT(VALUES(settings),'$.resource_download_enabled')),
 		  updated_at=VALUES(updated_at)`, groupID, string(payload), now, now)
 	return err
 }

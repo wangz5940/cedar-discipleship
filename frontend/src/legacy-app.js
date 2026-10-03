@@ -1,4 +1,5 @@
 import { computed, shallowReactive } from 'vue';
+import { loadOvcmCourses, ovcmReference, resolveOvcmLesson } from './runtime/ovcmCourses';
 import { useContentViewerStore } from './stores/contentViewer';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useDashboardStore } from './stores/dashboard';
@@ -18,6 +19,7 @@ import {
 } from './runtime/date';
 import {
   applyPdfPageRangeToTitle,
+  assetContentPath,
   buildWeeklyVerseContentLink,
   buildReaderPageURL,
   deepMerge,
@@ -1319,6 +1321,19 @@ export async function openContentTarget(target) {
     render();
     return;
   }
+  if (ovcmReference(target.url) && !sourceAPIPath) {
+    closeViewer();
+    const requestID = viewerRequestID;
+    const context = dataContextKey();
+    const selected = resolveOvcmLesson(await loadOvcmCourses(), target.url);
+    if (requestID !== viewerRequestID || context !== dataContextKey()) return;
+    if (!selected) throw new Error('课程课时暂时不可用');
+    state.viewer = { type: 'ovcm', title: selected.course.title, course: selected.course,
+      lesson: selected.lesson, startTime: selected.time ?? 0, resumePlayback: selected.time === null };
+    syncViewerStore();
+    render();
+    return;
+  }
   const studyMetadata = { segments: target.segments || [], slides: target.slides || [], duration: target.duration,
     id: target.id, timelineId: target.timelineId, timelineOffset: target.timelineOffset,
     coverImage: target.coverImage, startTime: target.startTime || 0, resumePlayback: target.resumePlayback ?? (target.startTime == null), autoplay: Boolean(target.autoplay) };
@@ -1371,7 +1386,7 @@ export async function openContentTarget(target) {
   closeViewer();
   const requestID = viewerRequestID;
   if (sourceAPIPath) {
-    const res = await fetchWithAuth(sourceAPIPath, {
+    const res = await fetchWithAuth(assetContentPath(sourceAPIPath, state.learningConfig?.resource_download_enabled !== false), {
       feedbackContext: () => ({
         actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
         resourceTitle: title,
@@ -1497,7 +1512,7 @@ export async function openViewerItemInNewWindow(item, popup = null) {
       return;
     }
     if (sourceAPIPath) {
-      const res = await fetchWithAuth(sourceAPIPath, {
+      const res = await fetchWithAuth(assetContentPath(sourceAPIPath, state.learningConfig?.resource_download_enabled !== false), {
         feedbackContext: () => ({
           actionLabel: ['video', 'audio'].includes(type) ? '观看' : '阅读',
           resourceTitle: item.title || item.label || '阅读内容',
@@ -2529,8 +2544,8 @@ export function updateWeekBinding(kind, index, field, value) {
   render();
 }
 
-export function applyBindingSelection(kind, index, value) {
-  const item = libraryItemBySelection(value);
+export function applyBindingSelection(kind, index, value, options = []) {
+  const item = libraryItemBySelection(value) || options.find(option => librarySelectionValue(option) === value);
   const draft = { ...(state.weekDraft || weekDraftFromWeek()) };
   const list = Array.isArray(draft[kind]) ? draft[kind].map((entry) => ({ ...entry })) : [];
   if (!list[index]) list[index] = emptyWeekBinding(kind);

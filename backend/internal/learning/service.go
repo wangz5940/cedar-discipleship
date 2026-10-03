@@ -297,6 +297,14 @@ func (s *Service) SaveActiveMemberRule(ctx context.Context, groupID uint64, rule
 	return s.repo.SaveActiveMemberRule(ctx, groupID, rule)
 }
 
+func ResourceDownloadsAllowed(settings map[string]any) bool {
+	return settings["resource_download_enabled"] != false
+}
+
+func (s *Service) SaveResourceDownloadEnabled(ctx context.Context, groupID uint64, enabled bool) error {
+	return s.repo.SaveResourceDownloadEnabled(ctx, groupID, enabled)
+}
+
 func (s *Service) SaveLearningConfig(ctx context.Context, groupID uint64, settings map[string]any) error {
 	return s.repo.SaveLearningConfig(ctx, groupID, settings)
 }

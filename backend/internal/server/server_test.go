@@ -19,6 +19,7 @@ import (
 	"time"
 
 	assetdomain "agp/backend/internal/asset"
+	"agp/backend/internal/learning"
 	"agp/backend/internal/logctx"
 	statisticsdomain "agp/backend/internal/statistics"
 )
@@ -439,7 +440,7 @@ func TestDownloadAssetSupportsRangeAndCacheHeaders(t *testing.T) {
 		&downloadAssetStorage{path: path},
 		"",
 	)
-	a := &app{assets: service}
+	a := &app{assets: service, learning: learning.NewService(&resourceDownloadTestRepo{settings: map[uint64]map[string]any{}})}
 	request := httptest.NewRequest(http.MethodGet, "/api/assets/16/download", nil)
 	request.SetPathValue("id", "16")
 	request.Header.Set("Range", "bytes=0-3")
