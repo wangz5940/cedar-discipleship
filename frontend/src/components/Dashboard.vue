@@ -48,6 +48,7 @@ const {
   members,
   monthLabel,
   ranking,
+  statsTaskTypes,
   rankingFrom,
   rankingTo,
   statsFrom,
@@ -61,7 +62,7 @@ const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
 const matrixSort = ref({ key: 'total', direction: 'desc' });
-const availableLegend = computed(() => availableStatisticsLegend(ranking.value));
+const availableLegend = computed(() => availableStatisticsLegend(ranking.value, statsTaskTypes.value));
 const activeLegend = computed(() => availableLegend.value.find((item) => item.key === activeStatKey.value) || null);
 const effectiveStatKey = computed(() => activeLegend.value?.key || 'all');
 const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : availableLegend.value));
@@ -157,9 +158,10 @@ function memberTaskTitle(member, state) {
 
 async function exportRankingChart() {
   await exportRankingPNG({
-    title: '香柏木数据统计中心',
+    title: '门训数据统计中心',
     subtitle: `${monthLabel.value} ${activeScopeLabel.value}统计`,
     items: rankedItems.value,
+    taskTypes: statsTaskTypes.value,
     activeKey: effectiveStatKey.value,
     filename: `${monthLabel.value}-bar-chart.png`,
   });
@@ -328,8 +330,9 @@ async function exportRankingChart() {
 
       <section class="panel stats-center">
         <div class="stats-center-head spread">
-          <div>
+          <div class="stats-center-title-row">
             <h2 class="stats-center__title">周期统计</h2>
+            <button v-if="statsView === 'chart'" class="quiet stats-export" type="button" @click="exportRankingChart">导出图片</button>
             <p class="small muted">选择日期范围，查看各项完成情况</p>
           </div>
           <div class="inline stats-controls">
@@ -370,10 +373,6 @@ async function exportRankingChart() {
               </button>
             </div>
           </div>
-        </div>
-
-        <div v-if="statsView === 'chart'" class="export-row">
-          <button class="quiet" type="button" @click="exportRankingChart">导出柱状图 PNG</button>
         </div>
 
         <div v-if="statsView === 'chart'">

@@ -48,12 +48,13 @@ const {
   statsLoading,
   statsMonthLabel,
   statsRanking,
+  statsTaskTypes,
 } = storeToRefs(store);
 
 const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
-const availableLegend = computed(() => availableStatisticsLegend(statsRanking.value));
+const availableLegend = computed(() => availableStatisticsLegend(statsRanking.value, statsTaskTypes.value));
 const activeLegend = computed(() => availableLegend.value.find((item) => item.key === activeStatKey.value) || null);
 const effectiveStatKey = computed(() => activeLegend.value?.key || 'all');
 const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : availableLegend.value));
@@ -141,6 +142,7 @@ async function exportStatsChart() {
     title: '今日学习 · 全部分项统计',
     subtitle: `${statsMonthLabel.value || ''} ${scope}`,
     items: rankedStats.value,
+    taskTypes: statsTaskTypes.value,
     activeKey: effectiveStatKey.value,
     filename: `${statsMonthLabel.value || '全部分项'}-${scope}-bar-chart.png`,
   });
@@ -295,7 +297,7 @@ async function exportStatsChart() {
               <span v-if="statsMonthLabel" class="small muted">{{ statsMonthLabel }}</span>
             </div>
             <button class="quiet" type="button" @click="exportStatsChart">
-              导出柱状图 PNG
+              导出图片
             </button>
           </div>
 

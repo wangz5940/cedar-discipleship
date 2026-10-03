@@ -17,6 +17,7 @@ export const useCheckinWorkbenchStore = defineStore('checkinWorkbench', {
     statsLoading: false,
     statsMonthLabel: '',
     statsRanking: [],
+    statsTaskTypes: [],
   }),
   actions: {
     setSnapshot(snapshot) {
@@ -36,6 +37,7 @@ export const useCheckinWorkbenchStore = defineStore('checkinWorkbench', {
         statsLoading: Boolean(snapshot?.statsLoading),
         statsMonthLabel: snapshot?.statsMonthLabel || '',
         statsRanking: Array.isArray(snapshot?.statsRanking) ? snapshot.statsRanking : [],
+        statsTaskTypes: Array.isArray(snapshot?.statsTaskTypes) ? snapshot.statsTaskTypes : [],
       });
     },
     hide() {

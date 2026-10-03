@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { rankingChartSVG } from './rankingExport';
 
 describe('rankingChartSVG', () => {
+  it('exports planned categories even when no member has completed them', () => {
+    const svg = rankingChartSVG({ title: '学习', subtitle: '本周', items: [], taskTypes: ['weekly_verse'] });
+    expect(svg).toContain('>背经</text>');
+    expect(svg).not.toContain('>每日背经</text>');
+    expect(svg).not.toMatch(/NaN|Infinity/);
+  });
   const items = [{
     member_name: '<&', total: 28,
     counts: { daily_devotion: 1, daily_scripture: 2, weekly_checkin: 3, weekly_book: 4, weekly_video: 5, weekly_outline: 6, weekly_verse: 7 },

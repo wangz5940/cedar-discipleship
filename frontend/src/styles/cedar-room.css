@@ -122,7 +122,7 @@
 
 /* Clearer hierarchy for the learning interface. */
 .cedar-app-shell .pagehead h1, .checkin-page .page-header h1 { font-size: 30px; font-weight: 700; line-height: 1.4; }
-.library-intro h1 { font-weight: 600; }
+.library-intro h1 { font-family: var(--cd-font-sans); font-weight: 600; font-size: clamp(18px, 2.7cqw, 32px); white-space: nowrap; letter-spacing: -.03em; }
 .course-library .course-section-title, .checkin-page .section-heading { font-size: 21px; font-weight: 700; }
 .course-library .course-card h3, .course-index .course-card-copy h3,
 .cd-resource-card h3, .checkin-page .task-name { font-size: 17px; font-weight: 600; line-height: 1.6; }
@@ -164,3 +164,18 @@
 .mobile-learning-sections { display: flex; gap: 6px; padding: 5px; margin-bottom: 20px; border: 1px solid var(--cd-border); border-radius: 12px; background: var(--cd-surface-subtle); }
 .mobile-learning-sections button { flex: 1; border: 0; min-height: 44px; background: transparent; color: var(--cd-muted); }
 .mobile-learning-sections button.active { background: var(--cd-primary); color: white; }
+
+.library-section-label { align-items: center; }
+.library-section-label h2 { margin: 0; font-size: 21px; font-weight: 700; }
+.library-section-label select { flex: 0 0 auto; width: auto; max-width: 130px; font-size: 14px; font-weight: 400; }
+.course-library .course-source-tabs button { color: var(--cd-muted); font-weight: 500; }
+.course-library .course-source-tabs button.active { background: var(--cd-primary); color: white; font-weight: 600; }
+.stats-center .stats-center-head { flex-direction: column; }
+.stats-center-title-row { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; }
+.stats-center-title-row p { grid-column: 1 / -1; }
+.stats-export { white-space: nowrap; }
+@media (max-width: 767px) {
+  .library-intro h1 { font-size: clamp(18px, 5.7cqw, 28px); }
+  .library-section-label h2 { font-size: 20px; }
+  .stats-center-title-row { width: 100%; }
+}

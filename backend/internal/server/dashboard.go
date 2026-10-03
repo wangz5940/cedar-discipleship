@@ -90,6 +90,11 @@ func (a *app) handleDashboardMonthlyRanking(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	ranking.ActiveRule = activeMemberRuleFromSettings(settings)
+	ranking.TaskTypes, err = a.learning.StatisticsTaskTypes(r.Context(), groupID, ranking.From, ranking.To, settings)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "monthly_ranking_failed")
+		return
+	}
 	ranking.CanManageActiveRule = canManageActiveMemberRule(u)
 	writeJSON(w, http.StatusOK, ranking)
 }

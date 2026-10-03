@@ -22,9 +22,9 @@ export function statisticCount(item: RankingItem, key: string): number {
   return Number(item.counts?.[key] || 0);
 }
 
-export function availableStatisticsLegend(items: RankingItem[]) {
+export function availableStatisticsLegend(items: RankingItem[], taskTypes: string[] = []) {
   return statisticsLegend.filter((part) => (
-    items.some((item) => statisticCount(item, part.key) > 0)
+    taskTypes.includes(part.key) || items.some((item) => statisticCount(item, part.key) > 0)
   ));
 }
 
