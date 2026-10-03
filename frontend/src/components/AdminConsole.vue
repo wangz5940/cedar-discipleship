@@ -6,6 +6,7 @@ import { alertDialog, promptDialog } from '../ui/dialog';
 import { useAppStateStore } from '../stores/appState';
 import { lazyPage } from '../ui/lazyPage';
 import { bibleBookReferences, inferDailyDevotionContentType } from '../runtime/content';
+import { dailyVerseTitle } from '../runtime/dailyVerseTitle';
 import { canManageStudyGroup, studyRoleLabel as roleLabel } from '../runtime/studyPermissions';
 import {
   dailyDevotionPlanForDate,
@@ -99,7 +100,6 @@ const dailyPlanDate = ref(todayString());
 const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
 const versePlansExpanded = ref(false);
-const verseRef = ref('');
 const verseText = ref('');
 
 function learningSectionKey(section) {
@@ -150,9 +150,11 @@ const scripture = computed(() => daily.value.scripture || {});
 const dailyVerse = computed(() => daily.value.verse || {});
 const versePlans = computed(() => [...(dailyVerse.value.plans || [])].sort((a, b) => a.date.localeCompare(b.date)));
 const visibleVersePlans = computed(() => versePlansExpanded.value ? versePlans.value : versePlans.value.slice(-3));
+const generatedVerseTitle = computed(() => dailyVerseTitle(verseText.value));
+const verseRef = computed(() => generatedVerseTitle.value
+  || versePlans.value.find((item) => item.date === versePlanDate.value)?.verse_ref || '');
 watch([versePlanDate, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
   const plan = versePlans.value.find((item) => item.date === versePlanDate.value);
-  verseRef.value = plan?.verse_ref || '';
   verseText.value = plan?.recite_text || '';
 }, { immediate: true });
 
@@ -160,14 +162,21 @@ function addVersePlan() {
   if (!canEditLearning.value) return;
   const last = versePlans.value.at(-1);
   versePlanDate.value = last ? shiftDailyPlanDate(last.date, 1) : versePlanDate.value || todayString();
-  verseRef.value = '';
   verseText.value = '';
 }
 
 async function saveVersePlan() {
   if (!canEditLearning.value) return;
-  if (!versePlanDate.value || !verseRef.value.trim() || !verseText.value.trim()) {
-    showToast('请填写背经日期、经文和默写原文');
+  if (!versePlanDate.value || !verseText.value.trim()) {
+    showToast('请填写背经日期和默写原文');
+    return;
+  }
+  if (!verseRef.value.trim()) {
+    showToast('请在默写原文中保留章节标记，例如创1:1-2、罗8:5-6');
+    return;
+  }
+  if (verseRef.value.length > 255) {
+    showToast('经文章节过多，请分到不同日期配置');
     return;
   }
   const plans = versePlans.value.filter((item) => item.date !== versePlanDate.value);
@@ -945,8 +954,8 @@ async function runLocalBackupImport() {
                       新增一天
                     </button>
                     <label class="admin-field"><span class="admin-field-label">背经日期</span><input v-model="versePlanDate" type="date" /></label>
-                    <label class="admin-field"><span class="admin-field-label">当天经文</span><input v-model="verseRef" maxlength="255" :disabled="!canEditLearning" placeholder="例如：约翰福音 3:16" /></label>
-                    <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写当天需要背诵和默写的经文原文"></textarea></label>
+                    <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写经文原文并保留章节标记，例如：创1:1 起初，神创造天地。"></textarea></label>
+                    <p class="muted" aria-live="polite">{{ verseRef ? `${generatedVerseTitle ? '自动标题' : '沿用原标题'}：${verseRef}` : '标题将从原文中的章节标记自动生成，例如创1:1-2，罗8:5-6。' }}</p>
                     <div class="form-actions">
                       <button :disabled="!canEditLearning" type="button" @click="saveVersePlan">保存当天背经</button>
                       <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除当天背经</button>
