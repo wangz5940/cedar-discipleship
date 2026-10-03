@@ -26,8 +26,8 @@ function navIcon(id) {
         </svg>
       </div>
       <div class="brandcopy">
-        <b>香柏木</b>
-        <div class="eyebrow">CEDAR DISCIPLESHIP</div>
+        <b>门训</b>
+        <div class="eyebrow">DISCIPLESHIP</div>
       </div>
     </div>
 

@@ -306,8 +306,8 @@ async function refreshResources() {
             </svg>
           </div>
           <div class="brandcopy">
-            <b>香柏木</b>
-            <span class="eyebrow">CEDAR DISCIPLESHIP</span>
+            <b>门训</b>
+            <span class="eyebrow">DISCIPLESHIP</span>
           </div>
         </div>
         <h1>向下扎根，<br />向上生长。</h1>
@@ -440,10 +440,6 @@ async function refreshResources() {
               <p class="muted">共 {{ filteredResources.length }} 项资料，选择一份开始学习</p>
             </div>
             <div class="inline app-resource-page-actions">
-              <button class="quiet icon-text-button" type="button" :disabled="resourceRefreshing" @click="refreshResources">
-                <RefreshCw :size="17" :class="{ spin: resourceRefreshing }" />
-                {{ resourceRefreshing ? '刷新中' : '刷新资源' }}
-              </button>
               <div v-if="selectedResourceKeys.size" class="inline app-resource-selection">
                 <span class="pill">已选 {{ selectedResourceKeys.size }} 项</span>
                 <button class="primary" type="button" @click="downloadSelectedResources">
@@ -465,6 +461,9 @@ async function refreshResources() {
                 aria-label="搜索资料"
                 class="app-resource-search__input"
               />
+              <button class="app-resource-search__refresh" type="button" :disabled="resourceRefreshing" :aria-label="resourceRefreshing ? '刷新中' : '刷新资源'" title="刷新资源" @click="refreshResources">
+                <RefreshCw :size="18" :class="{ spin: resourceRefreshing }" />
+              </button>
             </form>
             <label class="app-resource-select app-resource-select-all">
               <input type="checkbox" :checked="allVisibleResourcesSelected" :disabled="!filteredResources.length" @change="toggleAllResources" />

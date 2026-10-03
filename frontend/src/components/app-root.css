@@ -195,6 +195,21 @@
   width: 100%;
   min-width: 0;
   padding-left: 40px;
+  padding-right: 44px;
+}
+
+.app-resource-search__refresh {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cd-primary);
 }
 
 .cd-resource-card.app-resource-card {

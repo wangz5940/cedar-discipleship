@@ -17,6 +17,7 @@ type MonthlyRankingItemVO struct {
 }
 
 type MonthlyRankingVO struct {
+	TaskTypes           []string               `json:"task_types"`
 	Month               string                 `json:"month"`
 	From                string                 `json:"from"`
 	To                  string                 `json:"to"`

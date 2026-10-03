@@ -9,6 +9,7 @@ import (
 	"math"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -113,6 +114,45 @@ func (s *Service) WeekTasks(ctx context.Context, groupID, weekID uint64) ([]map[
 		return nil, err
 	}
 	return activeWeekTaskMaps(tasks), nil
+}
+
+// StatisticsTaskTypes uses the same enabled-task rules as the learning page.
+func (s *Service) StatisticsTaskTypes(ctx context.Context, groupID uint64, from, to string, settings map[string]any) ([]string, error) {
+	weeks, err := s.repo.ListWeeks(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	selected := make([]Week, 0)
+	for _, week := range weeks {
+		if week.StartDate <= to && week.EndDate >= from {
+			selected = append(selected, week)
+		}
+	}
+	tasksByWeek, err := s.tasksByWeek(ctx, groupID, selected)
+	if err != nil {
+		return nil, err
+	}
+	types := map[string]bool{}
+	start, err := time.Parse("2006-01-02", from)
+	if err != nil {
+		return nil, err
+	}
+	for day := start; day.Format("2006-01-02") <= to; day = day.AddDate(0, 0, 1) {
+		for _, task := range dailyTasks(day.Format("2006-01-02"), settings) {
+			types[task.Type] = true
+		}
+	}
+	for _, week := range selected {
+		for _, task := range buildTodayTasks(to, WeekMap(week), tasksByWeek[week.ID], settings, nil) {
+			types[task.Type] = true
+		}
+	}
+	result := make([]string, 0, len(types))
+	for taskType := range types {
+		result = append(result, taskType)
+	}
+	sort.Strings(result)
+	return result, nil
 }
 
 func activeWeekTaskMaps(tasks []Task) []map[string]any {
