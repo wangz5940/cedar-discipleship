@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	ErrWeekNotFound    = errors.New("week_not_found")
-	ErrWeekHasCheckins = errors.New("week_has_checkins")
+	ErrInvalidVerseMode = errors.New("invalid_verse_mode")
+	ErrWeekNotFound     = errors.New("week_not_found")
+	ErrWeekHasCheckins  = errors.New("week_has_checkins")
 )
 
 var taskBindingPageRangePattern = regexp.MustCompile(`([0-9]{1,4})\s*(?:[-~—–至到]\s*([0-9]{1,4}))?\s*页`)
@@ -44,6 +45,7 @@ func (s *Service) ListWeeks(ctx context.Context, groupID uint64) ([]WeekVO, erro
 		readings, videos, outline := SplitWeekTaskBindings(tasks)
 		vo := weekVO(week, readings, videos, outline)
 		vo.WeeklyCheckin = hasAggregateWeeklyTask(tasks)
+		vo.VerseMode = verseModeFromTasks(tasks)
 		out = append(out, vo)
 	}
 	return out, nil
@@ -87,6 +89,7 @@ func (s *Service) ListWeekInputs(ctx context.Context, groupID uint64) ([]WeekInp
 			WeeklyCheckin:  week.WeeklyCheckin,
 			VideoEnabled:   week.VideoEnabled,
 			VerseEnabled:   week.VerseEnabled,
+			VerseMode:      week.VerseMode,
 			OutlineEnabled: week.OutlineEnabled,
 			Readings:       week.Readings,
 			Videos:         week.Videos,
@@ -124,9 +127,15 @@ func activeWeekTaskMaps(tasks []Task) []map[string]any {
 }
 
 func (s *Service) SaveWeek(ctx context.Context, groupID, weekID uint64, input WeekInput, force bool, now time.Time) (uint64, error) {
+	if input.VerseMode != "" && input.VerseMode != "weekly" && input.VerseMode != "daily" {
+		return 0, ErrInvalidVerseMode
+	}
 	existingVerseTitle := ""
 	if weekID > 0 {
 		title, err := s.repo.ExistingTaskTitle(ctx, groupID, weekID, "weekly_verse")
+		if errors.Is(err, sql.ErrNoRows) {
+			title, err = s.repo.ExistingTaskTitle(ctx, groupID, weekID, "daily_verse")
+		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return 0, err
 		}
@@ -321,7 +330,7 @@ func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 	if verseTitle := WeeklyVerseTaskTitle(input, existingVerseTitle); verseTitle != "" &&
 		firstNonEmpty(input.VerseRef, input.ReciteText, existingVerseTitle) != "" {
 		tasks = append(tasks, TaskDraft{
-			TaskType:  "weekly_verse",
+			TaskType:  verseTaskType(input.VerseMode),
 			Title:     verseTitle,
 			Content:   strings.TrimSpace(input.ReciteText),
 			SortOrder: 1,
@@ -474,7 +483,7 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 				if !mapBool(week, "video_enabled", true) {
 					continue
 				}
-			case "weekly_verse":
+			case "weekly_verse", "daily_verse":
 				if !mapBool(week, "verse_enabled", true) {
 					continue
 				}
@@ -575,7 +584,7 @@ func todayTaskKind(taskType string) string {
 		return "book"
 	case "weekly_video":
 		return "video"
-	case "weekly_verse":
+	case "weekly_verse", "daily_verse":
 		return "verse"
 	case "weekly_outline":
 		return "outline"
@@ -592,8 +601,10 @@ func todayTaskSummary(taskType string) string {
 		return "本周阅读"
 	case "weekly_video":
 		return "本周视频"
+	case "daily_verse":
+		return "每日完成"
 	case "weekly_verse":
-		return "背经与默想"
+		return "整周完成一次"
 	case "weekly_outline":
 		return "本周大纲背诵"
 	default:
@@ -609,6 +620,8 @@ func todayTaskFallbackTitle(taskType string) string {
 		return "周读物"
 	case "weekly_video":
 		return "本周视频"
+	case "daily_verse":
+		return "每日背经"
 	case "weekly_verse":
 		return "本周背经"
 	case "weekly_outline":
@@ -676,7 +689,10 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			}
 			continue
 		}
-		if task.Type == "weekly_verse" || task.Type == "weekly_outline" || task.Type == "weekly_checkin" {
+		if task.Type == "daily_verse" && record.LogicalDate != date {
+			continue
+		}
+		if task.Type == "weekly_verse" || task.Type == "daily_verse" || task.Type == "weekly_outline" || task.Type == "weekly_checkin" {
 			if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
 				return record
 			}
@@ -783,6 +799,7 @@ func weekVO(week Week, readings, videos []TaskBinding, outline TaskBinding) Week
 		BookEnabled:    week.BookEnabled,
 		VideoEnabled:   week.VideoEnabled,
 		VerseEnabled:   week.VerseEnabled,
+		VerseMode:      "weekly",
 		OutlineEnabled: week.OutlineEnabled,
 		Readings:       readings,
 		Videos:         videos,
@@ -1090,4 +1107,21 @@ func asString(v any) string {
 	default:
 		return ""
 	}
+}
+
+// Missing cadence keeps legacy weekly completion. The task type is the stored cadence.
+func verseTaskType(mode string) string {
+	if mode == "daily" {
+		return "daily_verse"
+	}
+	return "weekly_verse"
+}
+
+func verseModeFromTasks(tasks []map[string]any) string {
+	for _, task := range tasks {
+		if asString(task["task_type"]) == "daily_verse" {
+			return "daily"
+		}
+	}
+	return "weekly"
 }

@@ -513,11 +513,11 @@ async function exportRankingChart() {
 .member-cell { gap: 10px; }
 .member-avatar { width: 44px; height: 44px; border: 0; font-size: 12px; cursor: pointer; }
 .daily-checkin { min-height: 44px; padding: 4px 12px; font-size: 12px; }
-.daily-checkin.is-pending, .member-stack-tasks button.is-pending { border: 1px solid #bd891f; background: #fff1c9; color: #754500; font-weight: 700; white-space: nowrap; }
-.daily-checkin.is-done, .member-stack-tasks button.is-done { border: 1px solid #216647; background: #216647; color: #fff; font-weight: 700; white-space: nowrap; }
+.daily-checkin.is-pending, .member-stack-tasks button.is-pending { border: 1px solid var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); font-weight: 700; white-space: nowrap; }
+.daily-checkin.is-done, .member-stack-tasks button.is-done { border: 1px solid var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; font-weight: 700; white-space: nowrap; }
 .status-pending, .status-done { display: inline-flex; align-items: center; padding: 4px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.status-pending { border: 1px solid #bd891f; background: #fff1c9; color: #754500; }
-.status-done { border: 1px solid #216647; background: #216647; color: #fff; }
+.status-pending { border: 1px solid var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); }
+.status-done { border: 1px solid var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; }
 .numeric, .progress-count { font-variant-numeric: tabular-nums; }
 .progress-panel { margin-bottom: 32px; }
 .progress-label { font-weight: 500; }

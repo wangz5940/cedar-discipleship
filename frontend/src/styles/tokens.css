@@ -5,39 +5,50 @@
 
 :root {
   /* 基础色彩 */
-  --cd-bg: #f5f7f5;
+  --cd-bg: #F2F4F8;
   --cd-surface: #ffffff;
-  --cd-surface-subtle: #eef1ec;
+  --cd-surface-subtle: #e9ecf2;
   --cd-surface-secondary: var(--cd-surface-subtle);
-  --cd-surface-hover: #e7ece7;
-  --cd-primary: #285c4d;
-  --cd-primary-hover: #204c40;
-  --cd-primary-soft: #e8f0ea;
-  --cd-text: #202b25;
+  --cd-surface-hover: #dfe4eb;
+  --cd-primary: #23416A;
+  --cd-primary-hover: #1f395b;
+  --cd-primary-soft: #e5e8ed;
+  --cd-text-ink: #192029;
+  --cd-text: var(--cd-text-ink);
   --cd-text-primary: var(--cd-text);
-  --cd-text-secondary: #526057;
-  --cd-muted: #657168;
-  --cd-border: #dde3dc;
-  --cd-border-strong: #c8d2ca;
-  --cd-success: #28704c;
-  --cd-warning: #946319;
-  --cd-danger: #b5413b;
-  --cd-info: #376e94;
-  --cd-gold: #a28143;
-  --cd-purple: #796091;
+  --cd-text-secondary: #313b44;
+  --cd-muted: #596069;
+  --cd-border: #d1d7e1;
+  --cd-border-strong: #b8c2d0;
+  --cd-status: var(--cd-gold);
+  --cd-status-strong: var(--cd-gold);
+  --cd-status-accent: #c39a79;
+  --cd-status-border: #dfc4af;
+  --cd-status-soft: var(--cd-gold-soft);
+  --cd-status-subtle: #fbf6f1;
+  --cd-success: var(--cd-status-strong);
+  --cd-warning: #A86531;
+  --cd-danger: #b3423e;
+  --cd-info: var(--cd-primary);
+  --cd-gold: #A86531;
+  --cd-gold-soft: #f4e9df;
+  --cd-on-primary: #ffffff;
+  --cd-on-primary-muted: #d8e1ee;
+  --cd-purple: #75638d;
 
   /* 字体栈 */
-  --cd-font-sans: "PingFang SC", sans-serif;
-  --cd-font-serif: var(--cd-font-sans);
+  --cd-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --cd-font-serif: "Source Han Serif CN VF", "Songti SC", "SimSun", serif;
+  --cd-font-reading: "LXGW WenKai Screen", "PingFang SC", "Microsoft YaHei", sans-serif;
   --cd-page-width: 1120px;
   --cd-page-gutter: 32px;
 
   /* 字体层级 */
   --cd-font-size-caption: 12px;
-  --cd-font-size-body: 14px;
-  --cd-font-size-card-title: 15px;
-  --cd-font-size-section-title: 18px;
-  --cd-font-size-page-title: 28px;
+  --cd-font-size-body: 15px;
+  --cd-font-size-card-title: 17px;
+  --cd-font-size-section-title: 21px;
+  --cd-font-size-page-title: 30px;
   --cd-line-height-tight: 1.35;
   --cd-line-height-base: 1.6;
   --cd-font-weight-regular: 400;
@@ -64,13 +75,13 @@
 
   /* 阴影与材料 */
   --cd-shadow-card: none;
-  --cd-shadow-small: 0 2px 8px rgb(25 43 32 / 6%);
-  --cd-shadow-floating: 0 12px 32px rgb(25 43 32 / 14%);
-  --cd-shadow-dialog: 0 20px 60px rgba(25, 43, 32, 0.18);
-  --cd-backdrop: rgba(22, 34, 27, 0.38);
+  --cd-shadow-small: 0 2px 8px rgb(25 32 41 / 6%);
+  --cd-shadow-floating: 0 12px 32px rgb(25 32 41 / 14%);
+  --cd-shadow-dialog: 0 20px 60px rgba(25, 32, 41, 0.18);
+  --cd-backdrop: rgba(25, 32, 41, 0.38);
 
   /* 焦点与层级 */
-  --cd-focus-ring: #87ad96;
+  --cd-focus-ring: #8b9fbb;
   --cd-focus-width: 3px;
   --cd-z-sticky: 100;
   --cd-z-overlay: 1000;
@@ -106,9 +117,10 @@
   --surface-muted: var(--cd-surface-subtle);
   --surface-soft: var(--cd-surface-subtle);
   --line-strong: var(--cd-border-strong);
-  --faint: #768178;
+  --faint: #676e78;
   --red: var(--cd-danger);
   --amber: var(--cd-warning);
+  --violet: var(--cd-purple);
   --green-soft: var(--cd-primary-soft);
   --radius-sm: 8px;
   --radius-md: 12px;

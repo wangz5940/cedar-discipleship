@@ -1,11 +1,12 @@
 export const statisticsLegend = [
-  { key: 'daily_devotion', label: '灵修', color: '#0a84ff' },
-  { key: 'daily_scripture', label: '读经', color: '#0891b2' },
-  { key: 'weekly_checkin', label: '整周', color: '#64748b' },
-  { key: 'weekly_book', label: '书籍', color: '#8b5cf6' },
-  { key: 'weekly_video', label: '音视频', color: '#19bf7a' },
-  { key: 'weekly_outline', label: '背大纲', color: '#f59e0b' },
-  { key: 'weekly_verse', label: '背经', color: '#e66a52' },
+  { key: 'daily_devotion', label: '灵修', color: '#0284c7' },
+  { key: 'daily_scripture', label: '读经', color: '#0ea5e9' },
+  { key: 'weekly_checkin', label: '整周', color: '#7dd3fc' },
+  { key: 'weekly_book', label: '书籍', color: '#0369a1' },
+  { key: 'weekly_video', label: '音视频', color: '#38bdf8' },
+  { key: 'weekly_outline', label: '背大纲', color: '#7aa9cb' },
+  { key: 'daily_verse', label: '每日背经', color: '#c39a79' },
+  { key: 'weekly_verse', label: '背经', color: '#a8cee7' },
 ] as const;
 
 export type RankingItem = {

@@ -19,7 +19,6 @@ const currentPassword = ref('');
 const newPassword = ref('');
 const confirmPassword = ref('');
 const changingPassword = ref(false);
-
 const activeGroup = computed(() => groups.value.find((group) => Number(group.id) === Number(currentGroupID.value)));
 
 watch([user, currentGroupID], () => {

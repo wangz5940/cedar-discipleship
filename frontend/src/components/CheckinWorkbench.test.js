@@ -65,3 +65,16 @@ describe('weekly media tasks', () => {
     expect(html).not.toContain('查看');
   });
 });
+
+it.each([['daily_verse', '每日背经'], ['weekly_verse', '每周背经']])('offers recitation for %s', async (type, label) => {
+  const pinia = createPinia();
+  useCheckinWorkbenchStore(pinia).setSnapshot({
+    visible: true, selectedDate: '2026-09-29', maxDate: '2026-09-29', total: 1,
+    tasks: [{ type, taskID: 41, weekID: 9, title: '罗马书 8:1', reciteText: '如今那些在基督耶稣里的', contentLinks: [] }],
+  });
+  const context = {};
+  await renderToString(createSSRApp(CheckinWorkbench).use(pinia), context);
+  const html = context.teleports['#vue-checkin-workbench'];
+  expect(html).toContain(label);
+  expect(html).toContain('>默写</button>');
+});

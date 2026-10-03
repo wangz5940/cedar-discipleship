@@ -77,7 +77,7 @@ func (a *app) botGroupData(r *http.Request) (userdomain.Group, []userdomain.Memb
 			"verse": week.VerseRef, "verse_ref": week.VerseRef, "reciteText": week.ReciteText,
 			"recite_text": week.ReciteText, "readings": week.Readings, "videos": week.Videos,
 			"book_enabled": week.BookEnabled, "video_enabled": week.VideoEnabled,
-			"verse_enabled": week.VerseEnabled, "outline_enabled": week.OutlineEnabled,
+			"verse_enabled": week.VerseEnabled, "verse_mode": week.VerseMode, "outline_enabled": week.OutlineEnabled,
 		})
 	}
 	return group, members, schedule, nil
@@ -219,7 +219,7 @@ func (a *app) handleBotState(w http.ResponseWriter, r *http.Request) {
 			item["book"] = "done"
 		case "weekly_video":
 			item["video"] = "done"
-		case "weekly_verse":
+		case "weekly_verse", "daily_verse":
 			item["verse"] = "done"
 		}
 		items = append(items, item)
@@ -339,6 +339,8 @@ func botTaskLabel(taskType string, values ...string) string {
 		return "周读物"
 	case "weekly_video":
 		return "周视频"
+	case "daily_verse":
+		return "每日背经"
 	case "weekly_verse":
 		return "周背经"
 	case "weekly_outline":
@@ -367,6 +369,8 @@ func botTaskType(value string) string {
 		return "weekly_book"
 	case "周视频", "视频", "weekly_video":
 		return "weekly_video"
+	case "每日背经", "日背经", "daily_verse":
+		return "daily_verse"
 	case "周背经", "背经", "weekly_verse":
 		return "weekly_verse"
 	case "提纲背诵", "weekly_outline":

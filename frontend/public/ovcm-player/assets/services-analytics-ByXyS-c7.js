@@ -1,0 +1,1 @@
+const noop=()=>{};const analytics=new Proxy({}, {get:()=>noop});export {analytics as A,noop as i,noop as t};

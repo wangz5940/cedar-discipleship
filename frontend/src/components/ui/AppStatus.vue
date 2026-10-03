@@ -57,7 +57,7 @@ defineProps({
   place-items: center;
   border-radius: 50%;
   color: var(--cd-danger);
-  background: #fdf2f2;
+  background: var(--cd-status-subtle);
   font-size: var(--cd-font-size-section-title);
   font-weight: var(--cd-font-weight-semibold);
 }

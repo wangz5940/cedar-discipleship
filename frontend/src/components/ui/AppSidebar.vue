@@ -1,5 +1,5 @@
 <script setup>
-import { BarChart2, Book, BookOpen, Download, Folder, LogOut, MessageSquareText, Settings, User, Users } from '@lucide/vue';
+import { BarChart2, Book, BookOpen, Download, Folder, House, LogOut, MessageSquareText, Settings, User, Users } from '@lucide/vue';
 
 defineProps({
   navItems: { type: Array, default: () => [] },
@@ -13,7 +13,7 @@ defineProps({
 defineEmits(['navigate', 'downloads', 'logout']);
 
 function navIcon(id) {
-  return { home: Book, dashboard: BarChart2, groups: Users, resources: Folder, feedback: MessageSquareText, settings: User }[id] || Book;
+  return { home: House, courses: BookOpen, dashboard: BarChart2, groups: Users, resources: Folder, feedback: MessageSquareText, settings: User }[id] || Book;
 }
 </script>
 
@@ -34,10 +34,10 @@ function navIcon(id) {
     <p class="navlabel">每日同行</p>
     <nav class="nav" aria-label="主导航">
       <button
-        v-for="item in navItems.filter((entry) => entry[0] !== 'admin')"
+        v-for="item in navItems.filter((entry) => entry[0] !== 'admin' && entry[0] !== 'resources')"
         :key="item[0]"
-        :class="{ active: tab === item[0] }"
-        :aria-current="tab === item[0] ? 'page' : undefined"
+        :class="{ active: (tab === 'resources' ? 'courses' : tab) === item[0] }"
+        :aria-current="(tab === 'resources' ? 'courses' : tab) === item[0] ? 'page' : undefined"
         :title="item[1]"
         type="button"
         @click="$emit('navigate', item[0])"

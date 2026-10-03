@@ -36,7 +36,7 @@ func (s *CheckinSource) Enabled(ctx context.Context, event Event) (bool, error) 
 			return false, nil
 		}
 		switch taskType {
-		case "daily_devotion", "daily_scripture":
+		case "daily_devotion", "daily_scripture", "daily_verse":
 			topic = "daily"
 		case "weekly_checkin", "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
 			topic = "weekly"
@@ -95,7 +95,7 @@ func (s *CheckinSource) Snapshot(ctx context.Context, event Event) (Snapshot, er
 	today := checkedAt.In(s.location).Format("2006-01-02")
 	logicalDate := date.Format("2006-01-02")
 	start, end := today, today
-	daily := taskType == "daily_devotion" || taskType == "daily_scripture"
+	daily := taskType == "daily_devotion" || taskType == "daily_scripture" || taskType == "daily_verse"
 	if !daily {
 		if taskType != "weekly_checkin" && taskType != "weekly_book" && taskType != "weekly_video" &&
 			taskType != "weekly_verse" && taskType != "weekly_outline" {
@@ -155,7 +155,7 @@ func (s *CheckinSource) periodSnapshot(ctx context.Context, event Event, start, 
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("parse notification period: %w", err)
 	}
-	where := "c.task_type IN ('daily_devotion','daily_scripture')"
+	where := "c.task_type IN ('daily_devotion','daily_scripture','daily_verse')"
 	period := "c.logical_date BETWEEN ? AND ?"
 	args := []any{event.GroupID, start, end}
 	cutoff := "c.id<=?"

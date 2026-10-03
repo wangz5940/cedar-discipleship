@@ -68,6 +68,8 @@ import {
   buildTaskCompletionMatrix,
 } from './runtime/checkins';
 import { normalizeMobileViewMode } from './runtime/personalSettings';
+import { bindStudyAccount } from '../public/study-memory.js';
+import { loadStudyAccess } from '../public/study-access.js';
 import {
   dailyDevotionPlanForDate,
   dailyDevotionPlanMode,
@@ -320,6 +322,7 @@ function syncDashboardStore() {
 
 const navItems = [
   ['home', '今日', 'Today'],
+  ['courses', '课程', 'Courses'],
   ['dashboard', '统计', 'Insights'],
   ['groups', '小组', 'Teams'],
   ['resources', '资源', 'Library'],
@@ -409,6 +412,23 @@ export async function api(path, options = {}) {
     throw error;
   }
   return data;
+}
+
+export async function studyAccountAPI(path, options = {}) {
+  const owner = state.user?.id;
+  const generation = authSessionGeneration();
+  try { return await api(path, { ...options, retryAuth: false }); }
+  catch (error) {
+    if (error.status !== 401 || !owner || owner !== state.user?.id || generation !== authSessionGeneration()) throw error;
+    const refreshed = await refreshSession();
+    if (!refreshed || owner !== state.user?.id || generation !== authSessionGeneration()) throw error;
+    return api(path, { ...options, retryAuth: false });
+  }
+}
+
+async function bindLearningAccount(id) {
+  const sender = id ? studyAccountAPI : null;
+  await Promise.all([bindStudyAccount(id, sender), loadStudyAccess(id, sender)]);
 }
 
 async function refreshSession(logID) {
@@ -598,6 +618,8 @@ async function loadAll(options = {}) {
       if (!isCurrent()) return;
       state.user = me.user;
     }
+    await bindLearningAccount(state.user?.id);
+    if (!isCurrent()) return;
     if (state.tab === 'admin' && !canAdminAccess()) {
       state.tab = 'home';
     }
@@ -767,11 +789,17 @@ export async function login(username, password) {
   state.token = data.token;
   state.user = data.user;
   setAccessToken(state.token);
+  await bindLearningAccount(state.user?.id);
   render();
   // Refresh the authoritative profile after sign-in so roles granted by the
   // selected group are available before the learning workspace is rendered.
   await loadAll();
   render();
+}
+
+export async function initializeStudyAccount() {
+  if (!state.user) await refreshSession();
+  await bindLearningAccount(state.user?.id || 0);
 }
 
 export function setTab(tab) {
@@ -854,7 +882,7 @@ export async function openCalendarMonth(member, month) {
 }
 
 function pageTitle() {
-  const titles = { home: '今日学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', feedback: '建议与反馈', settings: '个人设置', admin: '管理后台', guide: '使用文档' };
+  const titles = { home: '今日学习', courses: '课程学习', dashboard: '统计中心', groups: '专项小组', resources: '资源中心', feedback: '建议与反馈', settings: '个人设置', admin: '管理后台', guide: '使用文档' };
   if (state.tab === 'admin' && !canAdminAccess()) return titles.home;
   return titles[state.tab] || 'Cedar Discipleship';
 }
@@ -1058,7 +1086,7 @@ function normalizeResourceSeriesKey(value) {
   return normalizeSearchText(
     String(value || '')
       .replace(/\d{1,4}\s*(?:[-~—–至到]\s*\d{1,4})?\s*页/g, '')
-      .replace(/\.(pdf|md|markdown|mp4|webm|mov|m4v|png|jpe?g|webp)$/i, ''),
+      .replace(/\.(pdf|md|markdown|mp4|webm|mov|m4v|mp3|m4a|aac|wav|ogg|flac|png|jpe?g|webp)$/i, ''),
   )
     .replace(/(passage|book|mentor|ppt|pdf|video)/g, '')
     .replace(/(讲义\d*|讲义|内容概要|导读|含问答|更正|待剪辑|720p|信息报告|信息)/g, '');
@@ -1289,12 +1317,16 @@ export async function openContentTarget(target) {
     render();
     return;
   }
+  const studyMetadata = { segments: target.segments || [], slides: target.slides || [], duration: target.duration,
+    id: target.id, timelineId: target.timelineId, timelineOffset: target.timelineOffset,
+    coverImage: target.coverImage, startTime: target.startTime || 0, resumePlayback: target.resumePlayback ?? (target.startTime == null), autoplay: Boolean(target.autoplay) };
   const videoAssetMatch = isMediaResourceType(type)
     ? String(sourceAPIPath || '').match(/^\/api\/assets\/(\d+)\/download$/)
     : null;
   if (videoAssetMatch) {
     closeViewer();
     const pendingViewer = {
+      ...studyMetadata,
       type,
       title,
       url: '',
@@ -1343,6 +1375,7 @@ export async function openContentTarget(target) {
         resourceTitle: title,
       }),
     });
+    if (requestID !== viewerRequestID) return;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
     const pdfHeader = hasPDFSignature(new Uint8Array(await blob.slice(0, 1024).arrayBuffer()));
@@ -1371,6 +1404,7 @@ export async function openContentTarget(target) {
       const objectURL = URL.createObjectURL(blob);
       const viewerURL = buildViewerURL(objectURL, blobType, pageRange, sourceAPIPath);
       state.viewer = {
+        ...studyMetadata,
         type: blobType,
         title,
         url: viewerURL,
@@ -1394,6 +1428,7 @@ export async function openContentTarget(target) {
   }
   if (type === 'markdown') {
     const res = await fetch(target.url, { cache: 'no-store' });
+    if (requestID !== viewerRequestID) return;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     if (requestID !== viewerRequestID) return;
@@ -1418,6 +1453,7 @@ export async function openContentTarget(target) {
   }
   const viewerURL = buildViewerURL(sourceURL, type, pageRange, sourceURL);
   state.viewer = {
+    ...studyMetadata,
     type,
     title,
     url: viewerURL,
@@ -1577,7 +1613,7 @@ function currentTaskOptions() {
   const serverTasks = state.bootstrap?.current_tasks || [];
   const bookTasks = serverTasks.filter((task) => task.task_type === 'weekly_book');
   const videoTasks = serverTasks.filter((task) => task.task_type === 'weekly_video');
-  const verseTask = serverTasks.find((task) => task.task_type === 'weekly_verse');
+  const verseTask = serverTasks.find((task) => ['weekly_verse', 'daily_verse'].includes(task.task_type));
   const outlineTask = serverTasks.find((task) => task.task_type === 'weekly_outline');
   const devotionLink = getDailyDevotionPlan();
   const scriptureLinks = getDailyScripturePlans();
@@ -1666,7 +1702,7 @@ function currentTaskOptions() {
     const verseTitle = week.verse_ref || verseTask?.title || '本周背经';
     const verseLink = buildWeeklyVerseContentLink(verseTitle, verseTask.content || week.recite_text);
     tasks.push({
-      type: 'weekly_verse',
+      type: verseTask.task_type,
       taskID: Number(verseTask?.id || 0),
       weekID: Number(week.id || 0),
       weekStart: week.start_date || '',
@@ -1675,7 +1711,7 @@ function currentTaskOptions() {
       icon: '背经',
       part: '',
       detail: verseTitle,
-      summary: '背经与默想',
+      summary: verseTask.task_type === 'daily_verse' ? '每日完成' : '整周完成一次',
       reciteText: week.recite_text || verseTask.content || '',
       contentURL: '',
       contentLinks: verseLink ? [verseLink] : [],
@@ -2133,6 +2169,9 @@ function checkinMatchesTask(item, task) {
     if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
     return item.logical_date === state.selectedDate;
   }
+  if (task.type === 'daily_verse') {
+    return item.logical_date === state.selectedDate && (Number(item.task_id) === Number(task.taskID) || Number(item.week_id) === Number(task.weekID));
+  }
   if (task.type === 'weekly_verse' || task.type === 'weekly_outline') {
     if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
     if (task.weekID && Number(item.week_id || 0) === Number(task.weekID)) return true;
@@ -2387,6 +2426,7 @@ export function weekDraftFromWeek(week = null) {
       book_enabled: true,
       video_enabled: true,
       verse_enabled: false,
+      verse_mode: 'weekly',
       outline_enabled: false,
       readings: nextWeekReadings(previousWeek),
       videos: [emptyWeekBinding('videos')],
@@ -2412,6 +2452,7 @@ export function weekDraftFromWeek(week = null) {
     book_enabled: hasTaskContent ? enabledFlag(week.book_enabled) : true,
     video_enabled: hasTaskContent ? enabledFlag(week.video_enabled) : true,
     verse_enabled: hasTaskContent && enabledFlag(week.verse_enabled),
+    verse_mode: week.verse_mode === 'daily' ? 'daily' : 'weekly',
     outline_enabled: hasTaskContent && enabledFlag(week.outline_enabled),
     readings: hasTaskContent && (week.readings || []).length
       ? (week.readings || []).map((item) => normalizeReadingDraftItem({ ...item }))
@@ -2567,6 +2608,7 @@ export async function saveWeekDraft() {
     book_enabled: enabledFlag(draft.book_enabled),
     video_enabled: enabledFlag(draft.video_enabled),
     verse_enabled: enabledFlag(draft.verse_enabled),
+    verse_mode: draft.verse_mode === 'daily' ? 'daily' : 'weekly',
     outline_enabled: enabledFlag(draft.outline_enabled),
     readings: (draft.readings || []).map((item) => ({
       title: applyPdfPageRangeToTitle(item.title || '', item.page_start, item.page_end),
@@ -2755,6 +2797,7 @@ export async function logout(options = {}) {
     }).catch(() => {});
   }
   clearAccessToken();
+  void bindLearningAccount(0);
   sessionGeneration += 1;
   closeViewer();
   state.adminLoading = false;
@@ -2795,4 +2838,5 @@ export function disposeApp() {
   }
   state.calendar = null;
   closeViewer();
+  void bindLearningAccount(0);
 }

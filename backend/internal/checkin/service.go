@@ -31,6 +31,11 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 		if !errors.Is(err, sql.ErrNoRows) {
 			return 0, false, err
 		}
+	case "daily_verse":
+		record.Part = ""
+		if err := s.validateWeeklyTarget(ctx, record); err != nil {
+			return 0, false, err
+		}
 	case "weekly_book":
 		// Web and Bot both resolve the book title into detail; use it for the
 		// legacy title partition when a caller omits part.

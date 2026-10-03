@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding } from './legacy-app';
+import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI } from './legacy-app';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useAppStateStore } from './stores/appState';
 import { useDashboardStore } from './stores/dashboard';
@@ -22,7 +22,9 @@ describe('main data context', () => {
     switchCalls = 0;
     waiting = new Promise((resolve) => { entered = resolve; });
     vi.stubGlobal('document', { cookie: '' });
-    vi.stubGlobal('window', { location: { origin: 'http://localhost' } });
+    vi.stubGlobal('window', { location: { origin: 'http://localhost' }, dispatchEvent: vi.fn(), addEventListener: vi.fn() });
+    const values = new Map();
+    vi.stubGlobal('localStorage', { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) });
     vi.spyOn(globalThis, 'setTimeout').mockImplementation(() => 0);
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       const path = String(url);
@@ -58,6 +60,33 @@ describe('main data context', () => {
     await logout({ remote: false });
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('renews an expired session before retrying account study synchronization', async () => {
+    await login('member', 'password');
+    const previous = globalThis.fetch; let reads = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (url !== '/api/study-memory') return previous(url, options);
+      if (++reads === 1) return Response.json({ error: 'unauthorized' }, { status: 401 });
+      expect(options.headers.Authorization).toBe('Bearer refreshed');
+      return Response.json({ progress: { audio: { time: 42 } }, favorites: {} });
+    }));
+    expect(await studyAccountAPI('/study-memory')).toMatchObject({ progress: { audio: { time: 42 } } });
+    expect(reads).toBe(2);
+  });
+
+  it('does not replay an old account write after logout during session refresh', async () => {
+    await login('member', 'password');
+    let enteredRefresh, finishRefresh; const started = new Promise(resolve => { enteredRefresh = resolve; }); let writes = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/api/auth/refresh') { enteredRefresh(); return new Promise(resolve => { finishRefresh = resolve; }); }
+      writes++; return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }));
+    const pending = studyAccountAPI('/study-memory/progress', { method: 'PUT', body: '{}' });
+    const rejected = expect(pending).rejects.toThrow('unauthorized');
+    await started; await logout({ remote: false });
+    finishRefresh(Response.json({ token: 'old-token', user: { id: 1 } }));
+    await rejected; expect(writes).toBe(1);
   });
 
   it.each(['/api/today', '/api/app/bootstrap'])('keeps the newer date after an older %s response', async (endpoint) => {
@@ -183,6 +212,7 @@ describe('main data context', () => {
     vi.stubGlobal('window', {
       location: { origin: 'https://cedar.example.test', hostname: 'cedar.example.test', pathname: '/', search: '' },
       screen: { width: 390, height: 844 },
+      dispatchEvent: vi.fn(), addEventListener: vi.fn(),
     });
     vi.stubGlobal('navigator', { userAgent: 'Test Browser' });
     const request = fetch.getMockImplementation();
@@ -217,7 +247,7 @@ describe('main data context', () => {
     await setSelectedDate('2026-08-01');
     vi.stubGlobal('window', { location: {
       origin: 'https://cedar.example.test', hostname: 'cedar.example.test',
-    } });
+    }, dispatchEvent: vi.fn(), addEventListener: vi.fn() });
     vi.stubGlobal('navigator', { userAgent: 'Test Browser' });
     const request = fetch.getMockImplementation();
     const writes = [];

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { BarChart2, Book, Folder, MoreHorizontal, Settings, Users } from '@lucide/vue';
+import { BarChart2, Book, BookOpen, MoreHorizontal, Settings, Users } from '@lucide/vue';
 
 const props = defineProps({ tab: { type: String, required: true }, moreOpen: Boolean, canAdmin: Boolean, showGroups: Boolean, entrySetting: { type: Boolean, default: undefined } });
 defineEmits(['navigate', 'more']);
@@ -11,7 +11,7 @@ const items = [
   ['home', '学习', Book],
   ['dashboard', '统计', BarChart2],
   ['groups', '小组', Users],
-  ['resources', '资料', Folder],
+  ['courses', '课程', BookOpen],
   ['admin', '管理', Settings],
 ];
 const visibleItems = computed(() => items.filter(([id]) => (
@@ -24,8 +24,8 @@ const visibleItems = computed(() => items.filter(([id]) => (
     <button
       v-for="item in visibleItems"
       :key="item[0]"
-      :class="{ active: tab === item[0] }"
-      :aria-current="tab === item[0] ? 'page' : undefined"
+      :class="{ active: (tab === item[0] || (item[0] === 'courses' && tab === 'resources')) }"
+      :aria-current="(tab === item[0] || (item[0] === 'courses' && tab === 'resources')) ? 'page' : undefined"
       :aria-label="item[0] === 'admin' ? '管理工作台' : item[1]"
       type="button"
       @click="$emit('navigate', item[0])"

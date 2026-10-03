@@ -3,6 +3,23 @@ import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import AppMobileNav from './AppMobileNav.vue';
 
+describe('mobile learning navigation', () => {
+  it.each(['courses', 'resources'])('keeps the course entry active on %s', async (tab) => {
+    const html = await renderToString(createSSRApp(AppMobileNav, { tab }));
+    expect(html).toMatch(/<button[^>]*aria-current="page"[^>]*aria-label="课程"/);
+    expect(html).not.toContain('aria-label="资料"');
+    expect((html.match(/aria-current="page"/g) || []).length).toBe(1);
+  });
+
+  it('keeps other pages and admin visibility independent of the course entry', async () => {
+    const member = await renderToString(createSSRApp(AppMobileNav, { tab: 'home' }));
+    const admin = await renderToString(createSSRApp(AppMobileNav, { tab: 'admin', canAdmin: true }));
+    expect(member).toMatch(/<button[^>]*aria-current="page"[^>]*aria-label="学习"/);
+    expect(member).not.toContain('aria-label="管理工作台"');
+    expect(admin).toMatch(/<button[^>]*aria-current="page"[^>]*aria-label="管理工作台"/);
+  });
+});
+
 describe('mobile navigation ministry entry', () => {
   it('hides the ministry button when the current study group has no ministry groups', async () => {
     const html = await renderToString(createSSRApp(AppMobileNav, { tab: 'home', showGroups: false }));

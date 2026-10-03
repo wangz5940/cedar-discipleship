@@ -21,6 +21,7 @@ type WeekInput struct {
 	WeeklyCheckin  bool          `json:"weekly_checkin"`
 	VideoEnabled   bool          `json:"video_enabled"`
 	VerseEnabled   bool          `json:"verse_enabled"`
+	VerseMode      string        `json:"verse_mode"`
 	OutlineEnabled bool          `json:"outline_enabled"`
 	Readings       []TaskBinding `json:"readings"`
 	Videos         []TaskBinding `json:"videos"`
@@ -38,6 +39,7 @@ type WeekVO struct {
 	WeeklyCheckin  bool          `json:"-"`
 	VideoEnabled   bool          `json:"video_enabled"`
 	VerseEnabled   bool          `json:"verse_enabled"`
+	VerseMode      string        `json:"verse_mode"`
 	OutlineEnabled bool          `json:"outline_enabled"`
 	Readings       []TaskBinding `json:"readings,omitempty"`
 	Videos         []TaskBinding `json:"videos,omitempty"`

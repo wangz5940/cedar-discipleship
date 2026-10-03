@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   changeOwnPassword,
   login,
@@ -19,6 +19,11 @@ function jsonResponse(payload: unknown) {
 }
 
 describe('learning content permissions', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', { location: { origin: 'http://localhost' }, dispatchEvent: vi.fn(), addEventListener: vi.fn() });
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
+  });
   afterEach(async () => {
     await logout({ remote: false });
     vi.unstubAllGlobals();

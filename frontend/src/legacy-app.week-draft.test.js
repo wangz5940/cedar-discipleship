@@ -24,3 +24,10 @@ describe('weekly task drafts', () => {
     expect(draft.title).toBe('');
   });
 });
+
+it('preserves weekly defaults and explicit daily recitation when reopening the editor', () => {
+  const week = { id: 9, verse_ref: '罗马书 8:1', verse_enabled: true };
+  expect(weekDraftFromWeek().verse_mode).toBe('weekly');
+  expect(weekDraftFromWeek(week).verse_mode).toBe('weekly');
+  expect(weekDraftFromWeek({ ...week, verse_mode: 'daily' }).verse_mode).toBe('daily');
+});

@@ -112,6 +112,10 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		req.Force,
 		time.Now().In(a.location),
 	)
+	if errors.Is(err, learningdomain.ErrInvalidVerseMode) {
+		writeError(w, http.StatusBadRequest, "invalid_verse_mode")
+		return
+	}
 	if errors.Is(err, learningdomain.ErrWeekNotFound) {
 		writeError(w, http.StatusNotFound, "week_not_found")
 		return
@@ -170,6 +174,7 @@ func studyWeekAuditValue(week learningdomain.WeekInput) map[string]any {
 		"weekly_checkin":     week.WeeklyCheckin,
 		"video_enabled":      week.VideoEnabled,
 		"verse_enabled":      week.VerseEnabled,
+		"verse_mode":         week.VerseMode,
 		"outline_enabled":    week.OutlineEnabled,
 		"readings":           studyWeekBindingsAuditValue(week.Readings),
 		"videos":             studyWeekBindingsAuditValue(week.Videos),

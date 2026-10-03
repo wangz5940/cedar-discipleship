@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS study_access (
+ user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ key_hash CHAR(64) NOT NULL,
+ CONSTRAINT fk_study_access_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS media_handouts (
+ group_id BIGINT UNSIGNED NOT NULL,
+ media_asset_id BIGINT UNSIGNED NOT NULL,
+ handout_json JSON NOT NULL,
+ PRIMARY KEY (group_id, media_asset_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

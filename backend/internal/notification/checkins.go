@@ -52,10 +52,10 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 	found := false
 	separateDaily := false
 	for _, entry := range entries {
-		separateDaily = separateDaily || entry.TaskType == "daily_scripture"
+		separateDaily = separateDaily || entry.TaskType == "daily_scripture" || entry.TaskType == "daily_verse"
 	}
 	for _, entry := range entries {
-		if daily && entry.TaskType != "daily_devotion" && entry.TaskType != "daily_scripture" {
+		if daily && entry.TaskType != "daily_devotion" && entry.TaskType != "daily_scripture" && entry.TaskType != "daily_verse" {
 			continue
 		}
 		var key, label string
@@ -65,6 +65,8 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 				key, label = "daily_devotion", "灵修"
 			case "daily_scripture":
 				key, label = "daily_scripture", "读经"
+			case "daily_verse":
+				key, label = "daily_verse", "背经"
 			}
 		} else if !daily {
 			switch entry.TaskType {
@@ -124,6 +126,12 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 	title := "本周任务"
 	if daily {
 		title = "每日灵修"
+		for _, entry := range entries {
+			if entry.TaskType == "daily_verse" {
+				title = "每日任务"
+				break
+			}
+		}
 	}
 	lines := []string{title}
 	if len(members) == 0 {
@@ -155,7 +163,7 @@ func cleanText(text string) string {
 
 func eligible(taskType, logicalDate, today, weekStart, weekEnd string) bool {
 	switch taskType {
-	case "daily_devotion", "daily_scripture":
+	case "daily_devotion", "daily_scripture", "daily_verse":
 		return logicalDate == today
 	case "weekly_checkin", "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
 		return weekStart != "" && weekStart <= today && today <= weekEnd &&

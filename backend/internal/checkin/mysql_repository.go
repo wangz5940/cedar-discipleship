@@ -194,7 +194,9 @@ func (r *MySQLRepository) Create(ctx context.Context, record *Record, actorID ui
 		return 0, false, err
 	}
 	var existingID uint64
-	if record.TaskType == "weekly_book" {
+	if record.TaskType == "daily_verse" {
+		existingID, err = findExistingDailyVerse(ctx, tx, record)
+	} else if record.TaskType == "weekly_book" {
 		existingID, err = findExistingWeeklyBook(ctx, tx, record.GroupID, record.UserID, record.TaskID, record.WeekID, record.Part, record.Detail)
 	} else {
 		existingID, err = findExistingWeeklyTask(ctx, tx, record.GroupID, record.UserID, record.TaskID, record.WeekID, record.TaskType)
@@ -221,6 +223,9 @@ type recordExecer interface {
 
 func createRecord(ctx context.Context, execer recordExecer, record *Record, actorID uint64, now string) (uint64, error) {
 	part := truncate(record.Part, 64)
+	if record.TaskType == "daily_verse" {
+		part = "verse:" + strconv.FormatUint(record.WeekID, 10)
+	}
 	if record.TaskType == "weekly_video" && record.TaskID > 0 {
 		// Distinct videos may be completed on the same day. Keep the existing
 		// unique-key dimension while legacy records remain matched by task/asset.
@@ -244,7 +249,7 @@ func createRecord(ctx context.Context, execer recordExecer, record *Record, acto
 
 func isWeeklyTaskType(taskType string) bool {
 	switch taskType {
-	case "weekly_book", "weekly_video", "weekly_verse", "weekly_outline":
+	case "weekly_book", "weekly_video", "weekly_verse", "weekly_outline", "daily_verse":
 		return true
 	default:
 		return false
@@ -344,4 +349,13 @@ func truncate(s string, n int) string {
 		return string(rs)
 	}
 	return string(rs[:n])
+}
+
+func findExistingDailyVerse(ctx context.Context, queryer queryRower, record *Record) (uint64, error) {
+	var id uint64
+	err := queryer.QueryRowContext(ctx, `SELECT id FROM checkin_records
+ WHERE group_id=? AND user_id=? AND task_type='daily_verse' AND week_id=?
+ AND logical_date=? AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+		record.GroupID, record.UserID, record.WeekID, record.LogicalDate).Scan(&id)
+	return id, err
 }

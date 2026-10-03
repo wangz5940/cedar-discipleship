@@ -64,6 +64,7 @@ services:
       BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
       BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
+      AGP_OVCM_ACCESS_KEY_SHA256: "${AGP_OVCM_ACCESS_KEY_SHA256:-}"
     volumes:
       - ${AGP_RESOURCE_ROOT:-../data/resources}:/data/agp/resources
       - ${AGP_DATA_DIR:-../data}/notifications:/data/agp/notifications

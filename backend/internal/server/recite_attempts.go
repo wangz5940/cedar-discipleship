@@ -159,7 +159,7 @@ func (a *app) reciteTarget(r *http.Request, groupID, taskID uint64) (reciteTarge
 	err := a.db.QueryRowContext(r.Context(), `SELECT t.week_id,
 		COALESCE(NULLIF(w.verse_ref,''),t.title)
 		FROM study_tasks t JOIN study_weeks w ON w.id=t.week_id AND w.group_id=t.group_id
-		WHERE t.id=? AND t.group_id=? AND t.task_type='weekly_verse' AND t.enabled=1`, taskID, groupID).
+		WHERE t.id=? AND t.group_id=? AND t.task_type IN ('weekly_verse','daily_verse') AND t.enabled=1`, taskID, groupID).
 		Scan(&target.WeekID, &target.VerseRef)
 	if err != nil {
 		return target, err
@@ -295,7 +295,7 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	err = tx.QueryRowContext(r.Context(), `SELECT t.week_id,
 		COALESCE(NULLIF(w.verse_ref,''),t.title)
 		FROM study_tasks t JOIN study_weeks w ON w.id=t.week_id AND w.group_id=t.group_id
-		WHERE t.id=? AND t.group_id=? AND t.task_type='weekly_verse' AND t.enabled=1 FOR UPDATE`, req.TaskID, groupID).
+		WHERE t.id=? AND t.group_id=? AND t.task_type IN ('weekly_verse','daily_verse') AND t.enabled=1 FOR UPDATE`, req.TaskID, groupID).
 		Scan(&target.WeekID, &target.VerseRef)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "recite_task_not_found")

@@ -349,7 +349,7 @@ func TestInitialSnapshot(t *testing.T) {
 						"current_ta.asset_id=checked_ta.asset_id", "checked_ta.group_id=c.group_id",
 						"current_task.enabled=1")
 				} else {
-					fragments = append(fragments, "c.task_type IN ('daily_devotion','daily_scripture')")
+					fragments = append(fragments, "c.task_type IN ('daily_devotion','daily_scripture','daily_verse')")
 				}
 				step := queryStep{contains: fragments, args: args, columns: 9, rows: tt.rows}
 				if tt.dbError {

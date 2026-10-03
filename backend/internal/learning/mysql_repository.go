@@ -274,6 +274,7 @@ func BackupLearningDataTx(ctx context.Context, tx *sql.Tx, groupID uint64) (map[
 			WeeklyCheckin:  hasAggregateWeeklyTask(taskMaps),
 			VideoEnabled:   week.VideoEnabled,
 			VerseEnabled:   week.VerseEnabled,
+			VerseMode:      verseModeFromTasks(taskMaps),
 			OutlineEnabled: week.OutlineEnabled,
 			Readings:       readings,
 			Videos:         videos,

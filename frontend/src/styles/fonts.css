@@ -1,10 +1,3 @@
-/* The supplied Semibold face is shared by UI and reading surfaces. */
-@font-face {
-  font-family: 'PingFang SC';
-  src: local('PingFangSC-Semibold'),
-    local('PingFang SC Semibold'),
-    url('../../PingFangSC-Semibold.woff2') format('woff2');
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-}
+/* Self-hosted unicode-range subsets from the Chinese Webfont Project. */
+@import '@chinese-fonts/syst/dist/SourceHanSerifCN/result.css';
+@import '@chinese-fonts/lywkpmydb/dist/LXGWWenKaiScreen/result.css';

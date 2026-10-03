@@ -11,7 +11,9 @@ const props = defineProps({
   data: { type: Object, default: null },
   title: { type: String, default: 'PDF 资料' },
   singlePage: { type: Number, default: 0 },
+  scrollBehavior: { type: String, default: 'smooth' },
 });
+const emit = defineEmits(['loaded', 'page-change']);
 
 const shell = ref(null);
 const stage = ref(null);
@@ -20,6 +22,7 @@ const loading = ref(true);
 const error = ref('');
 const pageCount = ref(0);
 const currentPage = ref(1);
+watch(currentPage, page => emit('page-change', page));
 const zoom = ref(1);
 
 let loadingTask = null;
@@ -114,6 +117,7 @@ async function loadPDF() {
     await nextTick();
     loading.value = false;
     await renderDocument();
+    if (sequence === loadSequence) emit('loaded', pageCount.value);
   } catch {
     if (sequence === loadSequence) error.value = 'PDF 加载失败，请重试。';
   } finally {
@@ -125,8 +129,9 @@ function scrollToPage(page) {
   const nextPage = Math.min(pageCount.value, Math.max(1, Number(page) || 1));
   currentPage.value = props.singlePage || nextPage;
   const index = props.singlePage ? 0 : nextPage - 1;
-  pageCanvases.value[index]?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  pageCanvases.value[index]?.scrollIntoView({ block: 'start', behavior: props.scrollBehavior });
 }
+defineExpose({ goToPage: scrollToPage });
 
 function onPageInputChange(event) {
   scrollToPage(event.target.value);

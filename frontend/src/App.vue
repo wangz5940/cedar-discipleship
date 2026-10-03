@@ -10,9 +10,11 @@ import { useAppShellStore } from './stores/appShell';
 import { useAppStateStore } from './stores/appState';
 import { useContentViewerStore } from './stores/contentViewer';
 import { lazyPage } from './ui/lazyPage';
-import { disposeApp, initializeApp } from './legacy-app';
+import { disposeApp, initializeApp, initializeStudyAccount, setTab } from './legacy-app';
 import { parseReaderPageRequest } from './runtime/content';
 
+const StudyPreview = lazyPage(() => import('./components/StudyPreview.vue'));
+const studyPreview = import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'ovcm';
 const shell = useAppShellStore();
 const appState = useAppStateStore();
 const contentViewer = useContentViewerStore();
@@ -41,11 +43,13 @@ async function boot() {
   retrying.value = true;
   shell.setMounting();
   try {
-    if (readerRequest) {
+    if (readerRequest || studyPreview) {
+      if (studyPreview) await initializeStudyAccount();
       shell.setReady();
       return;
     }
     await initializeApp();
+    if (window.location.hash.startsWith('#/course/')) setTab('courses');
     shell.setReady();
   } catch (error) {
     shell.setError(error);
@@ -68,7 +72,8 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="antd-app-shell" :data-status="shell.status">
-    <BookReaderPage v-if="readerRequest" :request="readerRequest" />
+    <StudyPreview v-if="studyPreview" />
+    <BookReaderPage v-else-if="readerRequest" :request="readerRequest" />
     <AppStatus
       v-else-if="shell.error"
       status="error"

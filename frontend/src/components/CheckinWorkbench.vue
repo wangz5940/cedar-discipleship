@@ -109,7 +109,8 @@ function taskTypeLabel(task) {
     case 'daily_scripture': return '每日读经';
     case 'weekly_book': return '本周书籍';
     case 'weekly_video': return '本周任务';
-    case 'weekly_verse': return '背经任务';
+    case 'daily_verse': return '每日背经';
+    case 'weekly_verse': return '每周背经';
     case 'weekly_outline': return '背诵大纲';
     default: return '学习任务';
   }
@@ -170,8 +171,9 @@ async function exportStatsChart() {
         <div>
           <div class="eyebrow summary__eyebrow">学习进度</div>
           <h2>{{ progressTitle }}</h2>
-        </div>
+          </div>
         <div class="summary__status">
+          <div class="learning-fraction"><strong>{{ completed }}</strong><span>/ {{ total }}</span><small>已完成</small></div>
           <div class="progress">
             <span :style="{ width: `${progressPercent}%` }"></span>
           </div>
@@ -238,7 +240,7 @@ async function exportStatsChart() {
               </div>
 
               <footer class="actions">
-                <button v-if="task.type === 'weekly_verse'" class="secondary" type="button" title="确认或粘贴原文后生成默写卷" @click="quizTask = task">默写</button>
+                <button v-if="['weekly_verse', 'daily_verse'].includes(task.type)" class="secondary" type="button" title="确认或粘贴原文后生成默写卷" @click="quizTask = task">默写</button>
                 <button
                   v-if="visibleTaskContentLinks(task).length === 1"
                   class="secondary task-read-button"
@@ -346,15 +348,15 @@ async function exportStatsChart() {
 .sectiontitle { margin-bottom: 12px; }
 .tasks { display: grid; gap: 12px; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .task { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: none; }
-.task.is-completed { border-color: #70a68b; border-inline-start: 4px solid #216647; background: #edf7f0; }
-.task.is-pending { border-color: #d8b36a; border-inline-start: 4px solid #b4770c; background: #fffdf7; }
+.task.is-completed { border-color: var(--cd-status-border); border-inline-start: 4px solid var(--cd-status-strong); background: var(--cd-status-subtle); }
+.task.is-pending { border-color: var(--cd-status-border); border-inline-start: 4px solid var(--cd-status-accent); background: var(--cd-status-subtle); }
 .task__header { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .task__heading { min-width: 0; }
 .task__body { min-width: 0; }
 .tasktype { min-width: 0; color: var(--cd-muted); font-size: 12px; }
 .task-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid transparent; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.task-status.completed { border-color: #216647; background: #216647; color: #fff; }
-.task-status.pending { border-color: #bd891f; background: #fff1c9; color: #754500; }
+.task-status.completed { border-color: var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; }
+.task-status.pending { border-color: var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); }
 .task-name { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
 .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--cd-border); }
 .actions button:only-child { grid-column: 1 / -1; }

@@ -1,7 +1,7 @@
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { ExternalLink, RotateCcw, X } from '@lucide/vue';
+import { Download, ExternalLink, X } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
 import {
   closeViewer,
@@ -11,8 +11,11 @@ import {
   sameViewerItem,
   toast,
 } from '../legacy-app';
-import { videoMediaErrorMessage } from '../runtime/content';
+import MediaStudyPlayer from './MediaStudyPlayer.vue';
+import { playbackLesson } from '../runtime/mediaStudy';
+import { useDownloadManagerStore } from '../stores/downloadManager';
 import AppOverlay from './ui/AppOverlay.vue';
+import { vDialogFocus } from '../ui/dialogFocus';
 
 const PdfViewer = defineAsyncComponent(() => import('./PdfViewer.vue'));
 const viewerStore = useContentViewerStore();
@@ -26,18 +29,6 @@ const readerSettingsOpen = ref(false);
 const readerMain = ref(null);
 const readerProgress = ref(0);
 const relatedMenu = ref(null);
-const videoElement = ref(null);
-const videoSource = ref('');
-const videoLoadState = ref('idle');
-const videoLoadProgress = ref(0);
-const videoLoadError = ref('');
-const videoRetryKey = ref(0);
-const videoFallbackAttempted = ref(false);
-const videoSilentFallbackAttempted = ref(false);
-const videoMuted = ref(false);
-const videoAutoPlayAttempted = ref(false);
-let videoLoadTimer = 0;
-
 watch(
   [readerFontSize, readerLineHeight],
   ([fontSize, lineHeight]) => {
@@ -71,39 +62,22 @@ const readerStyle = computed(() => ({
   '--reader-font-size': `${readerFontSize.value}px`,
   '--reader-line-height': String(readerLineHeight.value),
 }));
-const videoLoadingLabel = computed(() => {
-  if (videoLoadState.value === 'error') return videoLoadError.value || '视频加载失败';
-  if (videoLoadState.value === 'ready') return '视频已可播放';
-  if (videoLoadProgress.value > 0) return `正在加载视频 ${videoLoadProgress.value}%`;
-  return '正在准备视频';
+const mediaLessons = computed(() => {
+  const items = relatedSections.value.flatMap(section => section.items || []).filter(item => ['audio', 'video'].includes(item.type));
+  if (viewer.value && !items.some(item => sameViewerItem(item, viewer.value))) items.unshift(viewer.value);
+  return items;
 });
-
-watch(
-  () => [viewer.value?.type, viewer.value?.url, viewer.value?.html],
-  ([type, url]) => {
-    resetVideoLoading();
-    readerSettingsOpen.value = false;
-    readerProgress.value = 0;
-    nextTick(() => {
-      if (readerMain.value) readerMain.value.scrollTop = 0;
-      if (relatedMenu.value) relatedMenu.value.open = false;
-      updateReaderProgress();
-    });
-    if (type !== 'video' || !url) return;
-    videoLoadState.value = 'loading';
-    nextTick(() => {
-      const scheduleLoad = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 16));
-      videoLoadTimer = scheduleLoad(() => {
-        videoSource.value = url;
-      });
-    });
-  },
-  { immediate: true },
-);
-
-onBeforeUnmount(() => {
-  resetVideoLoading();
-});
+const companionItems = computed(() => relatedSections.value.flatMap(section => section.items || []).filter(item => !['audio', 'video'].includes(item.type)));
+const currentMediaLesson = computed(() => playbackLesson(viewer.value, mediaLessons.value));
+watch(() => [viewer.value?.type, viewer.value?.url, viewer.value?.html], () => {
+  readerSettingsOpen.value = false;
+  readerProgress.value = 0;
+  nextTick(() => {
+    if (readerMain.value) readerMain.value.scrollTop = 0;
+    if (relatedMenu.value) relatedMenu.value.open = false;
+    updateReaderProgress();
+  });
+}, { immediate: true });
 
 function clampNumber(value, minimum, maximum, fallback) {
   const number = Number(value);
@@ -123,114 +97,6 @@ function loadReaderPreferences() {
   }
 }
 
-function resetVideoLoading() {
-  if (videoLoadTimer) {
-    const cancelLoad = window.cancelAnimationFrame || window.clearTimeout;
-    cancelLoad(videoLoadTimer);
-    videoLoadTimer = 0;
-  }
-  videoSource.value = '';
-  videoLoadState.value = 'idle';
-  videoLoadProgress.value = 0;
-  videoLoadError.value = '';
-  videoFallbackAttempted.value = false;
-  videoSilentFallbackAttempted.value = false;
-  videoMuted.value = false;
-  videoAutoPlayAttempted.value = false;
-}
-
-function handleVideoProgress(event) {
-  const media = event.target;
-  if (!media?.duration || !Number.isFinite(media.duration) || media.buffered.length === 0) return;
-  const bufferedEnd = media.buffered.end(media.buffered.length - 1);
-  videoLoadProgress.value = Math.min(99, Math.max(videoLoadProgress.value, Math.round((bufferedEnd / media.duration) * 100)));
-}
-
-function handleVideoReady() {
-  videoLoadState.value = 'ready';
-  videoLoadProgress.value = 100;
-  tryAutoPlayVideo();
-}
-
-async function tryAutoPlayVideo() {
-  const media = videoElement.value;
-  if (!media || videoAutoPlayAttempted.value || !videoSource.value) return;
-  videoAutoPlayAttempted.value = true;
-  try {
-    await media.play?.();
-  } catch {
-    if (videoMuted.value) return;
-    videoMuted.value = true;
-    await nextTick();
-    media.muted = true;
-    try {
-      await media.play?.();
-    } catch {
-      // Browser policy may still require an explicit user click.
-    }
-  }
-}
-
-function handleVideoError(event) {
-  const code = Number(event?.target?.error?.code || 0);
-  if (code === 3 && !videoSilentFallbackAttempted.value && videoSource.value) {
-    videoSilentFallbackAttempted.value = true;
-    videoMuted.value = true;
-    videoLoadState.value = 'loading';
-    videoLoadProgress.value = 0;
-    videoLoadError.value = '';
-    const retryURL = videoSource.value;
-    videoRetryKey.value += 1;
-    videoAutoPlayAttempted.value = false;
-    videoSource.value = '';
-    nextTick(() => {
-      videoSource.value = retryURL;
-      nextTick(() => {
-        const media = videoElement.value;
-        if (!media) return;
-        media.muted = true;
-        media.load();
-        media.play?.().catch(() => {});
-      });
-    });
-    return;
-  }
-  const fallbackURL = viewer.value?.fallbackURL;
-  if (
-    !videoFallbackAttempted.value
-    && code === 4
-    && fallbackURL
-    && fallbackURL !== videoSource.value
-  ) {
-    videoFallbackAttempted.value = true;
-    videoLoadState.value = 'loading';
-    videoLoadProgress.value = 0;
-    videoLoadError.value = '';
-    videoRetryKey.value += 1;
-    videoAutoPlayAttempted.value = false;
-    videoSource.value = '';
-    nextTick(() => {
-      videoSource.value = fallbackURL;
-      videoElement.value?.load();
-    });
-    return;
-  }
-  videoLoadState.value = 'error';
-  videoLoadError.value = videoMediaErrorMessage(code);
-}
-
-function retryVideoLoad() {
-  const url = viewer.value?.url;
-  if (!url) return;
-  videoRetryKey.value += 1;
-  resetVideoLoading();
-  videoLoadState.value = 'loading';
-  nextTick(() => {
-    videoSource.value = url;
-    videoElement.value?.load();
-  });
-}
-
 function updateReaderProgress() {
   const element = readerMain.value;
   if (!element || !isMarkdownViewer.value) return;
@@ -240,8 +106,11 @@ function updateReaderProgress() {
     : Math.min(100, Math.max(0, Math.round((element.scrollTop / scrollable) * 100)));
 }
 
-function openItem(item) {
+function openItem(item, time = 0, autoplay = false) {
   return openContentTarget({
+    ...item,
+    startTime: time,
+    autoplay,
     title: item.title,
     url: item.url,
     type: item.type,
@@ -266,7 +135,7 @@ function openCurrentInNewWindow() {
   const popup = window.open('about:blank', '_blank');
   if (popup) popup.opener = null;
   if (viewer.value.type === 'markdown' && viewer.value.html) {
-    const documentHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeStandaloneText(viewer.value.title)}</title><style>body{max-width:760px;margin:0 auto;padding:clamp(24px,6vw,64px) 20px 72px;color:#17231d;background:#fff;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:20px;line-height:1.9;text-align:justify}h1,h2,h3,h4{line-height:1.45;text-align:left}p{margin:0 0 1.15em}blockquote{margin:1.2em 0;padding:8px 16px;border-left:4px solid #2f6b50;background:#eef5f0}a{color:#2f6b50}@media(max-width:600px){body{font-size:19px;padding:28px 18px 64px}}</style></head><body><h1>${escapeStandaloneText(viewer.value.title)}</h1>${viewer.value.html}</body></html>`;
+    const documentHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeStandaloneText(viewer.value.title)}</title><style>body{max-width:760px;margin:0 auto;padding:clamp(24px,6vw,64px) 20px 72px;color:#192029;background:#fff;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:20px;line-height:1.9;text-align:justify}h1,h2,h3,h4{line-height:1.45;text-align:left}p{margin:0 0 1.15em}blockquote{margin:1.2em 0;padding:8px 16px;border-left:4px solid #23416a;background:#e5e8ed}a{color:#23416a}@media(max-width:600px){body{font-size:19px;padding:28px 18px 64px}}</style></head><body><h1>${escapeStandaloneText(viewer.value.title)}</h1>${viewer.value.html}</body></html>`;
     const objectURL = URL.createObjectURL(new Blob([documentHTML], { type: 'text/html;charset=utf-8' }));
     if (popup) popup.location.replace(objectURL);
     else window.open(objectURL, '_blank', 'noopener,noreferrer');
@@ -288,6 +157,15 @@ function escapeStandaloneText(value) {
     .replaceAll("'", '&#39;');
 }
 
+function downloadCurrent() {
+  const current = viewer.value;
+  if (!current?.downloadURL) return;
+  try {
+    useDownloadManagerStore().enqueue([{ title: current.title, original_name: current.originalName || '', url: current.downloadURL, type: current.type, source: current.downloadSource || 'learning' }]);
+    toast('已加入下载中心');
+  } catch (error) { toast(error.message); }
+}
+
 function openAdjacentItem(item) {
   if (!item) return;
   openItem(item);
@@ -296,7 +174,12 @@ function openAdjacentItem(item) {
 </script>
 
 <template>
+  <div v-if="viewer && isMediaViewer" v-dialog-focus="closeViewer" class="study-viewer-overlay" aria-label="课程播放器">
+    <MediaStudyPlayer :lesson="currentMediaLesson" :lessons="mediaLessons" :companions="companionItems" :title="activeSection?.label || '课程学习'" :start-time="viewer.startTime || 0" :resume-playback="viewer.resumePlayback !== false" :autoplay="viewer.autoplay || false" @select="openItem($event.lesson, $event.time, $event.autoplay)" @close="closeViewer" />
+    <div class="study-resource-links"><button v-if="viewer.downloadURL" type="button" @click="downloadCurrent"><Download :size="15" />下载当前课时</button><button v-for="item in companionItems" :key="item.url" type="button" @click="openItemInNewWindow(item)">{{ item.title }}（新窗口）</button></div>
+  </div>
   <AppOverlay
+    v-if="viewer && !isMediaViewer"
     :open="Boolean(viewer)"
     variant="viewer"
     title-id="content-viewer-title"
@@ -445,60 +328,6 @@ function openAdjacentItem(item) {
           ></div>
           <div v-else-if="viewer.type === 'image'" class="viewer-image-wrap">
             <img class="viewer-image" :src="viewer.url" :alt="viewer.title" />
-          </div>
-          <div v-else-if="viewer.type === 'video'" class="viewer-video-shell">
-            <div
-              v-if="videoLoadState !== 'ready'"
-              class="viewer-video-loading"
-              :class="{ 'viewer-video-loading-error': videoLoadState === 'error' }"
-            >
-              <div class="viewer-video-loading-copy">
-                <strong>{{ videoLoadingLabel }}</strong>
-                <span v-if="videoLoadState !== 'error'">播放器已就绪，视频正在后台加载。</span>
-                <span v-else>可以重新加载，或先使用下载查看。</span>
-              </div>
-              <div
-                v-if="videoLoadState !== 'error'"
-                class="viewer-video-progress"
-                role="progressbar"
-                :aria-valuenow="videoLoadProgress"
-                aria-valuemin="0"
-                aria-valuemax="100"
-              >
-                <span :style="{ width: `${Math.max(8, videoLoadProgress)}%` }"></span>
-              </div>
-              <button
-                v-else
-                class="secondary icon-text-button"
-                type="button"
-                @click="retryVideoLoad"
-              >
-                <RotateCcw :size="16" />重试
-              </button>
-            </div>
-            <video
-              v-if="videoSource"
-              :key="videoRetryKey"
-              ref="videoElement"
-              class="viewer-video"
-              :src="videoSource"
-              controls
-              autoplay
-              :muted="videoMuted"
-              playsinline
-              preload="metadata"
-              @progress="handleVideoProgress"
-              @loadedmetadata="handleVideoReady"
-              @loadeddata="handleVideoReady"
-              @canplay="handleVideoReady"
-              @error="handleVideoError"
-            ></video>
-            <p v-if="videoMuted" class="muted viewer-note">
-              当前浏览器音频输出异常，已切换为静音播放；需要声音时可使用下载查看。
-            </p>
-          </div>
-          <div v-else-if="viewer.type === 'audio'" class="viewer-video-shell viewer-audio-shell">
-            <audio class="viewer-audio" :src="viewer.url" controls></audio>
           </div>
           <PdfViewer
             v-else-if="viewer.type === 'pdf'"

@@ -967,6 +967,7 @@ async function runLocalBackupImport() {
                     </Transition>
                     <Transition name="admin-task-section">
                       <div v-if="enabledFlag(weekDraft.verse_enabled)" class="admin-task-section-fields">
+                        <label class="admin-field"><span class="admin-field-label">背经完成频率</span><select :value="weekDraft.verse_mode || 'weekly'" @change="updateWeekDraftField('verse_mode', $event.target.value)"><option value="weekly">整周完成一次</option><option value="daily">每日完成</option></select></label>
                         <label class="admin-field"><span class="admin-field-label">默写经文</span><input :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref', $event.target.value)" /></label>
                         <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text', $event.target.value)"></textarea></label>
                       </div>

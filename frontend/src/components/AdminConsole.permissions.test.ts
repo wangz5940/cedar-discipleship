@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('AdminConsole password permissions', () => {
   it('shows the group password control through the shared admin capability', () => {
-    const component = readFileSync(new URL('./AdminConsole.vue', import.meta.url), 'utf8');
+    const component = readFileSync(new URL('./AdminConsole.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
     expect(component).toContain(
       '<div v-if="currentGroupID && canManageRoles" class="card">\n'

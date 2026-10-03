@@ -20,7 +20,7 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 func (r *MySQLRepository) DailyEvents(ctx context.Context, groupID uint64) ([]DailySummary, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT logical_date,COUNT(*),COUNT(DISTINCT user_id),
 		SUM(task_type='daily_devotion'),SUM(task_type='daily_scripture'),SUM(task_type='weekly_checkin'),
-		SUM(task_type='weekly_book'),SUM(task_type='weekly_video'),SUM(task_type='weekly_verse'),
+		SUM(task_type='weekly_book'),SUM(task_type='weekly_video'),SUM(task_type IN ('weekly_verse','daily_verse')),
 		SUM(task_type='weekly_outline')
 		FROM checkin_records WHERE group_id=? AND deleted_at IS NULL
 		GROUP BY logical_date ORDER BY logical_date DESC`, groupID)
@@ -90,7 +90,7 @@ func (r *MySQLRepository) MonthlyNonVideoTaskCounts(ctx context.Context, groupID
 	rows, err := r.db.QueryContext(ctx, `SELECT user_id,task_type,COUNT(*)
 		FROM checkin_records
 		WHERE group_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL AND status='done'
-		  AND task_type IN ('daily_devotion','daily_scripture','weekly_checkin','weekly_book','weekly_verse','weekly_outline')
+		  AND task_type IN ('daily_devotion','daily_scripture','weekly_checkin','weekly_book','weekly_verse','daily_verse','weekly_outline')
 		GROUP BY user_id,task_type`, groupID, from, to)
 	if err != nil {
 		return nil, err

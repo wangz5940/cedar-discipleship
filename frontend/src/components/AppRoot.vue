@@ -47,10 +47,13 @@ import {
   setDefaultGroupAction,
   setSelectedDate,
   setTab,
+  studyAccountAPI,
   switchGroup,
   toast as showToast,
 } from '../legacy-app';
+import { loadStudyAccess, studyAccessStatus, toggleStudyAccess } from '../../public/study-access.js';
 
+const CourseLibrary = lazyPage(() => import('./CourseLibrary.vue'));
 const AdminConsole = lazyPage(() => import('./AdminConsole.vue'));
 const FeedbackCenter = lazyPage(() => import('./FeedbackCenter.vue'));
 const PersonalSettings = lazyPage(() => import('./PersonalSettings.vue'));
@@ -68,6 +71,7 @@ const {
   defaultGroupID,
   showGroupPicker,
   resources,
+  resourceLibrary,
   canAdmin,
   learningConfig,
   calendar,
@@ -77,6 +81,8 @@ const loginUsername = ref('');
 const loginPassword = ref('');
 const selectedResourceKeys = ref(new Set());
 const resourceSearchQuery = ref('');
+const resourceUnlocking = ref(false);
+const openOvcmFromSearch = ref(false);
 const resourceTypeFilter = ref('');
 const resourceDateFilter = ref('');
 const resourceStatusFilter = ref('all');
@@ -85,6 +91,27 @@ const calendarMaxDate = (() => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 })();
 const resourceRefreshing = ref(false);
+
+async function submitResourceSearch() {
+  const phrase = resourceSearchQuery.value;
+  if (!phrase || resourceUnlocking.value) return;
+  resourceUnlocking.value = true;
+  try {
+    if (studyAccessStatus().account !== Number(user.value?.id || 0)) {
+      await loadStudyAccess(user.value?.id, studyAccountAPI);
+    }
+    const unlocked = await toggleStudyAccess(phrase, studyAccountAPI);
+    resourceSearchQuery.value = '';
+    showToast(unlocked ? 'OVCM 课程与收藏夹已开启' : 'OVCM 课程与收藏夹已关闭');
+    openOvcmFromSearch.value = unlocked;
+    setTab('courses');
+  } catch (error) {
+    if (error.message !== 'invalid_study_key') {
+      showToast(({ study_key_not_configured: '后端尚未配置密钥', study_account_changed: '账号已切换，请重试' })[error.message] || (error.status === 404 ? '后端尚未更新，请先启动新版本后端' : error.message));
+    }
+  } finally { resourceUnlocking.value = false; }
+}
+watch(tab, (next) => { if (next !== 'courses') openOvcmFromSearch.value = false; });
 
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const hasMultipleTenants = computed(() => new Set(groups.value.map((group) => group.tenant_id)).size > 1);
@@ -283,10 +310,11 @@ async function refreshResources() {
             <span class="eyebrow">CEDAR DISCIPLESHIP</span>
           </div>
         </div>
-        <h1>继续今天的学习</h1>
-      </div>
+        <h1>向下扎根，<br />向上生长。</h1>
+        </div>
 
         <form class="app-login-form" @submit.prevent="submitLogin">
+          <div class="login-welcome"><h2>继续今天的学习</h2></div>
           <div v-if="loginError" class="cd-login-error">
             <AlertCircle :size="16" />
             <span>{{ loginError }}</span>
@@ -397,6 +425,13 @@ async function refreshResources() {
         <div v-show="!showGroupPicker && tab === 'dashboard'" id="vue-dashboard"></div>
         <div v-show="!showGroupPicker && tab === 'groups'" id="vue-ministry-groups"></div>
 
+        <nav v-if="!showGroupPicker && (tab === 'courses' || tab === 'resources')" class="mobile-learning-sections" aria-label="课程内容分类">
+          <button type="button" :class="{ active: tab === 'courses' }" :aria-current="tab === 'courses' ? 'page' : undefined" @click="setTab('courses')">音视频课程</button>
+          <button type="button" :class="{ active: tab === 'resources' }" :aria-current="tab === 'resources' ? 'page' : undefined" @click="setTab('resources')">学习资料</button>
+        </nav>
+
+        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :open-ovcm="openOvcmFromSearch" />
+
         <!-- Cedar Public Library (tab === 'resources') -->
         <section v-if="!showGroupPicker && tab === 'resources'">
           <div class="pagehead spread">
@@ -419,10 +454,10 @@ async function refreshResources() {
           </div>
 
           <div class="toolbar app-resource-toolbar">
-            <div class="app-resource-search">
-              <span class="app-resource-search__icon" aria-hidden="true">
+            <form class="app-resource-search" @submit.prevent="submitResourceSearch">
+              <button class="app-resource-search__icon" type="submit" aria-label="提交搜索" :disabled="resourceUnlocking">
                 <Search :size="18" />
-              </span>
+              </button>
               <input
                 v-model.trim="resourceSearchQuery"
                 type="search"
@@ -430,7 +465,7 @@ async function refreshResources() {
                 aria-label="搜索资料"
                 class="app-resource-search__input"
               />
-            </div>
+            </form>
             <label class="app-resource-select app-resource-select-all">
               <input type="checkbox" :checked="allVisibleResourcesSelected" :disabled="!filteredResources.length" @change="toggleAllResources" />
               <span>全选</span>

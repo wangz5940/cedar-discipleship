@@ -97,6 +97,8 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 		want     string
 	}{
 		{"daily Shanghai midnight", "daily_devotion", date, nil, false, nil, "每日灵修\n1 张三"},
+		{"daily verse", "daily_verse", date, int64(7), false, nil, "每日任务\n1 张三 【新】背经"},
+		{"daily verse historical", "daily_verse", date.AddDate(0, 0, -1), int64(7), false, nil, ""},
 		{"daily historical", "daily_devotion", date.AddDate(0, 0, -1), nil, false, nil, ""},
 		{"weekly current", "weekly_book", start, int64(7), false, nil, "本周任务\n1 张三 【新】基督"},
 		{"weekly video", "weekly_video", start, int64(7), false, nil, "本周任务\n1 张三 【新】视频"},
@@ -134,7 +136,7 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 					"m.group_id=c.group_id", "t.group_id=c.group_id",
 					"c.deleted_at IS NULL", "ORDER BY c.checkin_time,c.id",
 				}
-				if tt.weekID != nil {
+				if strings.HasPrefix(tt.taskType, "weekly_") && tt.weekID != nil {
 					args[1], args[2] = "2026-09-07", "2026-09-13"
 					args = append(args[:3], int64(7), int64(7), int64(42))
 					fragments = append(fragments, "c.week_id=?", "current_task.week_id=?",
@@ -165,7 +167,7 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 			}
 			if tt.want != "" {
 				wantEnd := "2026-09-10 00:00 +0800"
-				if tt.weekID != nil {
+				if strings.HasPrefix(tt.taskType, "weekly_") && tt.weekID != nil {
 					wantEnd = "2026-09-14 00:00 +0800"
 				}
 				if got.ExpiresAt.Format("2006-01-02 15:04 -0700") != wantEnd {

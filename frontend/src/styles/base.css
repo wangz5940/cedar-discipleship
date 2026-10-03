@@ -90,7 +90,7 @@ button:hover {
 button:active { transform: none; }
 button.secondary, button.ghost { box-shadow: none; }
 button.secondary { background: var(--cd-primary-soft); color: var(--cd-primary); }
-button.secondary:hover { background: #dce8df; box-shadow: none; }
+button.secondary:hover { background: var(--cd-surface-hover); box-shadow: none; }
 button.ghost { background: transparent; border-color: var(--cd-border); }
 button.ghost:hover { background: var(--cd-surface-subtle); box-shadow: none; }
 
@@ -131,7 +131,7 @@ button.taskdone {
 }
 
 button.taskdone:hover {
-  background: #dce7df;
+  background: var(--cd-primary-soft);
 }
 
 button.danger {
@@ -141,7 +141,7 @@ button.danger {
 }
 
 button.danger:hover {
-  background: #fdf2f2;
+  background: var(--cd-status-soft);
 }
 
 button:disabled {
@@ -225,8 +225,8 @@ textarea::placeholder {
   font-size: 12px;
   padding: 3px 10px;
   border-radius: var(--cd-radius-pill);
-  background: var(--cd-primary-soft);
-  color: var(--cd-primary);
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
   white-space: nowrap;
   font-weight: 500;
   display: inline-flex;
@@ -235,12 +235,12 @@ textarea::placeholder {
 }
 
 .pill.danger {
-  background: #fde8e7;
+  background: var(--cd-status-soft);
   color: var(--cd-danger);
 }
 
 .pill.warning {
-  background: #fef5e7;
+  background: var(--cd-status-soft);
   color: var(--cd-warning);
 }
 
@@ -271,24 +271,24 @@ textarea::placeholder {
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: #eef1e9;
-  color: var(--cd-primary);
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
   flex-shrink: 0;
 }
 
 .tile.blue {
-  background: #ebf0f5;
-  color: #376e94;
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
 }
 
 .tile.gold {
-  background: #f5efe2;
-  color: #8d692d;
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
 }
 
 .tile.purple {
-  background: #f0edf5;
-  color: #796091;
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
 }
 
 /* 数字等宽 tabular-nums */

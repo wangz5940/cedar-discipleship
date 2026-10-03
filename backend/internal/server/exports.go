@@ -189,7 +189,7 @@ func (a *app) handleAdminExportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 	file := excelize.NewFile()
 	defer file.Close()
 	file.SetSheetName("Sheet1", "Weeks")
-	_ = file.SetSheetRow("Weeks", "A1", &[]string{"开始日期", "结束日期", "标题", "背经经文", "默写原文", "显示读物", "显示视频", "显示背经", "显示提纲"})
+	_ = file.SetSheetRow("Weeks", "A1", &[]string{"开始日期", "结束日期", "标题", "背经经文", "默写原文", "显示读物", "显示视频", "显示背经", "显示提纲", "背经频率"})
 	_, _ = file.NewSheet("Readings")
 	_ = file.SetSheetRow("Readings", "A1", &[]string{"开始日期", "结束日期", "排序", "标题", "URL", "资产ID"})
 	_, _ = file.NewSheet("Videos")
@@ -208,6 +208,7 @@ func (a *app) handleAdminExportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 			week.VideoEnabled,
 			week.VerseEnabled,
 			week.OutlineEnabled,
+			week.VerseMode,
 		})
 		weekRow++
 		for index, reading := range week.Readings {
@@ -278,7 +279,25 @@ func (a *app) handleAdminImportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 	weeksMap := map[string]*studyWeekInput{}
 	var order []string
 	if rows, err := xlsx.GetRows("Weeks"); err == nil && len(rows) > 0 {
+		verseModeColumn := -1
+		for index, title := range rows[0] {
+			if title == "背经频率" {
+				verseModeColumn = index
+			}
+		}
 		for _, row := range rows[1:] {
+			verseMode := "weekly"
+			if verseModeColumn >= 0 {
+				value := excelCell(row, verseModeColumn)
+				switch value {
+				case "", "weekly", "整周完成一次":
+				case "daily", "每日完成":
+					verseMode = "daily"
+				default:
+					writeError(w, http.StatusBadRequest, "invalid_verse_mode")
+					return
+				}
+			}
 			startDate := excelCell(row, 0)
 			endDate := excelCell(row, 1)
 			if startDate == "" || endDate == "" {
@@ -294,6 +313,7 @@ func (a *app) handleAdminImportStudyWeeksExcel(w http.ResponseWriter, r *http.Re
 				BookEnabled:    parseFlexibleBool(excelCell(row, 5), true),
 				VideoEnabled:   parseFlexibleBool(excelCell(row, 6), true),
 				VerseEnabled:   parseFlexibleBool(excelCell(row, 7), true),
+				VerseMode:      verseMode,
 				OutlineEnabled: parseFlexibleBool(excelCell(row, 8), true),
 				WeeklyCheckin:  parseFlexibleBool(excelCell(row, 9), false),
 				Readings:       []weekTaskBinding{},

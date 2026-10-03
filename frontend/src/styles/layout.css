@@ -10,7 +10,7 @@
   width: 232px;
   position: fixed;
   inset: 0 auto 0 0;
-  background: #f0f2ec;
+  background: var(--cd-surface);
   border-right: 1px solid var(--cd-border);
   padding: 24px 16px 20px;
   display: flex;
@@ -97,7 +97,7 @@
 }
 
 .nav button.active {
-  background: #dfe9df;
+  background: var(--cd-primary-soft);
   color: var(--cd-primary);
   font-weight: 600;
   box-shadow: none;
@@ -119,7 +119,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #e2e7dd;
+  background: var(--cd-primary-soft);
   display: grid;
   place-items: center;
   color: var(--cd-primary);
@@ -580,7 +580,7 @@
 
 .cd-input-box input:focus {
   border-color: var(--cd-primary);
-  outline: 3px solid #87ad96;
+  outline: 3px solid var(--cd-focus-ring);
   outline-offset: 1px;
 }
 
@@ -598,8 +598,8 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: #fdf2f2;
-  border: 1px solid #f8d7da;
+  background: var(--cd-status-subtle);
+  border: 1px solid var(--cd-status-border);
   border-radius: var(--cd-radius-base);
   color: var(--cd-danger);
   font-size: 13px;
@@ -689,7 +689,7 @@
 }
 
 .cd-resource-card:hover {
-  border-color: #b5c7ba;
+  border-color: var(--cd-border-strong);
   background: var(--cd-surface-subtle);
 }
 
@@ -745,7 +745,7 @@ th {
   font-weight: 500;
   color: var(--cd-muted);
   font-size: 12px;
-  background: #f7f8f5;
+  background: var(--cd-surface-subtle);
   padding: 16px 14px;
   border-bottom: 1px solid var(--cd-border);
 }
@@ -782,7 +782,7 @@ tr:last-child td {
 
 .bar {
   height: 12px;
-  background: #eff2ed;
+  background: var(--cd-surface-subtle);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -790,7 +790,7 @@ tr:last-child td {
 .bar i {
   display: block;
   height: 100%;
-  background: #6e9581;
+  background: var(--cd-primary);
   border-radius: 4px;
   transition: width 0.2s ease;
 }
@@ -879,11 +879,11 @@ tr:last-child td {
 .resource-dialog footer > button:not(.ghost):not(.secondary):not(.danger) { background: var(--cd-primary); border-color: var(--cd-primary); color: white; }
 .ministry-header h2 { font-size: 26px; letter-spacing: normal; }
 .ministry-directory, .ministry-detail, .ministry-card { border-radius: var(--cd-radius-card); }
-.viewer-sidebar-item.active { background: var(--cd-primary-soft); border-color: #b9ccbf; box-shadow: none; }
+.viewer-sidebar-item.active { background: var(--cd-primary-soft); border-color: var(--cd-border-strong); box-shadow: none; }
 .metricgrid > *, .tablewrap { min-width: 0; }
 .tablewrap { max-width: 100%; overscroll-behavior-x: contain; }
-.tablewrap tbody tr:hover { background: #f7f9f6; }
-.metric { border-top: 3px solid #d5e4d8; }
+.tablewrap tbody tr:hover { background: var(--cd-surface-subtle); }
+.metric { border-top: 3px solid var(--cd-border-strong); }
 .metric b { line-height: 1.2; }
 
 /* All existing overlay families share one surface and stay above navigation. */

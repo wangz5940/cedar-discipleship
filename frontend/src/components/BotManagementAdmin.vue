@@ -225,11 +225,11 @@ section { min-width: 0; }
 .bot-robot-copy { min-width: 0; flex: 1; }
 .bot-robot-copy strong, .bot-robot-copy .muted { overflow-wrap: anywhere; }
 .bot-status { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: rgba(107, 114, 128, .1); color: var(--muted); font-size: 12px; font-weight: 700; }
-.bot-status.is-healthy { background: rgba(34, 197, 94, .12); color: #15803d; }
-.bot-status.is-degraded { background: rgba(245, 158, 11, .14); color: #a16207; }
-.bot-status.is-unavailable { background: rgba(239, 68, 68, .12); color: #b91c1c; }
+.bot-status.is-healthy { background: var(--cd-status-soft); color: var(--cd-success); }
+.bot-status.is-degraded { background: var(--cd-status-subtle); color: var(--cd-warning); }
+.bot-status.is-unavailable { background: var(--cd-status-soft); color: var(--cd-danger); }
 .bot-queue-status { display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 8px 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
-.bot-queue-status .has-failures { color: #b91c1c; font-weight: 700; }
+.bot-queue-status .has-failures { color: var(--cd-danger); font-weight: 700; }
 .bot-queue-status .icon-button { margin-left: auto; }
 .bot-chat-row { min-width: 0; padding: 16px 20px; }
 .bot-chat-main { min-width: 0; }

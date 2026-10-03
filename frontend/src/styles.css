@@ -15,7 +15,7 @@
   --primary-soft: rgba(37, 99, 235, 0.1);
   --green: #22c55e;
   --green-soft: rgba(34, 197, 94, 0.12);
-  --amber: #f59e0b;
+  --amber: #91b89c;
   --red: #ef4444;
   --violet: #7c3aed;
   --radius-sm: 16px;
@@ -152,7 +152,7 @@ input:focus, select:focus, textarea:focus {
 .profile-avatar-card { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
 .profile-avatar-card input { grid-column: 1 / -1; }
 .profile-avatar { width: 112px; height: 112px; border-radius: 34px; object-fit: cover; box-shadow: var(--shadow-card); }
-.avatar-placeholder { display: grid; place-items: center; background: linear-gradient(145deg,#2563eb,#7c3aed); color: white; font-size: 40px; font-weight: 800; }
+.avatar-placeholder { display: grid; place-items: center; background: linear-gradient(145deg,var(--cd-primary),var(--cd-primary-hover)); color: white; font-size: 40px; font-weight: 800; }
 .roster-summary { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: baseline; margin: 20px 0; }
 .roster-summary strong { font-size: 30px; color: var(--primary); }
 .roster-manual-card { margin-top: 18px; }
@@ -175,7 +175,7 @@ input:focus, select:focus, textarea:focus {
   border-radius: 19px;
   background:
     radial-gradient(circle at 24% 18%, rgba(255,255,255,.55), transparent 24%),
-    linear-gradient(145deg, #111827, #3b3f55 48%, #0a84ff);
+    linear-gradient(145deg, #111827, #3b3f55 48%, #216647);
   color: #fff;
   font-weight: 860;
   font-size: 19px;
@@ -984,7 +984,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #16c784, #0a84ff);
+  background: linear-gradient(90deg, #16c784, #216647);
 }
 
 .task-progress-card small {
@@ -1178,10 +1178,10 @@ input:focus, select:focus, textarea:focus {
   display: block;
 }
 
-.legend-daily_devotion i { background: #0a84ff; }
-.legend-weekly_book i { background: #8b5cf6; }
-.legend-weekly_video i { background: #19bf7a; }
-.legend-weekly_verse i { background: #f59e0b; }
+.legend-daily_devotion i { background: #216647; }
+.legend-weekly_book i { background: #50876a; }
+.legend-weekly_video i { background: #67b99a; }
+.legend-weekly_verse i { background: #91b89c; }
 
 .bar-chart {
   min-height: 300px;
@@ -1226,19 +1226,19 @@ input:focus, select:focus, textarea:focus {
 }
 
 .bar-segment.devotion {
-  background: linear-gradient(180deg, #4ea7ff, #0a84ff);
+  background: linear-gradient(180deg, #4ea7ff, #216647);
 }
 
 .bar-segment.book {
-  background: linear-gradient(180deg, #ab86ff, #8b5cf6);
+  background: linear-gradient(180deg, #92bba3, #50876a);
 }
 
 .bar-segment.video {
-  background: linear-gradient(180deg, #43d994, #19bf7a);
+  background: linear-gradient(180deg, #43d994, #67b99a);
 }
 
 .bar-segment.verse {
-  background: linear-gradient(180deg, #f7c65c, #f59e0b);
+  background: linear-gradient(180deg, #b4d2b8, #91b89c);
 }
 
 .bar-empty {
@@ -1819,7 +1819,7 @@ input:focus, select:focus, textarea:focus {
   --text: #171717;
   --muted: #666b76;
   --faint: #9aa1ad;
-  --primary: #0a84ff;
+  --primary: #216647;
   --primary-dark: #0066d6;
   --primary-soft: rgba(10,132,255,.1);
   --green: #20c77a;
@@ -2310,8 +2310,8 @@ textarea {
 /* === antifronted extended modules === */
 /* Make check-in state legible without relying on color alone. */
 .task-option.pending {
-  border-left: 4px solid #c9852d;
-  background: #fffaf1;
+  border-left: 4px solid #67b99a;
+  background: #f3fbf6;
 }
 
 .task-option.done {
@@ -2342,9 +2342,9 @@ textarea {
 }
 
 .task-state-badge.pending {
-  border-color: #e2b46f;
-  background: #fff3dc;
-  color: #8b541b;
+  border-color: #b4dfc7;
+  background: #eaf7ef;
+  color: #287253;
 }
 
 .task-state-badge.done {
@@ -2371,9 +2371,9 @@ textarea {
 }
 
 .task-actions .task-status-action.pending:hover {
-  border-color: #cf9847;
-  background: #ffe9bf;
-  color: #70400f;
+  border-color: #85c5a4;
+  background: #ddf1e5;
+  color: #205e44;
 }
 
 .task-actions .task-status-action.done:hover {
@@ -2555,7 +2555,7 @@ button.notification-row:hover {
 }
 
 .notification-row.unread b {
-  color: #8b541b;
+  color: var(--cd-status);
 }
 
 .ministry-layout {
@@ -2900,8 +2900,8 @@ button.ministry-join-button {
 }
 
 .role-pill {
-  background: #fff3dc;
-  color: #8b541b;
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
 }
 
 .ministry-tabs {
@@ -2966,7 +2966,7 @@ button.ministry-join-button {
 }
 
 .ministry-shield {
-  color: #8b541b;
+  color: var(--cd-status);
 }
 
 .ministry-composer {
@@ -3038,9 +3038,9 @@ button.ministry-join-button {
 }
 
 .pending-pill {
-  border-color: #e2b46f;
-  background: #fff3dc;
-  color: #8b541b;
+  border-color: var(--cd-status-border);
+  background: var(--cd-status-soft);
+  color: var(--cd-status);
 }
 
 .ministry-feed-item footer {
@@ -3696,7 +3696,7 @@ button.ministry-join-button {
 }
 
 .download-center-tabs button.active {
-  border-bottom-color: #2f6b50;
+  border-bottom-color: var(--cd-primary);
   color: #234b39;
 }
 
@@ -3710,8 +3710,8 @@ button.ministry-join-button {
   margin: 0;
   padding: 9px 18px;
   border-bottom: 1px solid #e1e5e1;
-  background: #eef5f0;
-  color: #365846;
+  background: var(--cd-primary-soft);
+  color: var(--cd-primary);
   font-size: 12px;
 }
 
@@ -4320,7 +4320,7 @@ button.ministry-join-button {
 
 .resource-edge.status-broken,
 .resource-edge.status-revoked {
-  stroke: #dc2626;
+  stroke: var(--cd-danger);
   stroke-dasharray: 5 4;
 }
 

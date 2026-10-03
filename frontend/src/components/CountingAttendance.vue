@@ -322,7 +322,7 @@ function currentMonth() {
   font-size: 13px;
   cursor: pointer;
 }
-.weekday-picker label.active { border-color: #b9ccbf; background: var(--cd-primary-soft); color: var(--cd-primary); }
+.weekday-picker label.active { border-color: var(--cd-border-strong); background: var(--cd-primary-soft); color: var(--cd-primary); }
 .weekday-picker input { width: 16px; height: 16px; flex: 0 0 16px; }
 .extra-date-editor {
   display: grid;
@@ -437,7 +437,7 @@ function currentMonth() {
 @media (hover: hover) {
   .attendance-table tbody tr:hover td,
   .attendance-table tbody tr:hover td:first-child,
-  .attendance-table tbody tr:hover td:last-child { background: #f7f9f6; }
+  .attendance-table tbody tr:hover td:last-child { background: var(--cd-surface-subtle); }
 }
 
 @media (max-width: 600px) {

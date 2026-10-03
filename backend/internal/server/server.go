@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	ministrydomain "agp/backend/internal/ministry"
 	notificationdomain "agp/backend/internal/notification"
 	statisticsdomain "agp/backend/internal/statistics"
+	"agp/backend/internal/studymemory"
 	userdomain "agp/backend/internal/user"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -43,6 +45,9 @@ const (
 
 type app struct {
 	db            *sql.DB
+	studyMemory   studymemory.Repository
+	studyLearning studymemory.LearningRepository
+	ovcmKeyHash   string
 	secret        []byte
 	resourceRoot  string
 	migrationsDir string
@@ -92,6 +97,7 @@ type config struct {
 	PotatoGroups         string
 	NotificationDir      string
 	BotAPIKey            string
+	OVCMKeyHash          string
 }
 
 type ctxKey string
@@ -149,6 +155,9 @@ func Run() error {
 	checkinSvc := checkindomain.NewService(checkindomain.NewMySQLRepository(db))
 	a := &app{
 		db:            db,
+		studyMemory:   studymemory.NewMySQLRepository(db),
+		studyLearning: studymemory.NewMySQLRepository(db),
+		ovcmKeyHash:   cfg.OVCMKeyHash,
 		secret:        []byte(cfg.JWTSecret),
 		resourceRoot:  cfg.ResourceRoot,
 		migrationsDir: cfg.MigrationsDir,
@@ -247,10 +256,17 @@ func loadConfig() config {
 		PotatoGroups:         env("AGP_POTATO_GROUPS", ""),
 		NotificationDir:      env("AGP_NOTIFICATION_DIR", "./data/notifications"),
 		BotAPIKey:            env("AGP_BOT_API_KEY", ""),
+		OVCMKeyHash:          strings.ToLower(strings.TrimSpace(env("AGP_OVCM_ACCESS_KEY_SHA256", ""))),
 	}
 }
 
 func validateConfig(cfg config) error {
+	if cfg.OVCMKeyHash != "" {
+		hash, err := hex.DecodeString(cfg.OVCMKeyHash)
+		if err != nil || len(hash) != 32 {
+			return errors.New("AGP_OVCM_ACCESS_KEY_SHA256 must be a SHA-256 hex digest")
+		}
+	}
 	if len(cfg.JWTSecret) < 32 {
 		return errors.New("AGP_JWT_SECRET must be at least 32 characters")
 	}
@@ -323,6 +339,13 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/switch-group", a.auth(a.handleSwitchGroup))
 	mux.HandleFunc("POST /api/auth/default-group", a.auth(a.handleSetDefaultGroup))
 	mux.HandleFunc("PUT /api/personal-settings", a.auth(a.handleUpdatePersonalSettings))
+	mux.HandleFunc("GET /api/study-memory", a.auth(a.handleStudyMemory))
+	mux.HandleFunc("GET /api/study-access", a.auth(a.handleStudyAccess))
+	mux.HandleFunc("POST /api/study-access", a.auth(a.handleToggleStudyAccess))
+	mux.HandleFunc("GET /api/assets/{id}/handout", a.auth(a.handleMediaHandout))
+	mux.HandleFunc("PUT /api/assets/{id}/handout", a.auth(a.requireRole(roleGroupAdmin, a.handleMediaHandout)))
+	mux.HandleFunc("PUT /api/study-memory/progress", a.auth(a.handleStudyProgress))
+	mux.HandleFunc("PUT /api/study-memory/favorites", a.auth(a.handleStudyFavorite))
 	mux.HandleFunc("POST /api/auth/change-password", a.auth(a.handleChangePassword))
 	mux.HandleFunc("POST /api/feedback", a.auth(a.handleCreateFeedback))
 	mux.HandleFunc("POST /api/feedback/automatic", a.auth(a.handleAutomaticFeedback))

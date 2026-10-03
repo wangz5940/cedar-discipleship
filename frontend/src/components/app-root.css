@@ -178,10 +178,17 @@
 
 .app-resource-search__icon {
   position: absolute;
-  left: 12px;
+  left: 8px;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--cd-muted);
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .app-resource-search input.app-resource-search__input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
