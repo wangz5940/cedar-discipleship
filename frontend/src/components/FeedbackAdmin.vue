@@ -24,6 +24,7 @@ const statusFilter = ref('');
 const items = ref([]);
 const selected = ref(null);
 const openingID = ref(0);
+let detailRequest = 0;
 const loading = ref(false);
 const detailLoading = ref(false);
 const savingStatus = ref(false);
@@ -128,10 +129,7 @@ async function loadList(preferredID = 0) {
     items.value = data.items || [];
     const targetID = preferredID || selected.value?.id || items.value[0]?.id;
     if (targetID && items.value.some((item) => item.id === targetID)) await openItem(targetID);
-    else {
-      selected.value = null;
-      openingID.value = 0;
-    }
+    else closeItem();
   } catch (error) {
     toast(error.message);
   } finally {
@@ -190,13 +188,28 @@ function setErrorTypeMuted(errorType, muted) {
   }, muted ? `已静默 ${normalized}` : `已取消静默 ${normalized}`);
 }
 
-async function loadAttachmentPreviews(detail) {
+function closeItem() {
+  detailRequest += 1;
+  openingID.value = 0;
+  selected.value = null;
+  detailLoading.value = false;
   clearDetailURLs();
+}
+
+function toggleItem(id) {
+  if (openingID.value === id) closeItem();
+  else void openItem(id);
+}
+
+async function loadAttachmentPreviews(detail, request) {
   const previews = [];
   for (const attachment of detail.attachments || []) {
     const response = await fetchWithAuth(`/api/super-admin/feedback/${detail.id}/attachments/${attachment.id}`);
+    if (request !== detailRequest) return [];
     if (!response.ok) continue;
-    const url = URL.createObjectURL(await response.blob());
+    const blob = await response.blob();
+    if (request !== detailRequest) return [];
+    const url = URL.createObjectURL(blob);
     detailURLs.add(url);
     previews.push({ ...attachment, url });
   }
@@ -204,33 +217,40 @@ async function loadAttachmentPreviews(detail) {
 }
 
 async function openItem(id) {
+  closeItem();
+  const request = detailRequest;
   openingID.value = id;
   detailLoading.value = true;
   try {
     const data = await api(`/super-admin/feedback/${id}`);
+    if (request !== detailRequest) return;
+    const attachments = await loadAttachmentPreviews(data.feedback, request);
+    if (request !== detailRequest) return;
     selected.value = {
       ...data.feedback,
-      attachments: await loadAttachmentPreviews(data.feedback),
+      attachments,
     };
   } catch (error) {
-    openingID.value = selected.value?.id || 0;
+    if (request !== detailRequest) return;
+    closeItem();
     toast(error.message);
   } finally {
-    detailLoading.value = false;
+    if (request === detailRequest) detailLoading.value = false;
   }
 }
 
 async function updateStatus(status) {
   if (!selected.value || savingStatus.value || status === selected.value.status) return;
+  const id = selected.value.id;
   savingStatus.value = true;
   try {
-    await api(`/super-admin/feedback/${selected.value.id}/status`, {
+    await api(`/super-admin/feedback/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
       logID: createLogID(),
     });
     toast('反馈状态已更新');
-    await loadList(selected.value.id);
+    await loadList(id);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -240,16 +260,17 @@ async function updateStatus(status) {
 
 async function reply() {
   if (!selected.value || replying.value || !replyMessage.value.trim()) return;
+  const id = selected.value.id;
   replying.value = true;
   try {
-    await api(`/super-admin/feedback/${selected.value.id}/replies`, {
+    await api(`/super-admin/feedback/${id}/replies`, {
       method: 'POST',
       body: JSON.stringify({ message: replyMessage.value.trim() }),
       logID: createLogID(),
     });
     replyMessage.value = '';
     toast('回复已发送');
-    await loadList(selected.value.id);
+    await loadList(id);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -262,7 +283,7 @@ onMounted(() => {
   loadList();
   loadAutomaticSettings();
 });
-onBeforeUnmount(clearDetailURLs);
+onBeforeUnmount(closeItem);
 </script>
 
 <template>
@@ -321,8 +342,9 @@ onBeforeUnmount(clearDetailURLs);
           :key="item.id"
           type="button"
           :class="{ active: openingID === item.id }"
+          :aria-expanded="openingID === item.id"
           :style="{ gridRow: index * 2 + 1 }"
-          @click="openItem(item.id)"
+          @click="toggleItem(item.id)"
         >
           <span class="feedback-admin__list-main">
             <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>

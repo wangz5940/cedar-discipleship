@@ -21,6 +21,8 @@ const submitting = ref(false);
 const loading = ref(false);
 const items = ref([]);
 const selected = ref(null);
+const openingID = ref(0);
+let detailRequest = 0;
 const detailLoading = ref(false);
 const uploadInput = ref(null);
 const uploadURLs = new Set();
@@ -68,6 +70,7 @@ function formatDate(value) {
 }
 
 function releaseObjectURLs() {
+  detailRequest += 1;
   for (const url of uploadURLs) URL.revokeObjectURL(url);
   for (const url of detailURLs) URL.revokeObjectURL(url);
   uploadURLs.clear();
@@ -111,7 +114,7 @@ async function loadItems(selectID = 0) {
     items.value = data.items || [];
     const targetID = selectID || selected.value?.id || items.value[0]?.id;
     if (targetID) await openItem(targetID);
-    else selected.value = null;
+    else closeItem();
   } catch (error) {
     toast(error.message);
   } finally {
@@ -119,14 +122,29 @@ async function loadItems(selectID = 0) {
   }
 }
 
-async function attachmentPreviews(detail) {
+function closeItem() {
+  detailRequest += 1;
+  openingID.value = 0;
+  selected.value = null;
+  detailLoading.value = false;
   for (const url of detailURLs) URL.revokeObjectURL(url);
   detailURLs.clear();
+}
+
+function toggleItem(id) {
+  if (openingID.value === id) closeItem();
+  else void openItem(id);
+}
+
+async function attachmentPreviews(detail, request) {
   const previews = [];
   for (const attachment of detail.attachments || []) {
     const response = await fetchWithAuth(`/api/feedback/${detail.id}/attachments/${attachment.id}`);
+    if (request !== detailRequest) return [];
     if (!response.ok) continue;
-    const url = URL.createObjectURL(await response.blob());
+    const blob = await response.blob();
+    if (request !== detailRequest) return [];
+    const url = URL.createObjectURL(blob);
     detailURLs.add(url);
     previews.push({ ...attachment, url });
   }
@@ -134,17 +152,25 @@ async function attachmentPreviews(detail) {
 }
 
 async function openItem(id) {
+  closeItem();
+  const request = detailRequest;
+  openingID.value = id;
   detailLoading.value = true;
   try {
     const data = await api(`/feedback/${id}`);
+    if (request !== detailRequest) return;
+    const attachments = await attachmentPreviews(data.feedback, request);
+    if (request !== detailRequest) return;
     selected.value = {
       ...data.feedback,
-      attachments: await attachmentPreviews(data.feedback),
+      attachments,
     };
   } catch (error) {
+    if (request !== detailRequest) return;
+    closeItem();
     toast(error.message);
   } finally {
-    detailLoading.value = false;
+    if (request === detailRequest) detailLoading.value = false;
   }
 }
 
@@ -262,15 +288,16 @@ onBeforeUnmount(releaseObjectURLs);
             v-for="item in items"
             :key="item.id"
             type="button"
-            :class="{ active: selected?.id === item.id }"
-            @click="openItem(item.id)"
+            :class="{ active: openingID === item.id }"
+            :aria-expanded="openingID === item.id"
+            @click="toggleItem(item.id)"
           >
             <span class="feedback-list__main">
               <strong>#{{ item.id }} · {{ item.message }}</strong>
               <small class="muted">{{ item.source === 'automatic' ? '自动上报 · ' : '' }}{{ formatDate(item.updated_at) }}</small>
             </span>
             <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
-            <ChevronRight :size="17" />
+            <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
           </button>
         </div>
       </section>
@@ -332,6 +359,7 @@ onBeforeUnmount(releaseObjectURLs);
 .feedback-list { display: grid; margin-top: 12px; border-top: 1px solid var(--cd-border); }
 .feedback-list > button { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 72px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--cd-border); border-radius: 0; background: transparent; color: var(--cd-text); text-align: left; box-shadow: none; }
 .feedback-list > button.active { color: var(--cd-primary); }
+.feedback-list > button svg.expanded { transform: rotate(90deg); }
 .feedback-list__main { display: grid; min-width: 0; gap: 4px; }
 .feedback-list__main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feedback-detail { margin-top: 18px; }

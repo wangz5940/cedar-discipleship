@@ -81,9 +81,6 @@
   .course-library .course-index { grid-template-columns: 1fr; }
   .course-index > .course-card { grid-template-columns: 92px minmax(0, 1fr); padding: 18px 0; }
   .library-empty { padding: 24px 18px; gap: 16px; }
-  .checkin-page .summary { grid-template-columns: 1fr; gap: 22px; padding: 24px; }
-  .checkin-page .summary__status { max-width: 200px; }
-  .learning-fraction { justify-content: flex-start; }
 }
 
 .cd-login-screen .cd-login-container { width: min(960px, 100%); max-width: 960px; }
@@ -135,7 +132,13 @@
 .checkin-page .task-status { font-size: 13px; font-weight: 600; }
 @media (max-width: 767px) {
   .cedar-app-shell .pagehead h1, .checkin-page .page-header h1 { font-size: 26px; }
-  .checkin-page .summary h2 { font-size: 22px; }
+  .checkin-page .summary { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px 14px; }
+  .checkin-page .summary__eyebrow { margin: 0; }
+  .checkin-page .summary h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .checkin-page .summary__status { display: contents; }
+  .checkin-page .learning-fraction { grid-column: 2; grid-row: 1; gap: 5px; }
+  .checkin-page .learning-fraction strong, .checkin-page .learning-fraction span { font-size: 18px; }
+  .checkin-page .summary .progress { grid-column: 1 / -1; margin: 0; }
   .course-library .course-section-title, .checkin-page .section-heading { font-size: 20px; }
   .course-library .course-card h3, .course-index .course-card-copy h3,
   .cd-resource-card h3, .checkin-page .task-name { font-size: 16px; }

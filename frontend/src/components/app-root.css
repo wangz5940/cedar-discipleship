@@ -98,6 +98,23 @@
   margin-bottom: 20px;
 }
 
+.app-content-toolbar--learning {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-learning-title {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 26px;
+  line-height: 1.4;
+}
+
+@media (max-width: 767px) {
+  .app-learning-title { font-size: 22px; }
+  .app-content-toolbar--learning { margin-bottom: 12px; }
+}
+
 .group-switcher__default {
   height: 32px;
   padding: 0 8px;

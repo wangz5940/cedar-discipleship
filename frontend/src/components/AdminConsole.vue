@@ -28,6 +28,7 @@ import {
   resourceCategoryAccept,
 } from '../runtime/resources';
 import DateField from './ui/DateField.vue';
+import LearningConfigSection from './ui/LearningConfigSection.vue';
 import {
   api,
   addWeekBinding,
@@ -97,8 +98,13 @@ const notificationSaving = ref(false);
 const dailyPlanDate = ref(todayString());
 const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
+const versePlansExpanded = ref(false);
 const verseRef = ref('');
 const verseText = ref('');
+
+function learningSectionKey(section) {
+  return `cedar:learning-sections:${user.value?.id || user.value?.username || 'user'}:${currentGroupID.value || 0}:${section}`;
+}
 
 function navigateTabs(event) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -143,11 +149,20 @@ const devotion = computed(() => daily.value.devotion || {});
 const scripture = computed(() => daily.value.scripture || {});
 const dailyVerse = computed(() => daily.value.verse || {});
 const versePlans = computed(() => [...(dailyVerse.value.plans || [])].sort((a, b) => a.date.localeCompare(b.date)));
+const visibleVersePlans = computed(() => versePlansExpanded.value ? versePlans.value : versePlans.value.slice(-3));
 watch([versePlanDate, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
   const plan = versePlans.value.find((item) => item.date === versePlanDate.value);
   verseRef.value = plan?.verse_ref || '';
   verseText.value = plan?.recite_text || '';
 }, { immediate: true });
+
+function addVersePlan() {
+  if (!canEditLearning.value) return;
+  const last = versePlans.value.at(-1);
+  versePlanDate.value = last ? shiftDailyPlanDate(last.date, 1) : versePlanDate.value || todayString();
+  verseRef.value = '';
+  verseText.value = '';
+}
 
 async function saveVersePlan() {
   if (!canEditLearning.value) return;
@@ -200,6 +215,7 @@ watch(activeGroup, (group) => {
 }, { immediate: true });
 watch(currentGroupID, () => {
   dailyPlansExpanded.value = false;
+  versePlansExpanded.value = false;
 });
 
 function groupSaveErrorMessage(message) {
@@ -792,8 +808,7 @@ async function runLocalBackupImport() {
 
     <section v-else-if="adminSection === 'learning'">
               <div class="grid admin-learning-stack">
-                <div class="card">
-                  <h2>打卡通知</h2>
+                <LearningConfigSection title="打卡通知" :storage-key="learningSectionKey('notifications')">
                   <div class="admin-checkbox-row notification-toggle-row">
                     <label class="admin-toggle">
                       <input
@@ -814,10 +829,9 @@ async function runLocalBackupImport() {
                       <span>周任务通知</span>
                     </label>
                   </div>
-                </div>
+                </LearningConfigSection>
                 <div class="grid cols-2 admin-grid">
-                  <div class="card">
-                    <h2>每日学习配置</h2>
+                  <LearningConfigSection title="每日灵修配置" :storage-key="learningSectionKey('devotion')">
                     <div class="form-stack admin-form-grid">
                       <div class="admin-checkbox-row daily-config-toggle-row">
                         <label class="admin-toggle"><input type="checkbox" :checked="daily.checkin_mode === 'separate'" @change="updateLearning(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
@@ -903,9 +917,8 @@ async function runLocalBackupImport() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="card">
-                    <h2>每日读经配置</h2>
+                  </LearningConfigSection>
+                  <LearningConfigSection title="每日读经配置" :storage-key="learningSectionKey('scripture')">
                     <div class="form-stack admin-form-grid">
                       <label class="admin-toggle"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
                       <label class="admin-field">
@@ -915,17 +928,22 @@ async function runLocalBackupImport() {
                         </select>
                       </label>
                       <div class="admin-field"><span class="admin-field-label">读经起始日期</span><DateField :model-value="scripture.start_date || ''" label="读经起始日期" @update:model-value="updateLearning(['task_sections','daily','scripture','start_date'], $event)" /></div>
-                      <label class="admin-field"><span class="admin-field-label">起始章</span><input type="number" min="1" :value="scripture.start_chapter || 1" @change="updateLearning(['task_sections','daily','scripture','start_chapter'], Number($event.target.value || 1))" /></label>
-                      <label class="admin-field"><span class="admin-field-label">每日章数</span><input type="number" min="1" :value="scripture.chapters_per_day || 1" @change="updateLearning(['task_sections','daily','scripture','chapters_per_day'], Number($event.target.value || 1))" /></label>
+                      <div class="admin-paired-fields">
+                        <label class="admin-field"><span class="admin-field-label">起始章</span><input type="number" min="1" :value="scripture.start_chapter || 1" @change="updateLearning(['task_sections','daily','scripture','start_chapter'], Number($event.target.value || 1))" /></label>
+                        <label class="admin-field"><span class="admin-field-label">每日章数</span><input type="number" min="1" :value="scripture.chapters_per_day || 1" @change="updateLearning(['task_sections','daily','scripture','chapters_per_day'], Number($event.target.value || 1))" /></label>
+                      </div>
                       <div class="form-actions"><button :class="canEditLearning ? '' : 'secondary'" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存学习配置</button></div>
                     </div>
-                  </div>
+                  </LearningConfigSection>
                 </div>
-                <div class="card">
-                  <h2>每日背经配置</h2>
+                <LearningConfigSection title="每日背经配置" :storage-key="learningSectionKey('verse')">
                   <div class="form-stack admin-form-grid">
                     <label class="admin-toggle"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
                     <p class="muted">只在已配置的日期显示，与周背经分别完成。</p>
+                    <button class="icon-text-button daily-plan-add-button" :disabled="!canEditLearning" type="button" @click="addVersePlan">
+                      <Plus :size="17" />
+                      新增一天
+                    </button>
                     <label class="admin-field"><span class="admin-field-label">背经日期</span><input v-model="versePlanDate" type="date" /></label>
                     <label class="admin-field"><span class="admin-field-label">当天经文</span><input v-model="verseRef" maxlength="255" :disabled="!canEditLearning" placeholder="例如：约翰福音 3:16" /></label>
                     <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写当天需要背诵和默写的经文原文"></textarea></label>
@@ -935,16 +953,22 @@ async function runLocalBackupImport() {
                       <button class="secondary" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存显示设置</button>
                     </div>
                     <div v-if="versePlans.length" class="daily-plan-list">
-                      <span class="admin-field-label">已配置日期</span>
-                      <button v-for="plan in versePlans" :key="plan.date" :class="{ active: plan.date === versePlanDate }" type="button" @click="versePlanDate = plan.date">
+                      <div class="daily-plan-list-header">
+                        <span class="admin-field-label">已配置日期</span>
+                        <button v-if="versePlans.length > 3" class="ghost daily-plan-list-toggle" type="button" :aria-expanded="versePlansExpanded" @click="versePlansExpanded = !versePlansExpanded">
+                          <ChevronUp v-if="versePlansExpanded" :size="15" />
+                          <ChevronDown v-else :size="15" />
+                          {{ versePlansExpanded ? '收起' : `展开全部（${versePlans.length}）` }}
+                        </button>
+                      </div>
+                      <button v-for="plan in visibleVersePlans" :key="plan.date" :class="{ active: plan.date === versePlanDate }" type="button" @click="versePlanDate = plan.date">
                         <span><b>{{ plan.date }}</b><small>{{ plan.verse_ref }}</small></span><ChevronRight :size="16" />
                       </button>
                     </div>
                   </div>
-                </div>
-                <div v-if="weekDraft" class="card week-planner-card">
+                </LearningConfigSection>
+                <LearningConfigSection v-if="weekDraft" title="周任务" :storage-key="learningSectionKey('weekly')" class="week-planner-card">
                   <div class="section-title">
-                    <h2>周任务</h2>
                     <div class="inline-actions">
                       <select
                         class="week-picker"
@@ -1039,7 +1063,7 @@ async function runLocalBackupImport() {
                       <button class="danger" :disabled="!canEditStudyWeeks" type="button" @click="deleteWeekDraft">删除当前周</button>
                     </div>
                   </div>
-                </div>
+                </LearningConfigSection>
               </div>
             </section>
 
@@ -1176,6 +1200,7 @@ async function runLocalBackupImport() {
 .member-conflict-warning { color: var(--cd-danger); }
 .admin-learning-stack { display: flex; flex-direction: column; align-items: stretch; }
 .admin-learning-stack > .week-planner-card { order: -1; }
+.admin-grid > .learning-config-section { align-self: start; }
 .week-planner-card { min-width: 0; }
 .admin-checkbox-row.daily-config-toggle-row {
   grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);

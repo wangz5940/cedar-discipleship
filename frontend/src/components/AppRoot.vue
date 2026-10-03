@@ -21,6 +21,7 @@ import {
 import { lazyPage } from '../ui/lazyPage';
 import { vDialogFocus } from '../ui/dialogFocus';
 import { useAppStateStore } from '../stores/appState';
+import { useCheckinWorkbenchStore } from '../stores/checkinWorkbench';
 import { useDownloadManagerStore } from '../stores/downloadManager';
 import { downloadErrorMessage } from '../runtime/downloads';
 import { filterSharedResources } from '../runtime/resourceGovernance';
@@ -59,6 +60,7 @@ const FeedbackCenter = lazyPage(() => import('./FeedbackCenter.vue'));
 const PersonalSettings = lazyPage(() => import('./PersonalSettings.vue'));
 const UserGuide = lazyPage(() => import('./UserGuide.vue'));
 const app = useAppStateStore();
+const workbench = useCheckinWorkbenchStore();
 const downloadManager = useDownloadManagerStore();
 const {
   authenticated,
@@ -375,7 +377,8 @@ async function refreshResources() {
     <div class="main">
       <!-- Content Area -->
       <main class="content">
-        <div v-if="!showGroupPicker && (groups.length || activeGroup)" class="app-content-toolbar">
+        <div v-if="!showGroupPicker && (tab === 'home' || groups.length || activeGroup)" class="app-content-toolbar" :class="{ 'app-content-toolbar--learning': tab === 'home' }">
+          <h1 v-if="tab === 'home'" class="app-learning-title">{{ workbench.isToday ? '今日学习' : '学习任务' }}</h1>
           <GroupSwitcher
             :groups="groups"
             :current-group-i-d="currentGroupID"
