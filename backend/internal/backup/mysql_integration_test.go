@@ -294,3 +294,40 @@ func TestRestoreKeepsWeeklyBooksWithSharedLongTitlePrefix(t *testing.T) {
 		t.Fatalf("restored records=%d distinct keys=%d, want 2/2", count, distinctKeys)
 	}
 }
+
+func TestRestoreDailyVerseSeparatesLegacyWeeklyRecords(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES (1,'member','Member','member',NOW(),NOW());
+		INSERT INTO study_weeks(id,group_id,start_date,end_date,created_at,updated_at)
+		VALUES (1,1,'2026-09-21','2026-09-27',NOW(),NOW());
+		INSERT INTO study_tasks(id,group_id,week_id,task_type,title,created_at,updated_at)
+		VALUES (1,1,1,'weekly_verse','周经文',NOW(),NOW())`)
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	err = NewMySQLRepository(db).replaceCheckinsTx(t.Context(), tx, 1, 1,
+		map[string]uint64{"member": 1}, map[uint64]uint64{7: 1}, nil,
+		[]Checkin{
+			{Username: "member", WeekID: 7, TaskType: "daily_verse", LogicalDate: "2026-09-22", Part: "verse:7"},
+			{Username: "member", TaskType: "daily_verse", LogicalDate: "2026-09-22"},
+		}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var daily, weekly int
+	if err := db.QueryRow(`SELECT
+		SUM(task_type='daily_verse' AND week_id IS NULL AND task_id IS NULL),
+		SUM(task_type='weekly_verse' AND week_id=1 AND task_id=1)
+		FROM checkin_records WHERE deleted_at IS NULL`).Scan(&daily, &weekly); err != nil {
+		t.Fatal(err)
+	}
+	if daily != 1 || weekly != 1 {
+		t.Fatalf("restored daily=%d weekly=%d", daily, weekly)
+	}
+}

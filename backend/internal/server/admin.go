@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	learningdomain "agp/backend/internal/learning"
 	userdomain "agp/backend/internal/user"
 )
 
@@ -39,6 +40,10 @@ func (a *app) handleAdminSaveLearningConfig(w http.ResponseWriter, r *http.Reque
 		settings = map[string]any{}
 	}
 	before, after, err := a.upsertGroupLearningConfig(r.Context(), groupID, settings)
+	if errors.Is(err, learningdomain.ErrInvalidDailyVerse) {
+		writeError(w, http.StatusBadRequest, "invalid_daily_verse")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "learning_config_save_failed")
 		return

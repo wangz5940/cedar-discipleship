@@ -94,7 +94,7 @@ func TestStudyWeeksExcelRoundTrip(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if len(weeks) != 1 || weeks[0].WeeklyCheckin || weeks[0].BookEnabled != bookEnabled || weeks[0].VerseMode != mode {
+					if len(weeks) != 1 || weeks[0].WeeklyCheckin || weeks[0].BookEnabled != bookEnabled || weeks[0].VerseMode != "weekly" {
 						t.Fatalf("round trip changed completion mode: %+v", weeks)
 					}
 					var aggregates, requiredBooks int

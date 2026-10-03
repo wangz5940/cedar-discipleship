@@ -1193,6 +1193,9 @@ func (r *MySQLRepository) replaceCheckinsTx(
 		return err
 	}
 	for _, checkin := range checkins {
+		if checkin.TaskType == "daily_verse" && checkin.WeekID > 0 {
+			checkin.TaskType = "weekly_verse"
+		}
 		userID := userIDs[normalizeUsername(checkin.Username)]
 		if userID == 0 {
 			return fmt.Errorf("backup checkin user %q has no group identity", checkin.Username)
@@ -1228,7 +1231,7 @@ func resolveCheckinTargetTx(
 	taskIDs map[uint64]uint64,
 	checkin Checkin,
 ) (any, any, error) {
-	if checkin.TaskType == "daily_devotion" || checkin.TaskType == "daily_scripture" {
+	if checkin.TaskType == "daily_devotion" || checkin.TaskType == "daily_scripture" || checkin.TaskType == "daily_verse" {
 		return nil, nil, nil
 	}
 	weekID := weekIDs[checkin.WeekID]

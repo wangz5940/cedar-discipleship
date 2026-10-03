@@ -1,6 +1,7 @@
 package server
 
 import (
+	learningdomain "agp/backend/internal/learning"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -13,7 +14,45 @@ import (
 type reciteTarget struct {
 	WeekID   uint64
 	VerseRef string
+	Date     string
 }
+
+func (t reciteTarget) weekValue() any {
+	if t.WeekID == 0 {
+		return nil
+	}
+	return t.WeekID
+}
+
+func (a *app) dailyReciteTarget(r *http.Request, groupID uint64, date string) (reciteTarget, error) {
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return reciteTarget{}, sql.ErrNoRows
+	}
+	settings, err := a.groupLearningConfig(r.Context(), groupID)
+	if err != nil {
+		return reciteTarget{}, err
+	}
+	plan, ok := learningdomain.DailyVersePlan(settings, date)
+	if !ok {
+		return reciteTarget{}, sql.ErrNoRows
+	}
+	ref, _ := plan["verse_ref"].(string)
+	return reciteTarget{VerseRef: ref, Date: date}, nil
+}
+
+func (a *app) requestedReciteTarget(w http.ResponseWriter, r *http.Request, groupID uint64) (reciteTarget, error) {
+	if r.URL.Query().Get("task_type") == "daily_verse" {
+		return a.dailyReciteTarget(r, groupID, r.URL.Query().Get("logical_date"))
+	}
+	taskID, err := strconv.ParseUint(r.URL.Query().Get("task_id"), 10, 64)
+	if err != nil || taskID == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_task_id")
+		return reciteTarget{}, errInvalidReciteTarget
+	}
+	return a.reciteTarget(r, groupID, taskID)
+}
+
+var errInvalidReciteTarget = errors.New("invalid_recite_target")
 
 type reciteAttempt struct {
 	ID        uint64 `json:"id"`
@@ -110,12 +149,10 @@ func (a *app) handleReciteLeaderboard(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	taskID, err := strconv.ParseUint(r.URL.Query().Get("task_id"), 10, 64)
-	if err != nil || taskID == 0 {
-		writeError(w, http.StatusBadRequest, "invalid_task_id")
+	target, err := a.requestedReciteTarget(w, r, groupID)
+	if errors.Is(err, errInvalidReciteTarget) {
 		return
 	}
-	target, err := a.reciteTarget(r, groupID, taskID)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "recite_task_not_found")
 		return
@@ -131,7 +168,8 @@ func (a *app) handleReciteLeaderboard(w http.ResponseWriter, r *http.Request) {
 		FROM recite_attempts ra
 		JOIN users u ON u.id=ra.user_id
 		LEFT JOIN group_members gm ON gm.group_id=ra.group_id AND gm.user_id=ra.user_id
-		WHERE ra.group_id=? AND ra.week_id=? AND ra.verse_ref=?`, groupID, target.WeekID, target.VerseRef)
+		WHERE ra.group_id=? AND ra.week_id <=> ? AND ra.verse_ref=? AND (?='' OR ra.logical_date=?)`,
+		groupID, target.weekValue(), target.VerseRef, target.Date, target.Date)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "recite leaderboard query failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "recite_leaderboard_failed")
@@ -212,12 +250,10 @@ func (a *app) handleListReciteAttempts(w http.ResponseWriter, r *http.Request) {
 	if !ok || !a.requireReciteGroupMember(w, r, groupID, userID, u.ID) {
 		return
 	}
-	taskID, err := strconv.ParseUint(r.URL.Query().Get("task_id"), 10, 64)
-	if err != nil || taskID == 0 {
-		writeError(w, http.StatusBadRequest, "invalid_task_id")
+	target, err := a.requestedReciteTarget(w, r, groupID)
+	if errors.Is(err, errInvalidReciteTarget) {
 		return
 	}
-	target, err := a.reciteTarget(r, groupID, taskID)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "recite_task_not_found")
 		return
@@ -228,8 +264,8 @@ func (a *app) handleListReciteAttempts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `SELECT id,blank_percent,blank_count,correct_count,score,attempt_no,created_at
-		FROM recite_attempts WHERE group_id=? AND user_id=? AND week_id=? AND verse_ref=?
-		ORDER BY attempt_no DESC LIMIT 30`, groupID, userID, target.WeekID, target.VerseRef)
+		FROM recite_attempts WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date=?)
+		ORDER BY attempt_no DESC LIMIT 30`, groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "recite history query failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "recite_history_failed")
@@ -261,16 +297,18 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var req struct {
-		TaskID  uint64 `json:"task_id"`
-		UserID  uint64 `json:"user_id"`
-		Rate    int    `json:"blank_percent"`
-		Total   int    `json:"blank_count"`
-		Correct int    `json:"correct_count"`
+		TaskType string `json:"task_type"`
+		Date     string `json:"logical_date"`
+		TaskID   uint64 `json:"task_id"`
+		UserID   uint64 `json:"user_id"`
+		Rate     int    `json:"blank_percent"`
+		Total    int    `json:"blank_count"`
+		Correct  int    `json:"correct_count"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if req.TaskID == 0 || req.Rate < 0 || req.Rate > 90 || req.Total < 0 || req.Total > 10000 || req.Correct < 0 || req.Correct > req.Total || (req.Rate == 0 && req.Total != 0) {
+	if (req.TaskID == 0 && req.TaskType != "daily_verse") || req.Rate < 0 || req.Rate > 90 || req.Total < 0 || req.Total > 10000 || req.Correct < 0 || req.Correct > req.Total || (req.Rate == 0 && req.Total != 0) {
 		writeError(w, http.StatusBadRequest, "invalid_recite_attempt")
 		return
 	}
@@ -285,18 +323,35 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	if !a.requireReciteGroupMember(w, r, groupID, userID, u.ID) {
 		return
 	}
+	var target reciteTarget
+	if req.TaskType == "daily_verse" {
+		var err error
+		target, err = a.dailyReciteTarget(r, groupID, req.Date)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "recite_task_not_found")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "recite_save_failed")
+			return
+		}
+	}
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "recite_save_failed")
 		return
 	}
 	defer tx.Rollback()
-	var target reciteTarget
-	err = tx.QueryRowContext(r.Context(), `SELECT t.week_id,
+	if req.TaskType == "daily_verse" {
+		var lockedUserID uint64
+		err = tx.QueryRowContext(r.Context(), `SELECT id FROM users WHERE id=? FOR UPDATE`, userID).Scan(&lockedUserID)
+	} else {
+		err = tx.QueryRowContext(r.Context(), `SELECT t.week_id,
 		COALESCE(NULLIF(w.verse_ref,''),t.title)
 		FROM study_tasks t JOIN study_weeks w ON w.id=t.week_id AND w.group_id=t.group_id
 		WHERE t.id=? AND t.group_id=? AND t.task_type IN ('weekly_verse','daily_verse') AND t.enabled=1 FOR UPDATE`, req.TaskID, groupID).
-		Scan(&target.WeekID, &target.VerseRef)
+			Scan(&target.WeekID, &target.VerseRef)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "recite_task_not_found")
 		return
@@ -308,17 +363,22 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	}
 	var attemptNo int
 	if err := tx.QueryRowContext(r.Context(), `SELECT COALESCE(MAX(attempt_no),0)+1 FROM recite_attempts
-		WHERE group_id=? AND user_id=? AND week_id=? AND verse_ref=?`, groupID, userID, target.WeekID, target.VerseRef).Scan(&attemptNo); err != nil {
+		WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date=?)`,
+		groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date).Scan(&attemptNo); err != nil {
 		writeError(w, http.StatusInternalServerError, "recite_save_failed")
 		return
 	}
 	accuracy := reciteAccuracy(req.Correct, req.Total)
 	score := reciteScore(req.Correct, req.Total, req.Rate)
 	now := time.Now().In(a.location)
+	logicalDate := target.Date
+	if logicalDate == "" {
+		logicalDate = now.Format("2006-01-02")
+	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO recite_attempts
 		(group_id,user_id,week_id,checkin_record_id,verse_ref,logical_date,blank_percent,blank_count,correct_count,accuracy,score,attempt_no,created_at)
 		VALUES (?,?,?,NULL,?,?,?,?,?,?,?,?,?)`,
-		groupID, userID, target.WeekID, target.VerseRef, now.Format("2006-01-02"), req.Rate, req.Total, req.Correct, accuracy, score, attemptNo, now.UTC())
+		groupID, userID, target.weekValue(), target.VerseRef, logicalDate, req.Rate, req.Total, req.Correct, accuracy, score, attemptNo, now.UTC())
 	if err != nil {
 		slog.ErrorContext(r.Context(), "recite attempt save failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "recite_save_failed")
@@ -333,7 +393,7 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 		"user_id":       userID,
 		"task_id":       req.TaskID,
 		"week_id":       target.WeekID,
-		"logical_date":  now.Format("2006-01-02"),
+		"logical_date":  logicalDate,
 		"blank_percent": req.Rate,
 		"blank_count":   req.Total,
 		"correct_count": req.Correct,

@@ -1594,7 +1594,7 @@ export async function toggleCheckin(task, member) {
           part: task.part || '',
           detail: task.detail || task.title,
           logical_date: state.selectedDate,
-          week_id: Number(task.weekID || state.bootstrap?.current_week?.id || 0),
+          week_id: task.type === 'daily_verse' ? 0 : Number(task.weekID || state.bootstrap?.current_week?.id || 0),
           task_id: Number(task.taskID || 0),
           is_retro: !isTodaySelected(),
         }),
@@ -1608,14 +1608,14 @@ export async function toggleCheckin(task, member) {
   }
 }
 
-function currentTaskOptions() {
+export function currentTaskOptions() {
   if (!state.bootstrap) return [];
   const week = state.bootstrap?.current_week || {};
   const configPlan = currentWeekConfigPlan();
   const serverTasks = state.bootstrap?.current_tasks || [];
   const bookTasks = serverTasks.filter((task) => task.task_type === 'weekly_book');
   const videoTasks = serverTasks.filter((task) => task.task_type === 'weekly_video');
-  const verseTask = serverTasks.find((task) => ['weekly_verse', 'daily_verse'].includes(task.task_type));
+  const verseTask = serverTasks.find((task) => task.task_type === 'weekly_verse');
   const outlineTask = serverTasks.find((task) => task.task_type === 'weekly_outline');
   const devotionLink = getDailyDevotionPlan();
   const scriptureLinks = getDailyScripturePlans();
@@ -1654,6 +1654,17 @@ function currentTaskOptions() {
       summary: dailyLinks.map((item) => item.label).join(' / ') || '完成今日灵修打卡',
       contentURL: dailyLinks[0]?.url || findAssetURL('每日') || '',
       contentLinks: dailyLinks,
+    });
+  }
+  const dailyVerse = dailyConfig.verse?.enabled === true
+    ? dailyConfig.verse.plans?.find((plan) => plan.date === state.selectedDate) : null;
+  if (dailyVerse) {
+    const link = buildWeeklyVerseContentLink(dailyVerse.verse_ref, dailyVerse.recite_text);
+    tasks.push({
+      type: 'daily_verse', taskID: 0, weekID: 0, logicalDate: state.selectedDate,
+      title: dailyVerse.verse_ref, detail: dailyVerse.verse_ref, icon: '背经', part: '',
+      summary: '每日背经', reciteText: dailyVerse.recite_text || '',
+      contentURL: '', contentLinks: link ? [link] : [],
     });
   }
   const weeklyBookEntries = buildWeeklyBookEntries(bookTasks, week.title, configPlan);
@@ -1713,7 +1724,7 @@ function currentTaskOptions() {
       icon: '背经',
       part: '',
       detail: verseTitle,
-      summary: verseTask.task_type === 'daily_verse' ? '每日完成' : '整周完成一次',
+      summary: '整周完成一次',
       reciteText: week.recite_text || verseTask.content || '',
       contentURL: '',
       contentLinks: verseLink ? [verseLink] : [],
@@ -2172,7 +2183,7 @@ function checkinMatchesTask(item, task) {
     return item.logical_date === state.selectedDate;
   }
   if (task.type === 'daily_verse') {
-    return item.logical_date === state.selectedDate && (Number(item.task_id) === Number(task.taskID) || Number(item.week_id) === Number(task.weekID));
+    return item.logical_date === state.selectedDate && !Number(item.task_id) && !Number(item.week_id);
   }
   if (task.type === 'weekly_verse' || task.type === 'weekly_outline') {
     if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
@@ -2428,7 +2439,6 @@ export function weekDraftFromWeek(week = null) {
       book_enabled: true,
       video_enabled: true,
       verse_enabled: false,
-      verse_mode: 'weekly',
       outline_enabled: false,
       readings: nextWeekReadings(previousWeek),
       videos: [emptyWeekBinding('videos')],
@@ -2454,7 +2464,6 @@ export function weekDraftFromWeek(week = null) {
     book_enabled: hasTaskContent ? enabledFlag(week.book_enabled) : true,
     video_enabled: hasTaskContent ? enabledFlag(week.video_enabled) : true,
     verse_enabled: hasTaskContent && enabledFlag(week.verse_enabled),
-    verse_mode: week.verse_mode === 'daily' ? 'daily' : 'weekly',
     outline_enabled: hasTaskContent && enabledFlag(week.outline_enabled),
     readings: hasTaskContent && (week.readings || []).length
       ? (week.readings || []).map((item) => normalizeReadingDraftItem({ ...item }))
@@ -2610,7 +2619,6 @@ export async function saveWeekDraft() {
     book_enabled: enabledFlag(draft.book_enabled),
     video_enabled: enabledFlag(draft.video_enabled),
     verse_enabled: enabledFlag(draft.verse_enabled),
-    verse_mode: draft.verse_mode === 'daily' ? 'daily' : 'weekly',
     outline_enabled: enabledFlag(draft.outline_enabled),
     readings: (draft.readings || []).map((item) => ({
       title: applyPdfPageRangeToTitle(item.title || '', item.page_start, item.page_end),

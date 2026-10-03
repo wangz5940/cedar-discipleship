@@ -36,7 +36,7 @@ func TestAdminVerseCadenceThroughWebAndBot(t *testing.T) {
 				t.Fatalf("save=%d %s", saved.Code, saved.Body)
 			}
 			weeks, err := a.learning.ListWeeks(t.Context(), 1)
-			if err != nil || len(weeks) != 1 || weeks[0].VerseMode != mode {
+			if err != nil || len(weeks) != 1 || weeks[0].VerseMode != "weekly" {
 				t.Fatalf("reload=%+v err=%v", weeks, err)
 			}
 			tasks, err := a.learning.WeekTasks(t.Context(), 1, weeks[0].ID)
@@ -61,9 +61,6 @@ func TestAdminVerseCadenceThroughWebAndBot(t *testing.T) {
 				want := step.want
 				if want == 0 {
 					want = http.StatusOK
-					if mode == "daily" {
-						want = http.StatusCreated
-					}
 				}
 				response := httptest.NewRecorder()
 				if step.transport == "web" {

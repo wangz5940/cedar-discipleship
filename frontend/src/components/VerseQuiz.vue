@@ -57,25 +57,29 @@ const vFitBlank = {
 };
 const history = computed(() => [...serverHistory.value, ...localHistory.value]
   .sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 30));
-const key = computed(() => `verse-quiz:${props.scope || 'user'}:${selectedUserID.value}:${props.task?.weekID || props.task?.taskID || ''}`);
+const dailyVerse = computed(() => props.task?.type === 'daily_verse');
+const targetParams = computed(() => dailyVerse.value
+  ? `task_type=daily_verse&logical_date=${encodeURIComponent(props.task?.logicalDate || '')}`
+  : `task_id=${props.task?.taskID}`);
+const key = computed(() => `verse-quiz:${props.scope || 'user'}:${selectedUserID.value}:${dailyVerse.value ? `daily_verse:${props.task?.logicalDate}:${props.task?.title}` : (props.task?.weekID || props.task?.taskID || '')}`);
 const legacyKey = computed(() => `verse-quiz:${props.scope || 'user'}:${props.task?.weekID || props.task?.taskID || ''}`);
 
 function loadLocalHistory() {
   try {
     const saved = JSON.parse(localStorage.getItem(key.value)
-      || (selectedUserID.value === Number(props.userId) ? localStorage.getItem(legacyKey.value) : null) || '[]');
+      || (!dailyVerse.value && selectedUserID.value === Number(props.userId) ? localStorage.getItem(legacyKey.value) : null) || '[]');
     localHistory.value = Array.isArray(saved) ? saved : [];
   } catch { localHistory.value = []; }
 }
 
 async function loadRecords() {
-  if (!props.task?.taskID) return;
+  if (!props.task?.taskID && !dailyVerse.value) return;
   const openedKey = key.value;
   loading.value = true;
   try {
     const [saved, ranking] = await Promise.all([
-      api(`/recite-attempts?task_id=${props.task.taskID}&user_id=${selectedUserID.value}`),
-      api(`/recite-leaderboard?task_id=${props.task.taskID}`),
+      api(`/recite-attempts?${targetParams.value}&user_id=${selectedUserID.value}`),
+      api(`/recite-leaderboard?${targetParams.value}`),
     ]);
     if (props.open && key.value === openedKey) {
       serverHistory.value = saved.attempts || [];
@@ -89,7 +93,7 @@ async function loadRecords() {
   }
 }
 
-watch(() => [props.open, props.task?.taskID, props.scope], () => {
+watch(() => [props.open, props.task?.taskID, props.task?.type, props.task?.logicalDate, props.scope], () => {
   if (!props.open) return;
   selectedUserID.value = Number(props.userId || 0);
   rate.value = 50;
@@ -175,6 +179,8 @@ async function grade() {
     at: new Date().toISOString(), rate: examRate.value, correct, total,
     score: Math.round(correct / total * examRate.value),
   };
+  const openedKey = key.value;
+  const openedParams = targetParams.value;
   submitted.value = record;
   message.value = '正在保存默写记录…';
   saving.value = true;
@@ -182,19 +188,22 @@ async function grade() {
     const saved = await api('/recite-attempts', {
       method: 'POST',
       body: JSON.stringify({
+        ...(dailyVerse.value ? { task_type: 'daily_verse', logical_date: props.task.logicalDate } : {}),
         task_id: props.task.taskID, user_id: selectedUserID.value, blank_percent: examRate.value,
         blank_count: total, correct_count: correct,
       }),
     });
+    if (!props.open || key.value !== openedKey) return;
     submitted.value = saved;
     serverHistory.value = [saved, ...serverHistory.value].slice(0, 30);
     message.value = `已保存，这是第 ${saved.attempt_no} 次测试。`;
     syncError.value = false;
     try {
-      const ranking = await api(`/recite-leaderboard?task_id=${props.task.taskID}`);
-      leaderboard.value = ranking.leaderboard || [];
+      const ranking = await api(`/recite-leaderboard?${openedParams}`);
+      if (props.open && key.value === openedKey) leaderboard.value = ranking.leaderboard || [];
     } catch { /* result remains saved */ }
   } catch {
+    if (!props.open || key.value !== openedKey) return;
     localHistory.value = [record, ...localHistory.value].slice(0, 30);
     try { localStorage.setItem(key.value, JSON.stringify(localHistory.value)); } catch { /* visible result remains */ }
     message.value = '服务器保存失败，本次结果已保存在当前浏览器。';
@@ -216,11 +225,11 @@ async function grade() {
         <p class="recite-tip">先确认默写原文，再生成挖空练习。标点和章节号不会挖空；批改后点击错题可切换查看答案。</p>
         <div class="recite-meta-grid">
           <label class="recite-meta-field"><span>测试人</span><select :value="selectedUserID" :disabled="!canSelectMember || saving" @change="changeMember"><option v-for="member in memberOptions" :key="member.user_id" :value="member.user_id">{{ member.member_name || member.display_name || member.username }}</option></select></label>
-          <label class="recite-meta-field"><span>测试范围</span><input :value="task?.weekStart && task?.weekEnd ? `${task.weekStart} ~ ${task.weekEnd}` : (task?.title || '本周背经')" readonly /></label>
+          <label class="recite-meta-field"><span>测试范围</span><input :value="dailyVerse ? task?.logicalDate : task?.weekStart && task?.weekEnd ? `${task.weekStart} ~ ${task.weekEnd}` : (task?.title || '本周背经')" readonly /></label>
         </div>
         <div v-if="originVisible" class="recite-origin-panel">
           <label for="recite-origin-text">默写原文</label>
-          <textarea id="recite-origin-text" v-model="originalText" placeholder="粘贴要默写的原文，或在管理员周任务里配置“默写原文”。"></textarea>
+          <textarea id="recite-origin-text" v-model="originalText" placeholder="粘贴要默写的原文，或在管理员学习配置里填写“默写原文”。"></textarea>
         </div>
         <div class="recite-controls">
           <label>挖空比例 <input v-model.number="rate" type="number" min="0" max="90" step="1" />%</label>
