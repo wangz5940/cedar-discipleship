@@ -1,5 +1,9 @@
 export type PlainRecord = Record<string, unknown>;
 
+export function assetContentPath(path: string, downloadsEnabled = true): string {
+  return downloadsEnabled ? path : path.replace(/^(\/api\/assets\/\d+)\/download$/, '$1/content');
+}
+
 export function enabledFlag(value: unknown, fallback = true): boolean {
   if (value === undefined || value === null || value === '') return fallback;
   if (value === false || value === 0) return false;

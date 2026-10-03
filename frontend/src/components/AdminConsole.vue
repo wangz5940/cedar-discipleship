@@ -1,5 +1,6 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { loadOvcmCourses, ovcmLessonURL } from '../runtime/ovcmCourses';
 import { storeToRefs } from 'pinia';
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from '@lucide/vue';
 import { alertDialog, promptDialog } from '../ui/dialog';
@@ -417,7 +418,25 @@ const selectedDailyPlanContentType = computed(() => (
 const readingOptions = computed(() => libraryItems.value.filter((item) => (
   ['book', 'passage', 'markdown'].includes(normalizeResourceCategory(item.category))
 )));
-const videoOptions = computed(() => libraryItems.value.filter(isWeeklyMediaResource));
+const ovcmCourses = ref([]);
+const ovcmLoadError = ref('');
+const videoQuery = ref('');
+async function loadCourseOptions() {
+  try { ovcmCourses.value = await loadOvcmCourses(); ovcmLoadError.value = ''; }
+  catch { ovcmLoadError.value = 'OVCM 课程加载失败'; }
+}
+onMounted(loadCourseOptions);
+const videoOptions = computed(() => libraryItems.value.filter(isWeeklyMediaResource).concat(
+  ovcmCourses.value.flatMap(course => course.lessons.map(lesson => ({
+    title: `${course.title} · ${lesson.title}`, type: lesson.type,
+    url: ovcmLessonURL(course.id, lesson.id),
+  }))),
+));
+function matchingVideoOptions(binding) {
+  const selected = weekBindingSelectionValue(binding, videoOptions.value);
+  const query = videoQuery.value.trim().toLowerCase();
+  return videoOptions.value.filter(option => option.title.toLowerCase().includes(query) || librarySelectionValue(option) === selected);
+}
 const outlineOptions = computed(() => libraryItems.value.filter((item) => (
   item.type === 'image' || item.type === 'outline' || item.category === 'outline'
 )));
@@ -1037,14 +1056,16 @@ async function runLocalBackupImport() {
                     <Transition name="admin-task-section">
                       <div v-if="enabledFlag(weekDraft.video_enabled)" class="admin-binding-list">
                         <div class="admin-field-label">音视频文件</div>
+                        <input v-model="videoQuery" type="search" aria-label="搜索周任务音视频资源" placeholder="搜索小组资源或 OVCM 课程…" />
                         <div v-for="(item, index) in weekDraft.videos || []" :key="`video-${index}`" class="admin-binding-row video-binding-row">
-                          <select :value="weekBindingSelectionValue(item, videoOptions)" @change="applyBindingSelection('videos', index, $event.target.value)">
+                          <select aria-label="周任务音视频资源" :value="weekBindingSelectionValue(item, videoOptions)" @change="applyBindingSelection('videos', index, $event.target.value, videoOptions)">
                             <option value="">不挂载文件</option>
-                            <option v-for="option in videoOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
+                            <option v-for="option in matchingVideoOptions(item)" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
                           </select>
                           <button class="ghost" type="button" @click="removeWeekBinding('videos', index)">删除</button>
                         </div>
                         <button class="secondary" type="button" @click="addWeekBinding('videos')">新增音视频</button>
+                        <button v-if="ovcmLoadError" type="button" @click="loadCourseOptions">{{ ovcmLoadError }}，重试</button>
                       </div>
                     </Transition>
                     <Transition name="admin-task-section">

@@ -164,6 +164,7 @@ export function downloadErrorMessage(code: unknown): string {
     download_url_not_allowed: '仅支持下载本站资源',
     download_unauthorized: '登录状态已失效，请重新登录',
     download_forbidden: '当前账号没有下载权限',
+    resource_download_disabled: '管理员已关闭本组资料下载',
     download_not_found: '资源不存在或已被删除',
     download_rate_limited: '请求过于频繁，请稍后继续',
     download_storage_insufficient: '设备可用存储空间不足',

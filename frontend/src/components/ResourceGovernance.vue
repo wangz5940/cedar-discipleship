@@ -30,7 +30,19 @@ import DateField from './ui/DateField.vue';
 import MobileCardCollection from './ui/MobileCardCollection.vue';
 
 const app = useAppStateStore();
-const { currentGroupID, resources } = storeToRefs(app);
+const { currentGroupID, resources, learningConfig } = storeToRefs(app);
+const downloadSettingsBusy = ref(false);
+async function setResourceDownloads(enabled) {
+  const groupID = currentGroupID.value;
+  downloadSettingsBusy.value = true;
+  try {
+    const result = await api('/admin/resource-download', { method: 'PUT', body: JSON.stringify({ enabled }) });
+    if (currentGroupID.value !== groupID) return;
+    await reloadApp();
+    toast(result.enabled ? '本组资料允许下载' : '本组资料仅供在线学习');
+  } catch (error) { toast(error.message); }
+  finally { downloadSettingsBusy.value = false; }
+}
 
 const activeView = ref('owned');
 const ownedCategoryFilter = ref('');
@@ -595,6 +607,11 @@ onMounted(loadGovernance);
         </button>
       </div>
     </header>
+
+    <label class="admin-toggle">
+      <input type="checkbox" :checked="learningConfig?.resource_download_enabled !== false" :disabled="downloadSettingsBusy" @change="setResourceDownloads($event.target.checked)" />
+      <span>允许下载本组资料</span>
+    </label>
 
     <nav class="resource-governance-tabs" role="tablist">
       <button

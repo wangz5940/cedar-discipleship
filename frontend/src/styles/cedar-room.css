@@ -174,9 +174,10 @@
 .course-library .course-source-tabs button { color: var(--cd-muted); font-weight: 500; }
 .course-library .course-source-tabs button.active { background: var(--cd-primary); color: white; font-weight: 600; }
 .stats-center .stats-center-head { flex-direction: column; }
-.stats-center-title-row { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; }
-.stats-center-title-row p { grid-column: 1 / -1; }
-.stats-export { white-space: nowrap; }
+.stats-center-title-row { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 16px; }
+.stats-center-title-row h2 { grid-column: 2; text-align: center; }
+.stats-center-title-row p { grid-column: 1 / -1; text-align: center; }
+.stats-export { grid-column: 3; justify-self: end; white-space: nowrap; padding: 8px 12px; background: var(--cd-primary); color: white; }
 @media (max-width: 767px) {
   .library-intro h1 { font-size: clamp(18px, 5.7cqw, 28px); }
   .library-section-label h2 { font-size: 20px; }

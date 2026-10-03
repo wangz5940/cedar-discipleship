@@ -1,8 +1,9 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Play, Pause, Volume2, VolumeX, Maximize, ListVideo, ChevronLeft, ChevronRight, SkipForward, BookOpen, X, RotateCcw, Share2, Download } from '@lucide/vue';
+import { Play, Pause, Volume2, VolumeX, Maximize, ListVideo, ChevronLeft, ChevronRight, SkipForward, BookOpen, X, RotateCcw, Share2, Settings2, Info, Images, Clock, CalendarDays } from '@lucide/vue';
 import { formatMediaTime as fmt, lessonKey, lessonTimeline, nextMediaLesson, seconds, segmentAtTime, slideAtTime, slideSeekTarget } from '../runtime/mediaStudy';
 import { videoMediaErrorMessage } from '../runtime/content';
+import { vDialogFocus } from '../ui/dialogFocus';
 import StudySlideImage from './StudySlideImage.vue';
 import MemoryActions from './MemoryActions.vue';
 import MediaHandout from './MediaHandout.vue';
@@ -40,6 +41,9 @@ const continuous = ref(preferences.continuous !== false);
 const sync = ref(true);
 const page = ref(0);
 const panel = ref('目录');
+const settingsOpen = ref(false);
+const slideView = ref('时间轴');
+let touchStart = null;
 const showList = ref(true);
 const expanded = ref('');
 const slideFailed = ref(false);
@@ -70,7 +74,7 @@ const currentKey = computed(() => lessonKey(props.lesson));
 // playback on a newly created element. Explicit retry still creates a fresh element.
 const mediaKey = computed(() => `${props.lesson.type}:${retry.value}`);
 const progressTrack = computed(() => {
-  if (!duration.value || !segments.value.length) return '#e5e7eb';
+  if (!duration.value || !segments.value.length) return 'none';
   const colors = ['#3b82f655', '#10b98155', '#f59e0b55', '#ef444455', '#8b5cf655'];
   const stops = ['#e5e7eb 0%'];
   segments.value.forEach((segment, index) => {
@@ -266,11 +270,24 @@ async function share() {
   } catch { notice.value = '复制失败，请从地址栏复制课程链接。'; }
 }
 function keyboard(event) {
+  if (event.key === 'Escape' && settingsOpen.value) { settingsOpen.value = false; return; }
   if (event.altKey || event.ctrlKey || event.metaKey || event.target.closest('input, select, textarea, button, a, [contenteditable="true"]')) return;
   if (event.code === 'Space') { event.preventDefault(); toggle(); }
   else if (event.key === 'ArrowLeft') { event.preventDefault(); seek(time.value - 10); }
   else if (event.key === 'ArrowRight') { event.preventDefault(); seek(time.value + 10); }
   else if (event.key === 'Escape' && !document.fullscreenElement) emit('close');
+}
+function swipeStart(event) { touchStart = event.changedTouches[0]; }
+function swipeEnd(event) {
+  const end = event.changedTouches[0];
+  if (slides.value.length && touchStart && Math.abs(end.clientX - touchStart.clientX) > 50 && Math.abs(end.clientY - touchStart.clientY) < 40) {
+    turnPage(Math.max(0, Math.min(slides.value.length - 1, page.value + (end.clientX < touchStart.clientX ? 1 : -1))));
+  }
+  touchStart = null;
+}
+function listDuration(value) {
+  const total = Math.floor(seconds(value) || 0);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 onMounted(() => { window.addEventListener('keydown', keyboard); window.addEventListener('pagehide', leaving); });
 onBeforeUnmount(() => { remember(); disposed = true; media.value?.pause(); systemSession?.dispose(); window.removeEventListener('keydown', keyboard); window.removeEventListener('pagehide', leaving); });
@@ -282,11 +299,19 @@ onBeforeUnmount(() => { remember(); disposed = true; media.value?.pause(); syste
       <header class="study-breadcrumb">
         <button type="button" aria-label="返回课程" @click="emit('close')"><ChevronLeft :size="18" /></button>
         <span>{{ title }}</span><ChevronRight :size="14" /><strong>{{ lesson.title }}</strong>
-        <a v-if="source && !source.startsWith('blob:') && !lesson.downloadURL" :href="source" target="_blank" rel="noopener" aria-label="下载课时"><Download :size="17" /></a>
         <button type="button" aria-label="分享课程" @click="share"><Share2 :size="17" /></button>
         <button type="button" class="study-list-toggle" aria-label="课程目录" :aria-pressed="showList" @click="showList = !showList"><ListVideo :size="19" /></button>
       </header>
       <div class="study-stage" :class="{ 'study-stage-with-handout': assetId }">
+        <div class="study-mobile-overlay">
+          <button type="button" aria-label="返回课程" @click="emit('close')"><ChevronLeft :size="22" /></button>
+          <span>{{ slides.length ? `${page + 1} / ${slides.length}` : lesson.title }}</span>
+          <button type="button" aria-label="分享课程" @click="share"><Share2 :size="19" /></button>
+        </div>
+        <div v-if="slides.length" class="study-mobile-slide-arrows">
+          <button type="button" :disabled="page === 0" aria-label="上一页幻灯" @click="turnPage(page - 1)"><ChevronLeft :size="30" /></button>
+          <button type="button" :disabled="page >= slides.length - 1" aria-label="下一页幻灯" @click="turnPage(page + 1)"><ChevronRight :size="30" /></button>
+        </div>
         <div v-if="lesson.type === 'video'" class="study-video-wrap">
           <video v-if="source" :key="mediaKey" ref="media" :src="source" :poster="lesson.coverImage" playsinline preload="metadata"
             @click="toggle" @loadedmetadata="ready" @durationchange="updateDuration" @loadeddata="loaded" @canplay="loaded"
@@ -301,7 +326,7 @@ onBeforeUnmount(() => { remember(); disposed = true; media.value?.pause(); syste
             @waiting="loading = true" @playing="loading = false"
             @timeupdate="progress" @play="isCurrent($event) && (playing = true)"
             @pause="paused" @ended="ended" @error="mediaError" />
-          <div v-if="currentSlide" class="study-slide-stage">
+          <div v-if="currentSlide" class="study-slide-stage" @touchstart.passive="swipeStart" @touchend.passive="swipeEnd">
             <StudySlideImage v-if="!slideFailed" :src="currentSlide.url" :alt="`讲义第 ${page + 1} 页`" @error="slideFailed = true" />
             <p v-else>讲义图片加载失败。<button type="button" @click="slideFailed = false">重试</button></p>
           </div>
@@ -319,14 +344,15 @@ onBeforeUnmount(() => { remember(); disposed = true; media.value?.pause(); syste
         <button type="button" :class="{ active: sync }" :aria-pressed="sync" @click="sync = !sync">{{ sync ? '自动同步' : '手动翻页' }}</button>
       </div>
       <footer class="study-controls">
-        <MemoryActions :item="memoryItem" @resume="seek" />
-        <input class="study-seek" type="range" aria-label="播放进度" :aria-valuetext="fmt(time)" :style="{ background: progressTrack }" min="0" :max="duration || 1" step="0.1" :value="time" :disabled="!duration" @input="seek($event.target.value)" />
+        <div class="study-memory"><MemoryActions :item="memoryItem" @resume="seek" /></div>
+        <input class="study-seek" type="range" aria-label="播放进度" :aria-valuetext="fmt(time)" :style="{ backgroundImage: progressTrack }" min="0" :max="duration || 1" step="0.1" :value="time" :disabled="!duration" @input="seek($event.target.value)" />
         <div class="study-control-row">
           <button type="button" class="study-play" :aria-label="playing ? '暂停' : '播放'" :disabled="!source || !!error" @click="toggle"><Pause v-if="playing" :size="19" fill="currentColor" /><Play v-else :size="19" fill="currentColor" /></button>
           <span class="study-time">{{ fmt(time) }} <span>/ {{ fmt(duration) }}</span></span>
-          <div class="study-volume"><button type="button" :aria-label="muted ? '取消静音' : '静音'" @click="muted = !muted"><VolumeX v-if="muted || (!systemVolume && volume === 0)" :size="19" /><Volume2 v-else :size="19" /></button><span v-if="systemVolume" class="study-system-volume">音量请用设备按键</span><input v-else v-model.number="volume" aria-label="音量" type="range" min="0" max="1" step="0.05" @input="muted = false" /></div>
-          <select v-model.number="rate" aria-label="播放速度"><option v-for="speed in [0.5, 0.75, 1, 1.25, 1.5, 2]" :key="speed" :value="speed">{{ speed }}x</option></select>
-          <button type="button" :class="{ active: continuous }" aria-label="连续播放" :aria-pressed="continuous" @click="continuous = !continuous"><SkipForward :size="19" /></button>
+          <div class="study-volume study-desktop-control"><button type="button" :aria-label="muted ? '取消静音' : '静音'" @click="muted = !muted"><VolumeX v-if="muted || (!systemVolume && volume === 0)" :size="19" /><Volume2 v-else :size="19" /></button><span v-if="systemVolume" class="study-system-volume">音量请用设备按键</span><input v-else v-model.number="volume" aria-label="音量" type="range" min="0" max="1" step="0.05" @input="muted = false" /></div>
+          <select v-model.number="rate" class="study-desktop-control" aria-label="播放速度"><option v-for="speed in [0.5, 0.75, 1, 1.25, 1.5, 2]" :key="speed" :value="speed">{{ speed }}x</option></select>
+          <button type="button" class="study-desktop-control" :class="{ active: continuous }" aria-label="连续播放" :aria-pressed="continuous" @click="continuous = !continuous"><SkipForward :size="19" /></button>
+          <button type="button" class="study-mobile-settings" aria-label="播放设置" @click="settingsOpen = true"><Settings2 :size="20" /></button>
           <button type="button" aria-label="全屏模式" @click="fullscreen"><Maximize :size="19" /></button>
           <button v-if="canPictureInPicture" type="button" aria-label="画中画" @click="pictureInPicture">画中画</button>
         </div>
@@ -335,16 +361,28 @@ onBeforeUnmount(() => { remember(); disposed = true; media.value?.pause(); syste
     </div>
     <aside v-if="showList" class="study-playlist">
       <header><strong><ListVideo :size="17" />课程目录</strong><button type="button" aria-label="收起课程目录" @click="showList = false"><X :size="17" /></button></header>
-      <div class="study-tabs"><button type="button" :class="{ active: panel === '目录' }" @click="panel = '目录'">目录</button><button v-if="slides.length || !assetId" type="button" :class="{ active: panel === '讲义' }" :disabled="!slides.length" @click="panel = '讲义'">讲义 {{ slides.length || '' }}</button></div>
+      <div class="study-tabs"><button type="button" :class="{ active: panel === '简介' }" @click="panel = '简介'"><Info :size="17" />简介</button><button type="button" :class="{ active: panel === '目录' }" @click="panel = '目录'"><ListVideo :size="17" />目录</button><button v-if="slides.length || !assetId" type="button" :class="{ active: panel === '幻灯' }" :disabled="!slides.length" @click="panel = '幻灯'"><Images :size="17" />幻灯</button></div>
+      <div v-if="panel === '简介'" class="study-playlist-scroll study-description"><h2>{{ title }}</h2><p>{{ lesson.description || lesson.title }}</p><p>{{ lessons.length }} 个课时</p><div class="study-memory-inline"><MemoryActions :item="memoryItem" @resume="seek" /></div></div>
       <div v-if="panel === '目录'" class="study-playlist-scroll">
+        <div class="study-playlist-heading"><strong><ListVideo :size="17" />播放列表</strong><button type="button" :class="{ active: continuous }" :aria-pressed="continuous" @click="continuous = !continuous"><SkipForward :size="15" />连续播放</button></div>
         <article v-for="(item, index) in lessons" :key="lessonKey(item)" class="study-lesson" :class="{ current: lessonKey(item) === currentKey }">
-          <button type="button" class="study-lesson-title" @click="select(item)"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ item.title }}</strong></button>
-          <div class="study-lesson-meta"><span>{{ item.type === 'video' ? '视频课时' : '音频课时' }}</span><span>{{ fmt(seconds(item.duration) || 0) }}</span><button v-if="item.segments?.length" type="button" :aria-expanded="expanded === lessonKey(item)" @click="expanded = expanded === lessonKey(item) ? '' : lessonKey(item)">{{ item.segments.length }} 段</button></div>
+          <button type="button" class="study-lesson-title" @click="select(item)"><span class="study-lesson-number"><Play v-if="lessonKey(item) === currentKey" :size="12" fill="currentColor" /><template v-else>{{ String(index + 1).padStart(2, '0') }}</template></span><strong>{{ item.title }}</strong></button>
+          <div class="study-lesson-meta"><span><Clock :size="11" />{{ listDuration(item.duration) }}</span><span v-if="item.createdAt"><CalendarDays :size="11" />{{ item.createdAt.slice(0, 10) }}</span><button v-if="item.segments?.length" type="button" :aria-expanded="expanded === lessonKey(item)" @click="expanded = expanded === lessonKey(item) ? '' : lessonKey(item)">{{ item.segments.length }} 段</button></div>
           <div v-if="expanded === lessonKey(item)" class="study-segments"><button v-for="(segment, i) in item.segments" :key="i" type="button" :class="{ active: lessonKey(item) === currentKey && i === activeSegment }" @click="select(item, segment.startTime)"><i :style="{ background: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5] }"></i><span>{{ segment.label }}</span><small>{{ fmt(segment.startTime) }}</small></button></div>
         </article>
         <p v-if="!lessons.length" class="study-empty">没有其他课时。</p>
       </div>
-      <div v-else class="study-playlist-scroll study-thumbnails"><button v-for="(slide, i) in slides" :key="i" type="button" :class="{ active: i === page }" @click="locateSlide(i)"><StudySlideImage :src="slide.url" lazy :alt="`讲义第 ${i + 1} 页缩略图`" /><span>第 {{ i + 1 }} 页 <small>{{ slide.time === null ? '无时间点' : fmt(seconds(slide.time) || 0) }}</small></span></button></div>
+      <div v-else-if="panel === '幻灯'" class="study-playlist-scroll"><div class="study-playlist-heading"><strong>演示文稿</strong><div><button v-for="view in ['时间轴', '网格']" :key="view" type="button" :class="{ active: slideView === view }" @click="slideView = view">{{ view }}</button></div></div><div class="study-thumbnails" :class="{ 'study-slide-grid': slideView === '网格' }"><button v-for="(slide, i) in slides" :key="i" type="button" :class="{ active: i === page }" @click="locateSlide(i)"><StudySlideImage :src="slide.url" lazy :alt="`讲义第 ${i + 1} 页缩略图`" /><span>{{ String(i + 1).padStart(2, '0') }}/{{ slides.length }} <small>{{ slide.time === null ? '无时间点' : fmt(seconds(slide.time) || 0) }}</small></span></button></div><button type="button" @click="sync = true; page = slideAtTime(slides, time + timeline.offset)">回当前页</button></div>
     </aside>
+    <div v-if="settingsOpen" class="study-settings-backdrop" @click.self="settingsOpen = false">
+      <section v-dialog-focus="() => { settingsOpen = false; }" class="study-settings-sheet" role="dialog" aria-modal="true" aria-label="播放设置">
+        <header><strong>播放</strong><button type="button" aria-label="关闭播放设置" @click="settingsOpen = false"><X :size="20" /></button></header>
+        <p>播放速度</p><div class="study-speed-options"><button v-for="speed in [0.5, 0.75, 1, 1.25, 1.5, 2]" :key="speed" type="button" :class="{ active: rate === speed }" @click="rate = speed">{{ speed }}x</button></div>
+        <p>音量调节 <span>{{ systemVolume ? '请使用设备按键' : `${Math.round(volume * 100)}%` }}</span></p><input v-if="!systemVolume" v-model.number="volume" type="range" aria-label="设置音量" min="0" max="1" step="0.05" @input="muted = false" />
+        <div class="study-settings-option"><span>连续播放</span><button type="button" role="switch" :aria-checked="continuous" @click="continuous = !continuous">{{ continuous ? '开启' : '关闭' }}</button></div>
+        <div v-if="slides.length" class="study-settings-option"><span>幻灯自动同步</span><button type="button" role="switch" :aria-checked="sync" @click="sync = !sync">{{ sync ? '开启' : '关闭' }}</button></div>
+        <button type="button" @click="share">分享</button>
+      </section>
+    </div>
   </section>
 </template>

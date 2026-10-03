@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Download, ExternalLink, X } from '@lucide/vue';
+import { ExternalLink, X } from '@lucide/vue';
 import { useContentViewerStore } from '../stores/contentViewer';
 import {
   closeViewer,
@@ -12,8 +12,8 @@ import {
   toast,
 } from '../legacy-app';
 import MediaStudyPlayer from './MediaStudyPlayer.vue';
+import OriginalCoursePlayer from './OriginalCoursePlayer.vue';
 import { playbackLesson } from '../runtime/mediaStudy';
-import { useDownloadManagerStore } from '../stores/downloadManager';
 import AppOverlay from './ui/AppOverlay.vue';
 import { vDialogFocus } from '../ui/dialogFocus';
 
@@ -157,15 +157,6 @@ function escapeStandaloneText(value) {
     .replaceAll("'", '&#39;');
 }
 
-function downloadCurrent() {
-  const current = viewer.value;
-  if (!current?.downloadURL) return;
-  try {
-    useDownloadManagerStore().enqueue([{ title: current.title, original_name: current.originalName || '', url: current.downloadURL, type: current.type, source: current.downloadSource || 'learning' }]);
-    toast('已加入下载中心');
-  } catch (error) { toast(error.message); }
-}
-
 function openAdjacentItem(item) {
   if (!item) return;
   openItem(item);
@@ -174,12 +165,15 @@ function openAdjacentItem(item) {
 </script>
 
 <template>
+  <div v-if="viewer?.type === 'ovcm'" v-dialog-focus="closeViewer" class="study-viewer-overlay" aria-label="课程播放器">
+    <OriginalCoursePlayer :course-id="viewer.course.id" :lesson-id="viewer.lesson.id" :lessons="viewer.course.lessons" :title="viewer.title" :start-time="viewer.startTime" :resume-playback="viewer.resumePlayback" :show-favorites="false" :sync-parent-route="false" @close="closeViewer" />
+  </div>
   <div v-if="viewer && isMediaViewer" v-dialog-focus="closeViewer" class="study-viewer-overlay" aria-label="课程播放器">
     <MediaStudyPlayer :lesson="currentMediaLesson" :lessons="mediaLessons" :companions="companionItems" :title="activeSection?.label || '课程学习'" :start-time="viewer.startTime || 0" :resume-playback="viewer.resumePlayback !== false" :autoplay="viewer.autoplay || false" @select="openItem($event.lesson, $event.time, $event.autoplay)" @close="closeViewer" />
-    <div class="study-resource-links"><button v-if="viewer.downloadURL" type="button" @click="downloadCurrent"><Download :size="15" />下载当前课时</button><button v-for="item in companionItems" :key="item.url" type="button" @click="openItemInNewWindow(item)">{{ item.title }}（新窗口）</button></div>
+    <div class="study-resource-links"><button v-for="item in companionItems" :key="item.url" type="button" @click="openItemInNewWindow(item)">{{ item.title }}（新窗口）</button></div>
   </div>
   <AppOverlay
-    v-if="viewer && !isMediaViewer"
+    v-if="viewer && !isMediaViewer && viewer.type !== 'ovcm'"
     :open="Boolean(viewer)"
     variant="viewer"
     title-id="content-viewer-title"
