@@ -484,6 +484,9 @@ type configExecer interface {
 }
 
 func UpsertLearningConfigTx(ctx context.Context, execer configExecer, groupID uint64, settings map[string]any) error {
+	if err := ValidateDailyVerse(settings); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(settings)
 	if err != nil {
 		return err

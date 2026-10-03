@@ -23,17 +23,14 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 		return 0, false, ErrInvalidWeeklyTarget
 	}
 	switch record.TaskType {
-	case "daily_devotion", "daily_scripture":
+	case "daily_devotion", "daily_scripture", "daily_verse":
+		record.Part = ""
+		record.TaskID, record.WeekID = 0, 0
 		existingID, err := s.repo.FindExistingDaily(ctx, record.GroupID, record.UserID, record.TaskType, record.LogicalDate)
 		if err == nil {
 			return existingID, true, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return 0, false, err
-		}
-	case "daily_verse":
-		record.Part = ""
-		if err := s.validateWeeklyTarget(ctx, record); err != nil {
 			return 0, false, err
 		}
 	case "weekly_book":
@@ -69,7 +66,7 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 			var existingID uint64
 			findErr := sql.ErrNoRows
 			switch record.TaskType {
-			case "daily_devotion", "daily_scripture":
+			case "daily_devotion", "daily_scripture", "daily_verse":
 				existingID, findErr = s.repo.FindExistingDaily(ctx, record.GroupID, record.UserID, record.TaskType, record.LogicalDate)
 			case "weekly_video":
 				existingID, findErr = s.repo.FindExistingWeeklyTask(ctx, record.GroupID, record.UserID, record.TaskID, record.WeekID, record.TaskType)

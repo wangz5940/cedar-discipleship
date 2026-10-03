@@ -29,10 +29,6 @@ func TestVerseCadenceSaveCheckinAndReload(t *testing.T) {
 			}
 			wantMode := "weekly"
 			wantType := "weekly_verse"
-			if mode == "daily" {
-				wantMode = "daily"
-				wantType = "daily_verse"
-			}
 			if len(weeks) != 1 || weeks[0].VerseMode != wantMode {
 				t.Fatalf("saved weeks=%+v", weeks)
 			}
@@ -57,14 +53,14 @@ func TestVerseCadenceSaveCheckinAndReload(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				want := mode != "daily" || date == "2026-09-22"
+				want := true
 				if len(hub.Tasks) != 1 || hub.Tasks[0].Completed != want {
 					t.Fatalf("date=%s hub=%+v", date, hub)
 				}
 			}
 			record.LogicalDate = "2026-09-23"
 			second, existing, err := checkins.Create(t.Context(), &record, 1)
-			if err != nil || existing != (mode != "daily") || (second == first) != (mode != "daily") {
+			if err != nil || !existing || second != first {
 				t.Fatalf("next day=%d existing=%v err=%v", second, existing, err)
 			}
 			record.LogicalDate = "2026-09-28"
@@ -100,17 +96,14 @@ func TestVerseCadenceSaveCheckinAndReload(t *testing.T) {
 				t.Fatal(err)
 			}
 			hub, err = service.TodayHub(t.Context(), 1, 1, "2026-09-22", settings, time.Now())
-			if err != nil || hub.Tasks[0].Completed {
-				t.Fatalf("old cadence completed new cadence: %+v err=%v", hub, err)
+			if err != nil || !hub.Tasks[0].Completed {
+				t.Fatalf("legacy cadence input lost weekly completion: %+v err=%v", hub, err)
 			}
 			var count int
 			if err := db.QueryRow(`SELECT COUNT(*) FROM checkin_records WHERE deleted_at IS NULL`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			wantCount := 1
-			if mode == "daily" {
-				wantCount = 2
-			}
 			if count != wantCount {
 				t.Fatalf("lost history: %d", count)
 			}

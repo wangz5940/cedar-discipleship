@@ -25,9 +25,9 @@ describe('weekly task drafts', () => {
   });
 });
 
-it('preserves weekly defaults and explicit daily recitation when reopening the editor', () => {
+it('removes repetition frequency from new and existing weekly drafts', () => {
   const week = { id: 9, verse_ref: '罗马书 8:1', verse_enabled: true };
-  expect(weekDraftFromWeek().verse_mode).toBe('weekly');
-  expect(weekDraftFromWeek(week).verse_mode).toBe('weekly');
-  expect(weekDraftFromWeek({ ...week, verse_mode: 'daily' }).verse_mode).toBe('daily');
+  expect(weekDraftFromWeek()).not.toHaveProperty('verse_mode');
+  expect(weekDraftFromWeek(week)).not.toHaveProperty('verse_mode');
+  expect(weekDraftFromWeek({ ...week, verse_mode: 'daily' })).not.toHaveProperty('verse_mode');
 });

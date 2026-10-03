@@ -26,7 +26,7 @@ func (a *app) createAdmittedCheckin(
 	record *checkindomain.Record,
 	actorID uint64,
 ) (uint64, bool, error) {
-	if record.TaskType == "daily_devotion" || record.TaskType == "daily_scripture" {
+	if record.TaskType == "daily_devotion" || record.TaskType == "daily_scripture" || record.TaskType == "daily_verse" {
 		settings, err := a.groupLearningConfig(ctx, record.GroupID)
 		if err != nil {
 			return 0, false, fmt.Errorf("%w: %w", errCheckinConfig, err)
@@ -37,6 +37,10 @@ func (a *app) createAdmittedCheckin(
 		record.Part = ""
 		record.TaskID = 0
 		record.WeekID = 0
+		if record.TaskType == "daily_verse" {
+			plan, _ := learningdomain.DailyVersePlan(settings, record.LogicalDate)
+			record.Detail, _ = plan["verse_ref"].(string)
+		}
 	}
 	return a.checkins.Create(ctx, record, actorID)
 }

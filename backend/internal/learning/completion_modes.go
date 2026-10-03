@@ -5,6 +5,10 @@ func SeparateDailyCheckins(settings map[string]any) bool {
 }
 
 func DailyTaskTypeEnabled(settings map[string]any, taskType string) bool {
+	if taskType == "daily_verse" {
+		config, ok := nestedMap(settings, "task_sections", "daily", "verse")
+		return ok && mapBool(config, "enabled", false)
+	}
 	if !SeparateDailyCheckins(settings) {
 		return taskType == "daily_devotion" && DailyTaskEnabled(settings)
 	}
@@ -12,6 +16,10 @@ func DailyTaskTypeEnabled(settings map[string]any, taskType string) bool {
 }
 
 func DailyTaskTypeEnabledOnDate(settings map[string]any, taskType, date string) bool {
+	if taskType == "daily_verse" {
+		_, ok := DailyVersePlan(settings, date)
+		return ok
+	}
 	if !SeparateDailyCheckins(settings) {
 		if taskType != "daily_devotion" {
 			return false
@@ -127,6 +135,14 @@ func dailyTasks(date string, settings map[string]any) []TodayTaskVO {
 			ID: taskType, Type: taskType, Kind: todayTaskKind(taskType),
 			Title: title, Detail: title, Summary: summary,
 			Required: true, Status: "pending",
+		})
+	}
+	if plan, ok := DailyVersePlan(settings, date); ok {
+		ref := asString(plan["verse_ref"])
+		tasks = append(tasks, TodayTaskVO{
+			ID: "daily_verse", Type: "daily_verse", Kind: "verse",
+			Title: ref, Detail: ref, Content: asString(plan["recite_text"]),
+			Summary: "每日背经", Required: true, Status: "pending",
 		})
 	}
 	return tasks

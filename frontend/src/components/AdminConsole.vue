@@ -96,6 +96,9 @@ const localBackupImportInput = ref(null);
 const notificationSaving = ref(false);
 const dailyPlanDate = ref(todayString());
 const dailyPlansExpanded = ref(false);
+const versePlanDate = ref(todayString());
+const verseRef = ref('');
+const verseText = ref('');
 
 function navigateTabs(event) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -138,6 +141,32 @@ const settings = computed(() => learningConfig.value || {});
 const daily = computed(() => settings.value.task_sections?.daily || {});
 const devotion = computed(() => daily.value.devotion || {});
 const scripture = computed(() => daily.value.scripture || {});
+const dailyVerse = computed(() => daily.value.verse || {});
+const versePlans = computed(() => [...(dailyVerse.value.plans || [])].sort((a, b) => a.date.localeCompare(b.date)));
+watch([versePlanDate, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
+  const plan = versePlans.value.find((item) => item.date === versePlanDate.value);
+  verseRef.value = plan?.verse_ref || '';
+  verseText.value = plan?.recite_text || '';
+}, { immediate: true });
+
+async function saveVersePlan() {
+  if (!canEditLearning.value) return;
+  if (!versePlanDate.value || !verseRef.value.trim() || !verseText.value.trim()) {
+    showToast('请填写背经日期、经文和默写原文');
+    return;
+  }
+  const plans = versePlans.value.filter((item) => item.date !== versePlanDate.value);
+  plans.push({ date: versePlanDate.value, verse_ref: verseRef.value.trim(), recite_text: verseText.value.trim() });
+  updateLearning(['task_sections', 'daily', 'verse', 'plans'], plans);
+  await saveLearningConfig('当天背经已保存');
+}
+
+async function deleteVersePlan() {
+  if (!canEditLearning.value) return;
+  updateLearning(['task_sections', 'daily', 'verse', 'plans'],
+    versePlans.value.filter((item) => item.date !== versePlanDate.value));
+  await saveLearningConfig('当天背经已删除');
+}
 const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const devotionPlanMode = computed(() => dailyDevotionPlanMode(devotion.value));
 const configuredDailyPlans = computed(() => dailyDevotionPlans(devotion.value));
@@ -892,6 +921,27 @@ async function runLocalBackupImport() {
                     </div>
                   </div>
                 </div>
+                <div class="card">
+                  <h2>每日背经配置</h2>
+                  <div class="form-stack admin-form-grid">
+                    <label class="admin-toggle"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
+                    <p class="muted">只在已配置的日期显示，与周背经分别完成。</p>
+                    <label class="admin-field"><span class="admin-field-label">背经日期</span><input v-model="versePlanDate" type="date" /></label>
+                    <label class="admin-field"><span class="admin-field-label">当天经文</span><input v-model="verseRef" maxlength="255" :disabled="!canEditLearning" placeholder="例如：约翰福音 3:16" /></label>
+                    <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写当天需要背诵和默写的经文原文"></textarea></label>
+                    <div class="form-actions">
+                      <button :disabled="!canEditLearning" type="button" @click="saveVersePlan">保存当天背经</button>
+                      <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除当天背经</button>
+                      <button class="secondary" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存显示设置</button>
+                    </div>
+                    <div v-if="versePlans.length" class="daily-plan-list">
+                      <span class="admin-field-label">已配置日期</span>
+                      <button v-for="plan in versePlans" :key="plan.date" :class="{ active: plan.date === versePlanDate }" type="button" @click="versePlanDate = plan.date">
+                        <span><b>{{ plan.date }}</b><small>{{ plan.verse_ref }}</small></span><ChevronRight :size="16" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div v-if="weekDraft" class="card week-planner-card">
                   <div class="section-title">
                     <h2>周任务</h2>
@@ -967,7 +1017,6 @@ async function runLocalBackupImport() {
                     </Transition>
                     <Transition name="admin-task-section">
                       <div v-if="enabledFlag(weekDraft.verse_enabled)" class="admin-task-section-fields">
-                        <label class="admin-field"><span class="admin-field-label">背经完成频率</span><select :value="weekDraft.verse_mode || 'weekly'" @change="updateWeekDraftField('verse_mode', $event.target.value)"><option value="weekly">整周完成一次</option><option value="daily">每日完成</option></select></label>
                         <label class="admin-field"><span class="admin-field-label">默写经文</span><input :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref', $event.target.value)" /></label>
                         <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text', $event.target.value)"></textarea></label>
                       </div>

@@ -461,7 +461,7 @@ func (a *app) handleBotCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	record := &checkindomain.Record{GroupID: group.ID, UserID: userID, LogicalDate: req.LogicalDate, TaskType: taskType, Detail: strings.TrimSpace(req.Detail), IsRetro: req.IsRetro}
-	if taskType != "daily_devotion" && taskType != "daily_scripture" {
+	if taskType != "daily_devotion" && taskType != "daily_scripture" && taskType != "daily_verse" {
 		weeks, loadErr := a.learning.ListWeeks(r.Context(), group.ID)
 		if loadErr != nil {
 			logBotAPIError(r, "list_checkin_weeks", group.ID, loadErr)

@@ -370,7 +370,7 @@ func BuildTaskDrafts(input WeekInput, existingVerseTitle string) []TaskDraft {
 	if verseTitle := WeeklyVerseTaskTitle(input, existingVerseTitle); verseTitle != "" &&
 		firstNonEmpty(input.VerseRef, input.ReciteText, existingVerseTitle) != "" {
 		tasks = append(tasks, TaskDraft{
-			TaskType:  verseTaskType(input.VerseMode),
+			TaskType:  "weekly_verse",
 			Title:     verseTitle,
 			Content:   strings.TrimSpace(input.ReciteText),
 			SortOrder: 1,
@@ -729,10 +729,13 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			}
 			continue
 		}
-		if task.Type == "daily_verse" && record.LogicalDate != date {
+		if task.Type == "daily_verse" {
+			if record.LogicalDate == date && record.WeekID == nil && record.TaskID == nil {
+				return record
+			}
 			continue
 		}
-		if task.Type == "weekly_verse" || task.Type == "daily_verse" || task.Type == "weekly_outline" || task.Type == "weekly_checkin" {
+		if task.Type == "weekly_verse" || task.Type == "weekly_outline" || task.Type == "weekly_checkin" {
 			if task.TaskID > 0 && record.TaskID != nil && *record.TaskID == task.TaskID {
 				return record
 			}
@@ -1149,19 +1152,6 @@ func asString(v any) string {
 	}
 }
 
-// Missing cadence keeps legacy weekly completion. The task type is the stored cadence.
-func verseTaskType(mode string) string {
-	if mode == "daily" {
-		return "daily_verse"
-	}
-	return "weekly_verse"
-}
-
 func verseModeFromTasks(tasks []map[string]any) string {
-	for _, task := range tasks {
-		if asString(task["task_type"]) == "daily_verse" {
-			return "daily"
-		}
-	}
 	return "weekly"
 }
