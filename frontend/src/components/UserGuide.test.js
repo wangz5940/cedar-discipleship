@@ -20,6 +20,8 @@ describe('system user guide', () => {
     expect(html).toContain('自己在当前学习小组中的显示名称');
     expect(html).toContain('未来日期不能查看或打卡');
     expect(html).not.toContain('未来日期只供预览');
+    expect(html).not.toContain('没有配置的日期不显示每日背经');
+    expect(html).not.toContain('每日背经与周背经分别打卡');
     for (const name of [
       'personal-settings-current.png', 'today-learning-current.png', 'media-related-current-demo.png',
       'statistics-current.png', 'resources-current.png', 'ministry-admin-current.png',
