@@ -948,7 +948,6 @@ async function runLocalBackupImport() {
                 <LearningConfigSection title="每日背经配置" :storage-key="learningSectionKey('verse')">
                   <div class="form-stack admin-form-grid">
                     <label class="admin-toggle"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
-                    <p class="muted">只在已配置的日期显示，与周背经分别完成。</p>
                     <button class="icon-text-button daily-plan-add-button" :disabled="!canEditLearning" type="button" @click="addVersePlan">
                       <Plus :size="17" />
                       新增一天

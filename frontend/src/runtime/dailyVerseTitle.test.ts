@@ -4,6 +4,8 @@ import { dailyVerseTitle } from './dailyVerseTitle';
 describe('dailyVerseTitle', () => {
   it.each([
     ['full names and multiple books', '创世记1:1 起初\n创1:2 地是\n罗马书8：5-6 原文', '创1:1-2，罗8:5-6'],
+    ['reference after unmarked text', '众人都起来，把耶稣解到彼拉多面前，就告他说：“我们见这人诱惑国民，禁止纳税给凯撒，并说自己是基督，是王。”\n(路加福音 23:1-2 和合本)', '路23:1-2'],
+    ['references before each verse', '【路23:1】众人都起来，把耶稣解到彼拉多面前，\n【路23:2】就告他说：“我们见这人诱惑国民，禁止纳税给凯撒，并说自己是基督、是王。”', '路23:1-2'],
     ['full-width ranges', '【创 1：1－2】', '创1:1-2'],
     ['bracketed references', '【创 1：1-2】原文；（罗8:5–6）原文', '创1:1-2，罗8:5-6'],
     ['overlapping and unordered verses', '罗8:6 原文\n罗8:4-5 原文\n罗8:5 原文', '罗8:4-6'],
