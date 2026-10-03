@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { linkedOvcmCourses, loadOvcmCourses, ovcmReference } from '../runtime/ovcmCourses';
 import { BookOpen, Headphones, Layers, Play, Search, Video } from '@lucide/vue';
 import { openContentTarget, toast } from '../legacy-app';
 import { formatMediaTime as fmt } from '../runtime/mediaStudy';
@@ -10,7 +11,7 @@ import StudySlideImage from './StudySlideImage.vue';
 import { courseMemoryKey } from '../../public/study-memory.js';
 import { studyAccessStatus } from '../../public/study-access.js';
 
-const props = defineProps({ sections: { type: Array, default: () => [] }, preview: { type: Boolean, default: false }, openOvcm: { type: Boolean, default: false } });
+const props = defineProps({ sections: { type: Array, default: () => [] }, weeks: { type: Array, default: () => [] }, preview: { type: Boolean, default: false }, openOvcm: { type: Boolean, default: false } });
 const source = ref(props.openOvcm ? 'ovcm' : 'local');
 const access = ref(studyAccessStatus());
 const courses = ref([]);
@@ -29,33 +30,35 @@ const uploadInput = ref(null);
 const localCourses = computed(() => props.sections.map((section, index) => ({
   id: section.key || `local-${index}`, title: section.label || '小组课程', description: '小组上传的学习资源',
   lessons: (section.items || []).filter((item) => ['audio', 'video'].includes(item.type)),
-})).filter((course) => course.lessons.length).concat(localUploads.value.length ? [{ id: 'preview-uploads', title: '本地上传预览', description: '仅保留在当前浏览器页面', lessons: localUploads.value }] : []));
+})).filter((course) => course.lessons.length).concat(linkedOvcmCourses(props.weeks, courses.value)).concat(localUploads.value.length ? [{ id: 'preview-uploads', title: '本地上传预览', description: '仅保留在当前浏览器页面', lessons: localUploads.value }] : []));
 const filtered = computed(() => (source.value === 'ovcm' ? courses.value : localCourses.value).filter((course) => {
   const matches = `${course.title} ${course.description || ''} ${course.lessons.map((item) => item.title).join(' ')}`.toLowerCase().includes(query.value.toLowerCase().trim());
   return matches && (typeFilter.value === 'all' || course.lessons.some((lesson) => lesson.type === typeFilter.value));
 }));
 const recent = computed(() => courses.value.flatMap((course) => course.lessons.map((lesson) => ({ course, lesson })))
   .sort((a, b) => String(b.lesson.createdAt || '').localeCompare(String(a.lesson.createdAt || ''))).slice(0, 3));
-async function loadCourses() {
-  if (!access.value.unlocked) { loading.value = false; return; }
+async function loadCourses(includeLinked = false) {
+  if (!access.value.unlocked && !includeLinked) { loading.value = false; return; }
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch('/ovcm-courses.json');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
-    if (!access.value.unlocked) return;
+    const result = await loadOvcmCourses();
     courses.value = result;
     restoreRoute();
   } catch { error.value = '课程目录加载失败，请重试。'; }
   finally { loading.value = false; }
 }
+watch(() => props.weeks, async weeks => {
+  if (!weeks.some(week => (week.videos || []).some(item => ovcmReference(item.url)))) return;
+  await loadCourses(true);
+}, { immediate: true });
 function accessChanged() {
   access.value = studyAccessStatus();
   if (!access.value.unlocked) {
     if (source.value !== 'local') close();
-    source.value = 'local'; courses.value = [];
+    source.value = 'local';
   } else if (!courses.value.length) loadCourses();
+  else restoreRoute();
 }
 onMounted(() => { accessChanged(); window.addEventListener('cedar-study-access', accessChanged); window.addEventListener('hashchange', restoreRoute); });
 onBeforeUnmount(() => { window.removeEventListener('cedar-study-access', accessChanged); window.removeEventListener('hashchange', restoreRoute); uploadURLs.forEach(url => URL.revokeObjectURL(url)); });
@@ -84,6 +87,11 @@ function uploadLocal(event) {
 }
 async function open(course, lesson, time = null, shouldPlay = false) {
   const enriched = { ...lesson, coverImage: course.coverImage, relatedSections: [{ key: course.id, label: course.title, items: course.lessons }] };
+  if (course.linked) {
+    try { await openContentTarget({ url: lesson.url, title: lesson.title }); }
+    catch (failure) { toast(`打开失败：${failure.message}`); }
+    return;
+  }
   if (source.value === 'local' && !props.preview) {
     try { await openContentTarget({ ...enriched, relatedSections: undefined, startTime: time ?? 0, resumePlayback: time === null, autoplay: shouldPlay }); }
     catch (failure) { toast(`打开失败：${failure.message}`); }
@@ -150,14 +158,14 @@ async function openFavorite(item) {
       </aside>
     </div>
     <div class="library-section-label"><h2>我的学习资源</h2><select v-model="typeFilter" aria-label="课程类型"><option value="all">全部课时</option><option value="video">视频课时</option><option value="audio">音频课时</option></select></div>
-    <div class="course-source-tabs"><button v-if="access.unlocked" type="button" :class="{ active: source === 'ovcm' }" @click="source = 'ovcm'">OVCM 课程</button><button type="button" :class="{ active: source === 'local' }" @click="source = 'local'">{{ preview ? '本地上传资源' : '小组上传资源' }}</button><button v-if="access.unlocked" type="button" :class="{ active: source === 'favorites' }" @click="source = 'favorites'">收藏夹</button><button v-if="preview" type="button" @click="uploadInput.click()">选择本地音视频</button><input v-if="preview" ref="uploadInput" hidden type="file" accept="audio/*,video/*,.mp3,.m4a,.mp4,.webm,.wav,.ogg,.flac,.mov" multiple @change="uploadLocal" /></div>
+    <div class="course-source-tabs"><button v-if="access.unlocked" type="button" :class="{ active: source === 'ovcm' }" @click="source = 'ovcm'">OVCM 课程</button><button type="button" :class="{ active: source === 'local' }" @click="source = 'local'">{{ preview ? '本地上传资源' : '小组课程' }}</button><button v-if="access.unlocked" type="button" :class="{ active: source === 'favorites' }" @click="source = 'favorites'">收藏夹</button><button v-if="preview" type="button" @click="uploadInput.click()">选择本地音视频</button><input v-if="preview" ref="uploadInput" hidden type="file" accept="audio/*,video/*,.mp3,.m4a,.mp4,.webm,.wav,.ogg,.flac,.mov" multiple @change="uploadLocal" /></div>
+    <div v-if="error && source !== 'favorites'" class="course-empty" role="alert">{{ error }} <button type="button" @click="loadCourses(source === 'local')">重试</button></div>
     <StudyFavorites v-if="access.unlocked && source === 'favorites'" @open="openFavorite" /><div v-else-if="loading && source === 'ovcm'" class="course-empty" role="status">正在加载课程…</div>
-    <div v-else-if="error && source === 'ovcm'" class="course-empty" role="alert">{{ error }} <button type="button" @click="loadCourses">重试</button></div>
     <template v-else>
       <template v-if="source === 'ovcm' && !query && typeFilter === 'all'"><h2 class="course-section-title"><Play :size="22" />最新发布</h2><div class="course-grid course-recent"><button v-for="item in recent" :key="item.lesson.id" type="button" class="course-card" @click="open(item.course, item.lesson)"><div class="course-cover"><StudySlideImage v-if="item.course.coverImage" :src="item.course.coverImage" :alt="item.lesson.title" /><span>{{ fmt(item.lesson.duration) }}</span></div><div class="course-card-copy"><small>{{ item.course.title }} · {{ item.lesson.type === 'video' ? '视频' : '音频' }}</small><h3>{{ item.lesson.title }}</h3></div></button></div></template>
-      <h2 class="course-section-title"><Layers :size="23" />{{ source === 'ovcm' ? '课程' : '小组课程' }}<small>{{ filtered.length }} 个系列</small></h2>
+      <h2 class="course-section-title"><Layers :size="23" />{{ source === 'ovcm' ? '课程' : '小组课程' }}<small>{{ filtered.length }} {{ source === 'ovcm' ? '个系列' : '项课程' }}</small></h2>
       <div class="course-grid course-index"><button v-for="course in filtered" :key="course.id" type="button" class="course-card" @click="openCourse(course)"><div class="course-cover"><StudySlideImage v-if="course.coverImage" :src="course.coverImage" :alt="course.title" lazy /><BookOpen v-else :size="48" /><span class="course-cover-play"><Play :size="25" fill="currentColor" /></span></div><div class="course-card-copy"><h3>{{ course.title }}</h3><p>{{ course.description }}</p><div class="course-card-meta"><span v-if="course.lessons.some(item => item.type === 'audio')"><Headphones :size="14" />{{ course.lessons.filter(item => item.type === 'audio').length }} 个音频</span><span v-if="course.lessons.some(item => item.type === 'video')"><Video :size="14" />{{ course.lessons.filter(item => item.type === 'video').length }} 个视频</span></div></div></button></div>
-      <div v-if="!filtered.length" class="library-empty"><BookOpen :size="32" stroke-width="1.2" /><div><h3>{{ query ? '换一个关键词，再找找看' : '书房已经准备好了' }}</h3><p>{{ source === 'local' ? '当前没有匹配的音视频资源。小组上传的课程将在这里呈现。' : '未找到课程，请尝试其他关键词。' }}</p><button v-if="preview && source === 'local' && !query" type="button" @click="uploadInput.click()">选择音视频，开始体验 <Play :size="14" /></button></div></div>
+      <div v-if="!filtered.length" class="library-empty"><BookOpen :size="32" stroke-width="1.2" /><div><h3>{{ query ? '换一个关键词，再找找看' : '书房已经准备好了' }}</h3><p>{{ source === 'local' ? '当前没有匹配的音视频资源。上传及周任务安排的课程将在这里呈现。' : '未找到课程，请尝试其他关键词。' }}</p><button v-if="preview && source === 'local' && !query" type="button" @click="uploadInput.click()">选择音视频，开始体验 <Play :size="14" /></button></div></div>
     </template>
   </section>
 </template>

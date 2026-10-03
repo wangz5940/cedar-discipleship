@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue
 import { useAppStateStore } from '../stores/appState';
 import { fetchWithAuth, studyAccountAPI } from '../legacy-app';
 import { canManageStudyGroup } from '../runtime/studyPermissions';
+import { assetContentPath } from '../runtime/content';
 import { formatMediaTime } from '../runtime/mediaStudy';
 import { handoutPageAtTime, parseHandoutCues } from '../runtime/mediaHandout';
 const PdfViewer = defineAsyncComponent(() => import('./PdfViewer.vue'));
@@ -34,7 +35,7 @@ async function loadPDF() {
   if (!selectedPDF.value) return;
   loading.value = true; controller = new AbortController();
   try {
-    const response = await fetchWithAuth(`/api/assets/${selected.value}/download`, { signal: controller.signal });
+    const response = await fetchWithAuth(assetContentPath(`/api/assets/${selected.value}/download`, app.learningConfig?.resource_download_enabled !== false), { signal: controller.signal });
     if (!response.ok) throw new Error('handout_download_failed');
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (version === pdfSequence) data.value = bytes;

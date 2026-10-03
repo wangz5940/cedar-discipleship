@@ -1,4 +1,4 @@
-/* Cedar learning workspace. The embedded OVCM player owns its separate theme. */
+/* Cedar learning workspace. */
 :root {
   --canvas: var(--cd-bg);
   --surface: #fff;
@@ -224,3 +224,68 @@ body::before { display: none; }
 .course-library > .pagehead a { display: inline-flex; margin-top: 14px; color: var(--primary); text-underline-offset: 4px; font-size: 13px; }
 .course-empty { margin-top: 16px; padding: 64px 24px; border: 1px dashed var(--line-strong); border-radius: 14px; background: var(--surface); line-height: 1.8; }
 @media (max-width: 700px) { .course-library > .pagehead { padding-top: 4px; margin-bottom: 18px; } .course-library > .pagehead h1 { font-size: 26px; } .course-empty { padding: 36px 20px; } }
+
+.study-mobile-overlay, .study-mobile-slide-arrows, .study-player .study-mobile-settings { display: none; }
+.study-playlist-heading { display: flex; justify-content: space-between; align-items: center; padding: 4px 0 16px; }
+.study-playlist-heading strong { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.study-description { line-height: 1.7; }
+.study-description h2 { font-size: 20px; }
+.study-slide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.study-settings-backdrop { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: flex-end; justify-content: center; background: #19202966; }
+.study-settings-sheet { width: 100%; max-width: 500px; padding: 20px 24px max(24px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--surface); color: var(--text); box-shadow: 0 -8px 40px #19202922; }
+.study-settings-sheet header, .study-settings-option { display: flex; justify-content: space-between; align-items: center; }
+.study-settings-sheet p { display: flex; justify-content: space-between; font-size: 13px; }
+.study-speed-options { display: flex; gap: 4px; }
+.study-speed-options button { flex: 1; }
+.study-settings-sheet input { width: 100%; }
+.study-settings-option { margin: 16px 0; font-size: 14px; }
+.study-lesson.current { border-color: var(--cd-border-strong); background: var(--primary-soft); box-shadow: none; }
+@media (max-width: 700px) {
+  .study-main { position: relative; }
+  .study-breadcrumb, .study-slide-bar, .study-controls .study-memory, .study-player .study-desktop-control, .study-playlist > header { display: none; }
+  .study-stage { min-height: 0; padding: 0; background: #192029; aspect-ratio: 16 / 9; }
+  .study-slide-stage { height: 100%; }
+  .study-slide-stage img { width: 100%; max-height: none; box-shadow: none; }
+  .study-video-wrap video { border-radius: 0; max-height: none; aspect-ratio: 16 / 9; }
+  .study-audio-cover { position: relative; width: 100%; height: 100%; color: white; }
+  .study-audio-cover img { width: 100%; max-width: none; max-height: none; height: 100%; border-radius: 0; object-fit: cover; }
+  .study-audio-cover h2 { font-size: 17px; padding: 44px 50px; }
+  .study-audio-cover p { display: none; }
+  .study-mobile-overlay { display: flex; align-items: center; justify-content: space-between; position: absolute; inset: 12px 16px auto; z-index: 2; gap: 12px; }
+  .study-mobile-overlay span { color: white; background: #19202966; padding: 6px 12px; border-radius: 20px; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .study-player .study-mobile-overlay button, .study-player .study-mobile-slide-arrows button { color: white; border-radius: 50%; background: #19202955; backdrop-filter: blur(8px); }
+  .study-mobile-slide-arrows { position: absolute; top: 36%; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 2; pointer-events: none; }
+  .study-mobile-slide-arrows button { pointer-events: auto; width: 48px; height: 48px; }
+  .study-main:not(:has(.study-stage-with-handout)) .study-controls { position: absolute; inset: auto 0 0; border: 0; color: white; background: linear-gradient(transparent, #000c); padding: 20px 12px 10px; }
+  .study-controls .study-control-row { flex-wrap: nowrap; gap: 8px; margin-top: 0; }
+  .study-player .study-mobile-settings { display: inline-flex; margin-left: auto; }
+  .study-player .study-control-row button { min-width: 36px; min-height: 36px; color: inherit; }
+  .study-player .study-play { width: 36px; height: 36px; background: white; color: #192029 !important; }
+  .study-time { font-size: 10px; }
+  .study-time > span { color: #fff9; }
+  .study-player input.study-seek { margin: 0 0 6px; }
+  .study-playlist { border: 0; }
+  .study-tabs { position: sticky; top: 0; z-index: 3; padding: 0; gap: 0; background: var(--surface); box-shadow: 0 1px 3px #19202915; }
+  .study-tabs button { flex: 1; min-height: 48px; border-radius: 0; }
+  .study-tabs button.active { background: transparent; border-bottom: 3px solid var(--primary); }
+  .study-playlist-scroll { max-height: none; overflow: visible; padding: 16px 12px; }
+  .study-lesson { margin-bottom: 12px; padding: 10px 12px; }
+  .study-lesson-title strong { font-size: 13px; }
+  .study-player .study-segments button { min-height: 34px; }
+  .study-stage-with-handout { aspect-ratio: auto; background: var(--canvas); padding-top: 60px; }
+  .study-stage-with-handout .study-mobile-overlay { background: var(--primary); border-radius: 10px; }
+  .study-stage-with-handout + .study-controls .study-time > span { color: var(--muted); }
+}
+.study-player input.study-seek { background-color: #e5e7eb; }
+.study-lesson-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.study-viewer-overlay > .original-course-wrapper { flex: 1; min-height: 0; height: auto; }
+@media (max-width: 700px) {
+  .study-lesson.current .study-lesson-number { display: inline-flex; justify-content: center; align-items: center; width: 28px; height: 28px; margin-left: -3px; border-radius: 50%; background: var(--primary); color: white; }
+  .study-lesson-number { min-width: 24px; }
+  .study-player .study-lesson-title { min-height: 30px; }
+  .study-lesson-meta { gap: 6px; margin-left: 34px; }
+  .study-lesson-meta > span:first-child { background: transparent; }
+  .study-control-row .study-mobile-settings { width: 36px; border: 1px solid #ffffff55; border-radius: 50%; }
+  .study-playlist-heading button { border-radius: 20px; min-height: 28px; padding: 4px 10px; }
+  .study-lesson-meta span { font-size: 10px; }
+}

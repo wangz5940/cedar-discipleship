@@ -4,7 +4,7 @@ import MemoryActions from './MemoryActions.vue';
 import { courseMemoryKey, savedPosition, studyMemoryScope, studyFrameChanged } from '../../public/study-memory.js';
 import { togglePictureInPicture } from '../../public/media-session.js';
 
-const props = defineProps({ courseId: String, lessonId: String, lessons: { type: Array, default: () => [] }, title: String, startTime: { type: Number, default: 0 }, resumePlayback: { type: Boolean, default: true } });
+const props = defineProps({ courseId: String, lessonId: String, lessons: { type: Array, default: () => [] }, title: String, startTime: { type: Number, default: 0 }, resumePlayback: { type: Boolean, default: true }, showFavorites: { type: Boolean, default: true }, syncParentRoute: { type: Boolean, default: true } });
 const emit = defineEmits(['close', 'favorites']);
 const frame = ref(null);
 const canPictureInPicture = ref(false);
@@ -45,7 +45,7 @@ function syncRoute(event) {
     activeLesson.value = decodeURIComponent(hash.split('/')[3].split('?')[0]);
     const initialHash = source.value.slice(source.value.indexOf('#'));
     const parentHash = restoredTime.value > 0 && hash === initialHash ? hash.split('?')[0] : hash;
-    history.replaceState(null, '', `${location.pathname}${location.search}${parentHash}`);
+    if (props.syncParentRoute) history.replaceState(null, '', `${location.pathname}${location.search}${parentHash}`);
   } else emit('close');
 }
 onMounted(() => window.addEventListener('message', syncRoute));
@@ -54,7 +54,7 @@ onBeforeUnmount(() => window.removeEventListener('message', syncRoute));
 
 <template>
   <section class="original-course-wrapper">
-    <div class="original-memory-bar"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" class="ghost" @click="pictureInPicture">画中画</button><button type="button" class="ghost" @click="emit('favorites')">我的收藏</button></div>
+    <div class="original-memory-bar"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" class="ghost" @click="pictureInPicture">画中画</button><button v-if="showFavorites" type="button" class="ghost" @click="emit('favorites')">我的收藏</button><button type="button" class="ghost" @click="emit('close')">返回课程</button></div>
     <p v-if="notice" role="status">{{ notice }}</p>
     <iframe ref="frame" class="original-course-player" :src="source" title="OVCM 课程播放器" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen @load="bindFrame"></iframe>
   </section>
@@ -67,4 +67,9 @@ onBeforeUnmount(() => window.removeEventListener('message', syncRoute));
 .original-course-player { display: block; width: 100%; flex: 1; min-height: 0; border: 1px solid var(--cd-border); border-radius: 12px; background: #f9fafb; }
 @media (max-width: 980px) { .original-course-wrapper { height: calc(100dvh - 104px); min-height: 0; } }
 @media (max-width: 430px) { .original-course-wrapper { height: calc(100dvh - 92px); } }
+@media (max-width: 700px) {
+  .original-course-wrapper { width: 100%; height: 100dvh; gap: 0; }
+  .original-course-player { border: 0; border-radius: 0; order: -1; }
+  .original-memory-bar { padding: 8px 12px max(8px, env(safe-area-inset-bottom)); background: var(--cd-surface); }
+}
 </style>

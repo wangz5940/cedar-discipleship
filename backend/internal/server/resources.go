@@ -18,6 +18,7 @@ import (
 	"time"
 
 	assetdomain "agp/backend/internal/asset"
+	"agp/backend/internal/learning"
 
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	pdfmodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -44,6 +45,23 @@ func (a *app) handleListAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleDownloadAsset(w http.ResponseWriter, r *http.Request) {
+	groupID := requireGroupID(w, mustUser(r))
+	if groupID == 0 {
+		return
+	}
+	settings, err := a.groupLearningConfig(r.Context(), groupID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "learning_config_failed")
+		return
+	}
+	if !learning.ResourceDownloadsAllowed(settings) {
+		writeError(w, http.StatusForbidden, "resource_download_disabled")
+		return
+	}
+	a.handleAssetContent(w, r)
+}
+
+func (a *app) handleAssetContent(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)
 	if groupID == 0 {
