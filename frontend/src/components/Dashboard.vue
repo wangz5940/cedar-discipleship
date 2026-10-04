@@ -502,6 +502,12 @@ async function exportRankingChart() {
 .dashboard-page { min-width: 0; }
 .page-header { margin-bottom: 24px; }
 .metric__suffix { font-size: 16px; }
+.metricgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.metricgrid > .metric { min-height: 130px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 20px; text-align: left; border: 1px solid var(--cd-border); background: var(--cd-learning-bg, var(--cd-primary-soft)); background-image: var(--cd-card-blue-wash); }
+.metricgrid > .metric b { font-size: clamp(30px, 4vw, 40px); font-weight: 700; margin: 8px 0 4px; color: var(--cd-primary); }
+.metricgrid > .metric:nth-child(1), .metricgrid > .metric:nth-child(4) { background: var(--cd-primary); border-color: var(--cd-primary); box-shadow: var(--cd-shadow-card); }
+.metricgrid > .metric:nth-child(1) b, .metricgrid > .metric:nth-child(4) b { color: var(--cd-on-primary); }
+.metricgrid > .metric:nth-child(1) .muted, .metricgrid > .metric:nth-child(4) .muted { color: var(--cd-on-primary-muted); }
 .daily-detail { margin-bottom: 24px; }
 .daily-detail, .daily-table { min-width: 0; }
 .daily-table table { width: max-content; min-width: 100%; }
