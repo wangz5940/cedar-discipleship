@@ -448,7 +448,7 @@ async function refreshResources() {
           <div class="pagehead spread">
             <div>
               <h1>小组资料库</h1>
-              <p class="muted">共 {{ filteredResources.length }} 项资料，选择一份开始学习</p>
+              <p class="muted">共 {{ filteredResources.length }} 项资料</p>
             </div>
             <div class="inline app-resource-page-actions">
               <div v-if="resourceDownloadsEnabled && selectedResourceKeys.size" class="inline app-resource-selection">

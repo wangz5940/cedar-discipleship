@@ -85,7 +85,6 @@ function downloadedAt(item: DownloadHistoryItem): string {
     >
       <template #header>
         <div>
-          <span class="eyebrow">资源下载</span>
           <h2 id="download-center-title">下载中心</h2>
         </div>
         <button class="ghost icon-button" type="button" title="关闭" aria-label="关闭下载中心" @click="manager.panelOpen = false">

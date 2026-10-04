@@ -792,7 +792,6 @@ onMounted(loadGovernance);
           <label v-for="group in groups" :key="group.id"><input type="checkbox" :checked="batchShareDialog.consumerGroupIDs.includes(group.id)" @change="toggleBatchShareGroup(group.id)" /><span>{{ group.name }}</span></label>
         </div>
         <div class="resource-dialog-body">
-          <p>本次会在一个事务内更新所有选中资源的共享范围。</p>
           <ul class="resource-confirm-list">
             <li v-for="asset in batchShareDialog.assets.slice(0, 8)" :key="asset.id"><strong>{{ asset.title }}</strong><span>{{ categoryLabel(asset.category) }} · #{{ asset.id }}</span></li>
           </ul>
@@ -806,7 +805,7 @@ onMounted(loadGovernance);
       <section v-dialog-focus="() => { if (!batchBusy) batchDeleteDialog = null; }" class="resource-dialog" role="dialog" aria-modal="true" aria-label="批量删除资源">
         <header><div><span class="eyebrow">批量删除</span><h3>{{ batchDeleteDialog.assets.length }} 个资源</h3></div><button class="ghost resource-icon-button" type="button" aria-label="关闭批量删除弹窗" :disabled="batchBusy" @click="batchDeleteDialog = null"><X :size="18" /></button></header>
         <div class="resource-dialog-body">
-          <p>删除会在一个事务内完成。自有资源将从本组资料库移除并撤销共享；已导入资源将移除逻辑引用。</p>
+          <p>自有资源将从本组资料库移除并撤销共享；已导入资源将移除引用。</p>
           <ul class="resource-confirm-list">
             <li v-for="asset in batchDeleteDialog.assets" :key="asset.id">
               <strong>{{ asset.title }}</strong>
@@ -822,7 +821,7 @@ onMounted(loadGovernance);
       <section v-dialog-focus="() => { if (!batchBusy) batchImportDialog = null; }" class="resource-dialog" role="dialog" aria-modal="true" aria-label="批量导入资源">
         <header><div><span class="eyebrow">批量导入</span><h3>{{ batchImportDialog.resources.length }} 个共享资源</h3></div><button class="ghost resource-icon-button" type="button" aria-label="关闭批量导入弹窗" :disabled="batchBusy" @click="batchImportDialog = null"><X :size="18" /></button></header>
         <div class="resource-dialog-body">
-          <p>本次会在一个事务内完成导入；任一资源失效或无权限时，全部导入都会回滚。</p>
+          <p>任一资源失效或无权限时，全部导入都会取消。</p>
           <ul class="resource-confirm-list">
             <li v-for="resource in batchImportDialog.resources.slice(0, 10)" :key="resource.asset_id">
               <strong>{{ resource.title }}</strong>

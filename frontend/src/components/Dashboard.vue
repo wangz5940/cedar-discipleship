@@ -209,7 +209,6 @@ async function exportRankingChart() {
         <div class="panel metric">
           <span class="muted">小组成员</span>
           <b>{{ memberCount }}</b>
-          <span class="small muted">当前小组成员数</span>
         </div>
         <div class="panel metric">
           <span class="muted">全组完成项</span>
@@ -219,7 +218,6 @@ async function exportRankingChart() {
         <div class="panel metric">
           <span class="muted">我的任务</span>
           <b>{{ completed }}<span class="metric__suffix"> / {{ taskCount }}</span></b>
-          <span class="small muted">{{ completed === taskCount ? '全部完成' : '继续完成' }}</span>
         </div>
       </div>
 
@@ -333,7 +331,6 @@ async function exportRankingChart() {
           <div class="stats-center-title-row">
             <h2 class="stats-center__title">周期统计</h2>
             <button v-if="statsView === 'chart'" class="primary stats-export" type="button" @click="exportRankingChart">导出图片</button>
-            <p class="small muted">选择日期范围，查看各项完成情况</p>
           </div>
           <div class="inline stats-controls">
             <div class="inline date-range" aria-label="统计时间范围">

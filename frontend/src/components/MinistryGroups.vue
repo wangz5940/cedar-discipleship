@@ -788,7 +788,7 @@ function localDateTimeValue() {
               </div>
               <div class="ministry-stack-copy">
                 <b>{{ group.name }}</b>
-                <small>{{ group.member_count }} 人 · {{ group.joined ? groupRole(group) : '可申请加入' }}</small>
+                <small>{{ group.member_count }} 人</small>
               </div>
               <button
                 v-if="!group.joined"
@@ -1020,7 +1020,6 @@ function localDateTimeValue() {
                 <div class="ministry-view-head">
                   <div>
                     <h3>记录最近进展</h3>
-                    <p class="muted">时间 · 内容 · 附件</p>
                   </div>
                   <button class="ghost" type="button" @click="resetProgressForm">收起</button>
                 </div>
