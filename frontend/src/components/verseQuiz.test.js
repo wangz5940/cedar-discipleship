@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createVerseBlanks, tokenizeVerse, verseBlankWidth } from './verseQuiz';
+import { createVerseBlanks, gradeVerseAnswer, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 describe('verse quiz', () => {
   it('keeps punctuation and verse references visible', () => {
@@ -31,5 +31,58 @@ describe('verse quiz', () => {
     expect(verseBlankWidth('神')).toBe(50);
     expect(verseBlankWidth('神爱世人')).toBe(92);
     expect(verseBlankWidth('神爱世人')).toBeGreaterThan(verseBlankWidth('神'));
+  });
+
+  it.each([
+    '【弗1:16】', '（路加福音 23:1-2 和合本）', '(注释)', '[注释]',
+    '（外层【内层】注释）', '【第一行\n第二行】',
+  ])('keeps all bracketed content visible: %s', annotation => {
+    const text = `${annotation}神爱世人，${annotation}赐下独生子。`;
+    const tokens = tokenizeVerse(text);
+    expect(tokens.join('')).toBe(text);
+    const blanks = createVerseBlanks(tokens, 100);
+    expect(blanks.map(index => tokens[index])).toEqual(['神爱世人', '赐下独生子']);
+  });
+
+  it('has no blanks when the text contains only annotations and punctuation', () => {
+    expect(createVerseBlanks(tokenizeVerse('【弗1:16】（和合本） \n，。'), 100)).toEqual([]);
+  });
+
+  it('does not hide text after an unmatched opening bracket', () => {
+    const tokens = tokenizeVerse('（神爱世人，赐下独生子。');
+    expect(tokens.join('')).toBe('（神爱世人，赐下独生子。');
+    expect(createVerseBlanks(tokens, 100).map(index => tokens[index])).toEqual(['神爱世人', '赐下独生子']);
+  });
+});
+
+describe('character grading', () => {
+  it.each([
+    ['全对', '就为你们不住地感谢神', '就为你们不住地感谢神', 10, 0],
+    ['用户示例错字', '就为你们不住地感谢　神', '就为你们不住的感谢神', 9, 1],
+    ['用户示例漏字加错字', '就为你们不住地感谢　神', '就为你不住的感谢神', 8, 2],
+    ['中间漏字', '就为你们不住地感谢神', '就为你不住地感谢神', 9, 1],
+    ['开头漏字', '神爱世人', '爱世人', 3, 1],
+    ['结尾漏字', '神爱世人', '神爱世', 3, 1],
+    ['连续漏字', '就为你们不住地感谢神', '就为你们感谢神', 7, 3],
+    ['多字', '神爱世人', '神真爱世人', 3, 1],
+    ['首尾多字', '神爱世人', '啊神爱世人啊', 2, 2],
+    ['重复字', '神爱世人', '神爱爱世人', 3, 1],
+    ['重复片段漏字', '你们你们都来', '你们都来', 4, 2],
+    ['交换相邻字', '神爱世人', '神世爱人', 2, 2],
+    ['多种错误不重复扣后续字', '就为你们不住地感谢神', '就为你不住的常感谢神', 7, 3],
+    ['全错', '神爱世人', '天地万物', 0, 4],
+    ['未作答', '神爱世人', '', 0, 4],
+    ['仅空白', '神爱世人', ' \t　\n', 0, 4],
+    ['忽略所有空白', '神　爱世人', ' 神 爱\t世\n人\u00a0', 4, 0],
+    ['保留字形差异', '感谢神', '感謝神', 2, 1],
+    ['Unicode字符按一个字', '𠮷神爱', '神爱', 2, 1],
+    ['过量插字不产生负分', '神', '天地神爱世人', 0, 5],
+    ['空原文', '', '', 0, 0],
+  ])('%s', (_name, expected, answer, correct, errors) => {
+    const result = gradeVerseAnswer(expected, answer);
+    expect(result).toEqual({
+      total: Array.from(expected.replace(/\s/gu, '')).length,
+      correct, errors, exact: errors === 0,
+    });
   });
 });
