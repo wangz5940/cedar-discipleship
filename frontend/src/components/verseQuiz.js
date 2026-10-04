@@ -4,7 +4,7 @@ export function tokenizeVerse(text) {
 
 export function createVerseBlanks(tokens, percent, random = Math.random) {
   const candidates = tokens.map((token, index) => /^(?:\d+|\d+:\d+|[\p{P}\s])$/u.test(token) ? -1 : index).filter(index => index >= 0);
-  const clamped = Math.min(90, Math.max(0, Number(percent) || 0));
+  const clamped = Math.min(100, Math.max(0, Number(percent) || 0));
   const count = clamped ? Math.max(1, Math.round(candidates.length * clamped / 100)) : 0;
   for (let index = candidates.length - 1; index > 0; index--) {
     const other = Math.floor(random() * (index + 1));

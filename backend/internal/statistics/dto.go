@@ -1,5 +1,7 @@
 package statistics
 
+import "agp/backend/internal/learning"
+
 type SummaryVO struct {
 	From    string         `json:"from"`
 	To      string         `json:"to"`
@@ -38,5 +40,6 @@ type CalendarItemVO struct {
 }
 
 type MemberCalendarVO struct {
-	Items []CalendarItemVO `json:"items"`
+	Items    []CalendarItemVO                  `json:"items"`
+	Progress map[string]learning.TodayProgress `json:"progress,omitempty"`
 }

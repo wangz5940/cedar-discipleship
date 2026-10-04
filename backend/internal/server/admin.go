@@ -40,6 +40,10 @@ func (a *app) handleAdminSaveLearningConfig(w http.ResponseWriter, r *http.Reque
 		settings = map[string]any{}
 	}
 	before, after, err := a.upsertGroupLearningConfig(r.Context(), groupID, settings)
+	if errors.Is(err, learningdomain.ErrLearningConfigConflict) {
+		writeError(w, http.StatusConflict, "learning_config_conflict")
+		return
+	}
 	if errors.Is(err, learningdomain.ErrInvalidDailyVerse) {
 		writeError(w, http.StatusBadRequest, "invalid_daily_verse")
 		return

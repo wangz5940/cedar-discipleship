@@ -2,6 +2,37 @@ package learning
 
 import "testing"
 
+func TestIndependentVerseFrequencyAndRanges(t *testing.T) {
+	plan := map[string]any{"date": "2026-09-29", "end_date": "2026-10-05", "completion_mode": "weekly", "verse_ref": "约3:16", "recite_text": "神爱世人"}
+	config := map[string]any{"enabled": true, "plans": []any{plan}}
+	settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{
+		"devotion": map[string]any{"enabled": false}, "scripture": map[string]any{"enabled": false}, "verse": config,
+	}}}
+	if err := ValidateDailyVerse(settings); err != nil {
+		t.Fatal(err)
+	}
+	records := []TodayRecord{{ID: 7, TaskType: "daily_verse", LogicalDate: "2026-09-30", Detail: "约3:16"}}
+	if tasks := buildTodayTasks("2026-10-04", nil, nil, settings, records); len(tasks) != 1 || !tasks[0].Completed || tasks[0].TaskID != 0 || tasks[0].WeekID != 0 {
+		t.Fatalf("weekly independent tasks=%+v", tasks)
+	}
+	if tasks := buildTodayTasks("2026-10-06", nil, nil, settings, records); len(tasks) != 0 {
+		t.Fatalf("outside range=%+v", tasks)
+	}
+	plan["completion_mode"] = "daily"
+	if tasks := buildTodayTasks("2026-10-04", nil, nil, settings, records); len(tasks) != 1 || tasks[0].Completed {
+		t.Fatalf("daily repetition=%+v", tasks)
+	}
+	config["plans"] = []any{plan, map[string]any{"date": "2026-10-04", "verse_ref": "诗23:1", "recite_text": "耶和华"}}
+	if ValidateDailyVerse(settings) != ErrInvalidDailyVerse {
+		t.Fatal("overlapping plans accepted")
+	}
+	config["plans"] = []any{plan}
+	plan["completion_mode"], plan["end_date"] = "weekly", "2026-10-06"
+	if ValidateDailyVerse(settings) != ErrInvalidDailyVerse {
+		t.Fatal("eight-day weekly period accepted")
+	}
+}
+
 func TestDailyVerseTasks(t *testing.T) {
 	for _, mode := range []string{"combined", "separate"} {
 		t.Run(mode, func(t *testing.T) {

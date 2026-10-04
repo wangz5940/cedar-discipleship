@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { currentTaskOptions, login, logout, openTaskContent, setSelectedDate, toggleCheckin } from './legacy-app';
+import { closeCalendar, openMemberCalendar, currentTaskOptions, login, logout, openTaskContent, setSelectedDate, toggleCheckin } from './legacy-app';
+import { useAppStateStore } from './stores/appState';
 import { useContentViewerStore } from './stores/contentViewer';
 
 let records;
@@ -72,4 +73,38 @@ it('shows separate daily and weekly tasks, opens date-specific original text, an
   expect(currentTaskOptions()[1].completed).toBe(true);
   await setSelectedDate('2026-09-24');
   expect(currentTaskOptions().map(task => task.type)).toEqual(['weekly_verse']);
+});
+
+it('ignores late calendar responses after changing members or closing the calendar', async () => {
+  const originalFetch = fetch.getMockImplementation();
+  const pending = {};
+  fetch.mockImplementation((url, options) => String(url).includes('/calendar?')
+    ? new Promise(resolve => { pending[String(url)] = resolve; }) : originalFetch(url, options));
+  const first = openMemberCalendar({ user_id: 1 }, '2026-09');
+  const second = openMemberCalendar({ user_id: 2 }, '2026-10');
+  pending['/api/members/2/calendar?month=2026-10'](Response.json({ items: [], progress: { '2026-10-01': { completed: 1, total: 3 } } }));
+  await second;
+  expect(useAppStateStore().calendar.member.user_id).toBe(2);
+  pending['/api/members/1/calendar?month=2026-09'](Response.json({ items: [{ date: '2026-09-22' }] }));
+  await first;
+  expect(useAppStateStore().calendar.member.user_id).toBe(2);
+  const third = openMemberCalendar({ user_id: 1 }, '2026-09');
+  closeCalendar();
+  pending['/api/members/1/calendar?month=2026-09'](Response.json({ items: [] }));
+  await third;
+  expect(useAppStateStore().calendar).toBeNull();
+});
+
+it('keeps independent weekly recitation completed across dates without duplicating daily tasks', async () => {
+  const originalPlans = [...plans];
+  try {
+    plans.splice(0, plans.length, { date: '2026-09-22', end_date: '2026-09-28', completion_mode: 'weekly', verse_ref: '约3:16', recite_text: '神爱世人' });
+    await setSelectedDate('2026-09-22');
+    expect(currentTaskOptions()[0]).toMatchObject({ summary: '整周完成一次', completed: false });
+    await toggleCheckin(currentTaskOptions()[0]);
+    await setSelectedDate('2026-09-23');
+    expect(currentTaskOptions()[0]).toMatchObject({ title: '约3:16', completed: true, periodStart: '2026-09-22' });
+    await setSelectedDate('2026-09-29');
+    expect(currentTaskOptions().filter(task => task.type === 'daily_verse')).toEqual([]);
+  } finally { plans.splice(0, plans.length, ...originalPlans); }
 });

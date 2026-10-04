@@ -127,6 +127,7 @@ const displayedWeekDraft = computed(() => state.weekDraft || weekDraftFromWeek(c
 
 let sessionGeneration = 0;
 let adminRequestID = 0;
+let calendarRequestID = 0;
 let viewerRequestID = 0;
 let loadRequestID = 0;
 let rankingRequestID = 0;
@@ -877,6 +878,7 @@ export async function reloadApp() {
 }
 
 export function closeCalendar() {
+  calendarRequestID++;
   state.calendar = null;
   render();
 }
@@ -1672,13 +1674,15 @@ export function currentTaskOptions() {
     });
   }
   const dailyVerse = dailyConfig.verse?.enabled === true
-    ? dailyConfig.verse.plans?.find((plan) => plan.date === state.selectedDate) : null;
+    ? dailyConfig.verse.plans?.find((plan) => plan.date <= state.selectedDate && state.selectedDate <= (plan.end_date || plan.date)) : null;
   if (dailyVerse) {
     const link = buildWeeklyVerseContentLink(dailyVerse.verse_ref, dailyVerse.recite_text);
     tasks.push({
       type: 'daily_verse', taskID: 0, weekID: 0, logicalDate: state.selectedDate,
       title: dailyVerse.verse_ref, detail: dailyVerse.verse_ref, icon: '背经', part: '',
-      summary: '每日背经', reciteText: dailyVerse.recite_text || '',
+      summary: dailyVerse.completion_mode === 'weekly' ? '整周完成一次' : '每日背经',
+      periodStart: dailyVerse.completion_mode === 'weekly' ? dailyVerse.date : '',
+      periodEnd: dailyVerse.end_date || dailyVerse.date, reciteText: dailyVerse.recite_text || '',
       contentURL: '', contentLinks: link ? [link] : [],
     });
   }
@@ -2198,7 +2202,9 @@ function checkinMatchesTask(item, task) {
     return item.logical_date === state.selectedDate;
   }
   if (task.type === 'daily_verse') {
-    return item.logical_date === state.selectedDate && !Number(item.task_id) && !Number(item.week_id);
+    const matchesDate = task.periodStart ? item.logical_date >= task.periodStart && item.logical_date <= task.periodEnd
+      && item.detail === task.detail : item.logical_date === state.selectedDate;
+    return matchesDate && !Number(item.task_id) && !Number(item.week_id);
   }
   if (task.type === 'weekly_verse' || task.type === 'weekly_outline') {
     if (task.taskID && Number(item.task_id || 0) === Number(task.taskID)) return true;
@@ -2273,12 +2279,18 @@ function isFutureSelected() {
 }
 
 export async function openMemberCalendar(member, month = state.selectedDate.slice(0, 7)) {
+  const requestID = ++calendarRequestID;
+  const generation = sessionGeneration;
+  const groupID = state.user?.current_group_id;
+  const isCurrent = () => requestID === calendarRequestID && generation === sessionGeneration
+    && groupID === state.user?.current_group_id;
   try {
     const result = await api(`/members/${member.user_id}/calendar?month=${month}`);
-    state.calendar = { member, month, selectedDate: state.selectedDate, items: result.items || [] };
+    if (!isCurrent()) return;
+    state.calendar = { member, month, selectedDate: state.selectedDate, items: result.items || [], progress: result.progress };
     render();
   } catch (error) {
-    toast(error.message);
+    if (isCurrent()) toast(error.message);
   }
 }
 
@@ -2341,14 +2353,14 @@ export async function saveLearningConfig(successMessage = '学习内容配置已
   try {
     const result = await api('/admin/learning-config', {
       method: 'PUT',
-      body: JSON.stringify(state.learningConfig || currentLearningSettings()),
+      body: JSON.stringify({ _revision: 0, ...(state.learningConfig || currentLearningSettings()) }),
     });
     state.learningConfig = result.settings || state.learningConfig;
     toast(message);
     await loadAll();
     return true;
   } catch (error) {
-    toast(error.message);
+    toast(error.message === 'learning_config_conflict' ? '配置已被其他管理员更新。本地编辑已保留，请重新读取最新配置后保存。' : error.message);
     return false;
   }
 }

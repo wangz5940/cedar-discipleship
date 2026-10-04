@@ -305,6 +305,20 @@ docker compose --env-file .env -f deploy/docker-compose.separated.yml logs backe
 
 上线验证：完成一次当天灵修和本周各类周任务打卡，检查对应群消息及 `status=sent` 日志；再补录历史灵修和往周任务，确认没有群消息。
 
+## 数据库备份与恢复
+
+完整备份应同时保存全库 SQL 和资源目录；网站的小组 JSON 仅用于小组配置迁移，不包含全部账号数据、默写成绩或上传文件。
+
+```bash
+bash scripts/backup-mysql.sh <MySQL容器名> <独立备份目录>
+cd <独立备份目录>
+sha256sum -c <备份文件名>.sql.gz.sha256
+```
+
+脚本通过数据库容器内现有账号执行事务快照，不输出凭据；压缩校验、校验和与写盘完成后才发布备份文件。失败返回非零，不发布残缺导出，也不自动删除已有备份。定时执行和异地保留由部署环境安排；SQL 包含个人数据，应限制访问。若需一致时间点的数据库与文件恢复，应在停止写入的维护窗口或协调快照下备份资源目录，并定期在隔离环境验证 SQL 导入、记录数量、文件校验和和媒体播放。
+
+Docker 模板明确启用提交刷盘、binlog 同步与 doublewrite。022 迁移只增加打卡任务查询索引，可重复执行，不修改历史记录或原有唯一约束。
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](file:///Users/bytedance/program/agp/LICENSE).

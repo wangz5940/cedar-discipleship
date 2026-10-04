@@ -19,6 +19,13 @@ describe('verse quiz', () => {
     expect(createVerseBlanks(tokens, 50, () => 0)).not.toEqual(createVerseBlanks(tokens, 50, () => 0.999));
   });
 
+  it('blanks every word at 100% while retaining punctuation and references', () => {
+    const tokens = tokenizeVerse('约3:16，神爱世人。12 凡信他的，不至灭亡。');
+    const blanks = createVerseBlanks(tokens, 100);
+    expect(tokens.filter((_, index) => blanks.includes(index))).toEqual(['约', '神爱世人', '凡信他的', '不至灭亡']);
+    expect(createVerseBlanks(tokens, 150)).toEqual(blanks);
+  });
+
   it('sizes a blank from its displayed text instead of the hidden answer', () => {
     expect(verseBlankWidth('')).toBe(50);
     expect(verseBlankWidth('神')).toBe(50);

@@ -4,7 +4,7 @@ import { linkedOvcmCourses, loadOvcmCourses, ovcmReference } from '../runtime/ov
 import { BookOpen, Headphones, Layers, Play, Search, Video } from '@lucide/vue';
 import { openContentTarget, toast } from '../legacy-app';
 import { formatMediaTime as fmt } from '../runtime/mediaStudy';
-import MediaStudyPlayer from './MediaStudyPlayer.vue';
+import UploadedCoursePlayer from './UploadedCoursePlayer.vue';
 import OriginalCoursePlayer from './OriginalCoursePlayer.vue';
 import StudyFavorites from './StudyFavorites.vue';
 import StudySlideImage from './StudySlideImage.vue';
@@ -138,7 +138,7 @@ async function openFavorite(item) {
 
 <template>
   <OriginalCoursePlayer v-if="selectedLesson && source === 'ovcm'" :course-id="selectedCourse.id" :lesson-id="selectedLesson.id" :lessons="selectedCourse.lessons" :title="selectedCourse.title" :start-time="startTime" :resume-playback="resumePlayback" @close="close" @favorites="showFavorites" />
-  <MediaStudyPlayer v-else-if="selectedLesson" :lesson="selectedLesson" :lessons="selectedCourse.lessons" :title="selectedCourse.title" :start-time="startTime" :resume-playback="resumePlayback" :autoplay="autoplay" @select="open(selectedCourse, $event.lesson, $event.time, $event.autoplay)" @close="close" />
+  <UploadedCoursePlayer v-else-if="selectedLesson" :lesson="selectedLesson" :lessons="selectedCourse.lessons" :title="selectedCourse.title" :start-time="startTime" :resume-playback="resumePlayback" :autoplay="autoplay" @select="open(selectedCourse, $event.lesson, $event.time, $event.autoplay)" @close="close" />
   <section v-else class="course-library">
     <div class="library-intro">
       <div class="library-intro-copy">

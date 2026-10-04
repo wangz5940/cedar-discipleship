@@ -2,11 +2,15 @@ package checkin
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strconv"
 	"strings"
 	"time"
+
+	"agp/backend/internal/reading"
 )
 
 type MySQLRepository struct {
@@ -36,6 +40,7 @@ func (r *MySQLRepository) FindExistingDaily(ctx context.Context, groupID, userID
 
 type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 func validateWeeklyTarget(
@@ -94,7 +99,41 @@ func findExistingWeeklyBook(ctx context.Context, queryer queryRower, groupID, us
 		  AND (part=? OR detail=?)
 		ORDER BY logical_date,id LIMIT 1`,
 		groupID, userID, start.Format("2006-01-02"), end.Format("2006-01-02"), title, title).Scan(&id)
-	return id, err
+	if !errors.Is(err, sql.ErrNoRows) || taskID == 0 {
+		return id, err
+	}
+	// A replaced task retains its historical resource binding. Reuse only a
+	// proven superset in this week, so editing a page range cannot lose progress
+	// or create another completion on a different day.
+	rows, err := queryer.QueryContext(ctx, `SELECT c.id,c.part,c.detail,COALESCE(old_task.content,''),target.title,COALESCE(target.content,'')
+		FROM checkin_records c
+		JOIN study_tasks old_task ON old_task.id=c.task_id AND old_task.group_id=c.group_id
+		JOIN study_tasks target ON target.id=? AND target.group_id=c.group_id AND target.week_id=?
+		WHERE c.group_id=? AND c.user_id=? AND c.week_id=? AND c.task_type='weekly_book'
+		  AND c.logical_date BETWEEN ? AND ? AND c.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM task_assets old_asset JOIN task_assets target_asset
+		    ON target_asset.group_id=old_asset.group_id AND target_asset.asset_id=old_asset.asset_id
+		    WHERE old_asset.group_id=c.group_id AND old_asset.task_id=c.task_id AND target_asset.task_id=target.id)
+		ORDER BY c.logical_date,c.id`, taskID, weekID, groupID, userID, weekID,
+		start.Format("2006-01-02"), end.Format("2006-01-02"))
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var completedPart, completedDetail, completedContent, targetTitle, targetContent string
+		if err := rows.Scan(&id, &completedPart, &completedDetail, &completedContent, &targetTitle, &targetContent); err != nil {
+			return 0, err
+		}
+		if reading.Covers(completedPart, completedContent, targetTitle, targetContent) ||
+			reading.Covers(completedDetail, completedContent, targetTitle, targetContent) {
+			return id, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return 0, sql.ErrNoRows
 }
 
 func (r *MySQLRepository) FindExistingWeeklyTask(ctx context.Context, groupID, userID, taskID, weekID uint64, taskType string) (uint64, error) {
@@ -156,6 +195,9 @@ func findExistingWeeklyTask(ctx context.Context, queryer queryRower, groupID, us
 
 func (r *MySQLRepository) Create(ctx context.Context, record *Record, actorID uint64) (uint64, bool, error) {
 	now := nowSQL()
+	if record.TaskType == "daily_verse" && record.PeriodStart != "" {
+		return r.createPeriodVerse(ctx, record, actorID, now)
+	}
 	if !isWeeklyTaskType(record.TaskType) {
 		id, err := createRecord(ctx, r.db, record, actorID, now)
 		return id, false, err
@@ -213,6 +255,37 @@ func (r *MySQLRepository) Create(ctx context.Context, record *Record, actorID ui
 		return 0, false, err
 	}
 	return id, false, nil
+}
+
+func (r *MySQLRepository) createPeriodVerse(ctx context.Context, record *Record, actorID uint64, now string) (uint64, bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback()
+	var id uint64
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=? FOR UPDATE`, record.UserID).Scan(&id); err != nil {
+		return 0, false, err
+	}
+	err = tx.QueryRowContext(ctx, `SELECT id FROM checkin_records
+		WHERE group_id=? AND user_id=? AND task_type='daily_verse' AND task_id IS NULL AND week_id IS NULL
+		AND logical_date BETWEEN ? AND ? AND detail=? AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+		record.GroupID, record.UserID, record.PeriodStart, record.PeriodEnd, record.Detail).Scan(&id)
+	if err == nil {
+		return id, true, tx.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, false, err
+	}
+	// Keep legacy empty-part completions discoverable above while allowing a
+	// changed verse in the same period to retain its own completion history.
+	periodKey := sha256.Sum256([]byte(record.PeriodStart + "\x00" + record.PeriodEnd + "\x00" + record.Detail))
+	record.Part = hex.EncodeToString(periodKey[:])
+	id, err = createRecord(ctx, tx, record, actorID, now)
+	if err != nil {
+		return 0, false, err
+	}
+	return id, false, tx.Commit()
 }
 
 type recordExecer interface {

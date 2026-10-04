@@ -275,6 +275,10 @@ function isMentorResource(asset) {
 
 const calendarCounts = computed(() => {
   const counts = {};
+  if (calendar.value?.progress) {
+    for (const [date, progress] of Object.entries(calendar.value.progress)) counts[date] = progress.completed;
+    return counts;
+  }
   for (const item of calendar.value?.items || []) counts[item.date] = (counts[item.date] || 0) + 1;
   return counts;
 });

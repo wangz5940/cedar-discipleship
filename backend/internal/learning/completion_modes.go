@@ -139,11 +139,16 @@ func dailyTasks(date string, settings map[string]any) []TodayTaskVO {
 	}
 	if plan, ok := DailyVersePlan(settings, date); ok {
 		ref := asString(plan["verse_ref"])
-		tasks = append(tasks, TodayTaskVO{
+		task := TodayTaskVO{
 			ID: "daily_verse", Type: "daily_verse", Kind: "verse",
 			Title: ref, Detail: ref, Content: asString(plan["recite_text"]),
 			Summary: "每日背经", Required: true, Status: "pending",
-		})
+		}
+		if WeeklyVersePlan(plan) {
+			task.PeriodStart, task.PeriodEnd = VersePlanRange(plan)
+			task.Summary = "整周完成一次"
+		}
+		tasks = append(tasks, task)
 	}
 	return tasks
 }

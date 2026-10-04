@@ -6,8 +6,67 @@ import (
 	"testing"
 	"time"
 
+	"agp/backend/internal/learning"
 	"agp/backend/internal/testdb"
 )
+
+func TestImportLocalBackupPreservesRecitationHistoryAndAdvancesConfigRevision(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
+		VALUES (1,'a','A',NOW(),NOW()),(2,'b','B',NOW(),NOW());
+		INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES (1,'admin','Admin','admin',NOW(),NOW());
+		INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at)
+		VALUES (1,1,'Admin',NOW(),NOW(),NOW());
+		INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at)
+		VALUES (1,1,'member',1,NOW(),NOW());
+		INSERT INTO group_settings(group_id,settings,created_at,updated_at)
+		VALUES (1,'{"_revision":5}',NOW(),NOW());
+		INSERT INTO study_weeks(id,group_id,start_date,end_date,title,verse_ref,created_at,updated_at)
+		VALUES (7,1,'2026-09-28','2026-10-04','本周','约3:16',NOW(),NOW());
+		INSERT INTO recite_attempts(group_id,user_id,week_id,verse_ref,logical_date,blank_percent,blank_count,correct_count,accuracy,score,attempt_no,created_at)
+		VALUES (1,1,7,'约3:16','2026-10-01',50,1,1,100,100,1,NOW()),
+		       (2,1,7,'约3:16','2026-10-01',50,1,1,100,100,1,NOW())`)
+	repo := NewMySQLRepository(db)
+	payload, err := NewService(repo).LocalBackup(t.Context(), 1, time.Now().Format(time.RFC3339))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A backup's old revision must not make an already-open page current again.
+	payload.Settings["_revision"] = 0
+	if err := repo.ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	var newWeek, historyWeek, otherWeek uint64
+	if err := db.QueryRow(`SELECT id FROM study_weeks WHERE group_id=1`).Scan(&newWeek); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT week_id FROM recite_attempts WHERE group_id=1`).Scan(&historyWeek); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT week_id FROM recite_attempts WHERE group_id=2`).Scan(&otherWeek); err != nil {
+		t.Fatal(err)
+	}
+	if newWeek == 7 || historyWeek != newWeek || otherWeek != 7 {
+		t.Fatalf("restored week=%d history=%d other group=%d", newWeek, historyWeek, otherWeek)
+	}
+	config, err := learning.NewMySQLRepository(db).LearningConfig(t.Context(), 1)
+	if err != nil || config["_revision"] != float64(6) {
+		t.Fatalf("config=%v err=%v", config, err)
+	}
+	if err := repo.ImportLocalBackup(t.Context(), 1, 1, payload, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM study_weeks WHERE group_id=1`).Scan(&newWeek); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT week_id FROM recite_attempts WHERE group_id=1`).Scan(&historyWeek); err != nil {
+		t.Fatal(err)
+	}
+	if historyWeek != newWeek {
+		t.Fatalf("history lost on repeated restore: week=%d history=%d", newWeek, historyWeek)
+	}
+}
 
 func TestImportLocalBackupIgnoresLegacyFeedbackPayload(t *testing.T) {
 	db := testdb.Open(t)

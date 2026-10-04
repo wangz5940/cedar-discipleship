@@ -26,6 +26,9 @@ func (s *Service) Create(ctx context.Context, record *Record, actorID uint64) (u
 	case "daily_devotion", "daily_scripture", "daily_verse":
 		record.Part = ""
 		record.TaskID, record.WeekID = 0, 0
+		if record.TaskType == "daily_verse" && record.PeriodStart != "" {
+			return s.repo.Create(ctx, record, actorID)
+		}
 		existingID, err := s.repo.FindExistingDaily(ctx, record.GroupID, record.UserID, record.TaskType, record.LogicalDate)
 		if err == nil {
 			return existingID, true, nil

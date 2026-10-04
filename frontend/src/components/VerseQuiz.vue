@@ -5,8 +5,8 @@ import { createVerseBlanks, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 const props = defineProps({ open: Boolean, task: Object, scope: String, userName: String, userId: Number, members: Array, canSelectMember: Boolean });
 const emit = defineEmits(['close']);
-const rate = ref(50);
-const examRate = ref(50);
+const rate = ref(100);
+const examRate = ref(100);
 const originalText = ref('');
 const examText = ref('');
 const originVisible = ref(true);
@@ -61,7 +61,7 @@ const dailyVerse = computed(() => props.task?.type === 'daily_verse');
 const targetParams = computed(() => dailyVerse.value
   ? `task_type=daily_verse&logical_date=${encodeURIComponent(props.task?.logicalDate || '')}`
   : `task_id=${props.task?.taskID}`);
-const key = computed(() => `verse-quiz:${props.scope || 'user'}:${selectedUserID.value}:${dailyVerse.value ? `daily_verse:${props.task?.logicalDate}:${props.task?.title}` : (props.task?.weekID || props.task?.taskID || '')}`);
+const key = computed(() => `verse-quiz:${props.scope || 'user'}:${selectedUserID.value}:${dailyVerse.value ? `daily_verse:${props.task?.periodStart || props.task?.logicalDate}:${props.task?.title}` : (props.task?.weekID || props.task?.taskID || '')}`);
 const legacyKey = computed(() => `verse-quiz:${props.scope || 'user'}:${props.task?.weekID || props.task?.taskID || ''}`);
 
 function loadLocalHistory() {
@@ -96,8 +96,8 @@ async function loadRecords() {
 watch(() => [props.open, props.task?.taskID, props.task?.type, props.task?.logicalDate, props.scope], () => {
   if (!props.open) return;
   selectedUserID.value = Number(props.userId || 0);
-  rate.value = 50;
-  examRate.value = 50;
+  rate.value = 100;
+  examRate.value = 100;
   originalText.value = String(props.task?.reciteText || '').trim();
   examText.value = '';
   originVisible.value = true;
@@ -133,7 +133,7 @@ function generate() {
     message.value = '请先输入或配置要默写的原文。';
     return;
   }
-  rate.value = Math.min(90, Math.max(0, Math.round(Number(rate.value) || 0)));
+  rate.value = Math.min(100, Math.max(0, Math.round(Number(rate.value) || 0)));
   const nextTokens = tokenizeVerse(text);
   const nextBlanks = createVerseBlanks(nextTokens, rate.value);
   if (rate.value > 0 && !nextBlanks.length) {
@@ -153,8 +153,8 @@ function generate() {
 function reset() {
   originalText.value = '';
   examText.value = '';
-  rate.value = 50;
-  examRate.value = 50;
+  rate.value = 100;
+  examRate.value = 100;
   blankIndexes.value = [];
   answers.value = [];
   revealed.value = [];
@@ -232,7 +232,7 @@ async function grade() {
           <textarea id="recite-origin-text" v-model="originalText" placeholder="粘贴要默写的原文，或在管理员学习配置里填写“默写原文”。"></textarea>
         </div>
         <div class="recite-controls">
-          <label>挖空比例 <input v-model.number="rate" type="number" min="0" max="90" step="1" />%</label>
+          <label>挖空比例 <input v-model.number="rate" type="number" min="0" max="100" step="1" />%</label>
           <button type="button" :disabled="saving" @click="generate">生成默写卷</button>
           <button type="button" :disabled="saving" @click="grade">批改打分</button>
           <button type="button" class="danger" :disabled="saving" @click="reset">重置</button>
