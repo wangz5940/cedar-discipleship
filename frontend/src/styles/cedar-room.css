@@ -136,7 +136,7 @@ body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, 
 .learning-fraction strong { font-weight: 600; }
 .checkin-page .actions button, .app-resource-stack-card__actions button,
 .course-source-tabs button, .library-feature button { font-size: 15px; font-weight: 600; }
-.sidebar.app-sidebar .nav button { font-weight: 500; }
+.sidebar.app-sidebar .nav button { font-weight: 600; }
 .sidebar.app-sidebar .nav button.active { font-weight: 700; }
 .checkin-page .task-status { font-size: 13px; font-weight: 600; }
 @media (max-width: 767px) {
