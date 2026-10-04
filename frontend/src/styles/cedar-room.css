@@ -1,5 +1,5 @@
 /* Cedar Room: editorial learning surfaces; media controls keep their own styling. */
-:is(.cedar-app-shell, .study-preview) :is(.card, .panel, .cd-group-card, .cd-resource-card, .course-card, .favorite-card, .member-card, .member-stack-card, .matrix-stack-card, .resource-stack-card, .ministry-stack-card, .bar-chart-card, .task-progress-card, .member-check-card):not(.task):not(.summary) {
+:is(.cedar-app-shell, .study-preview) :is(.cd-resource-card, .course-card, .favorite-card) {
   background-image: var(--cd-card-blue-wash);
 }
 .sidebar.app-sidebar, .study-preview > .sidebar { background: var(--cd-surface); color: var(--cd-text); border-right: 1px solid var(--cd-border); }
