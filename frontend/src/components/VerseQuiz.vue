@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { api } from '../legacy-app';
-import { createVerseBlanks, tokenizeVerse, verseBlankWidth } from './verseQuiz';
+import { createVerseBlanks, gradeVerseAnswer, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 const props = defineProps({ open: Boolean, task: Object, scope: String, userName: String, userId: Number, members: Array, canSelectMember: Boolean });
 const emit = defineEmits(['close']);
@@ -29,6 +29,8 @@ const memberOptions = computed(() => {
 });
 const tokens = computed(() => tokenizeVerse(examText.value));
 const blanks = computed(() => new Set(blankIndexes.value));
+const grading = computed(() => blankIndexes.value.map((tokenIndex, answerIndex) =>
+  gradeVerseAnswer(tokens.value[tokenIndex], answers.value[answerIndex])));
 let blankMeasureCanvas;
 function fitBlank(el) {
   if (!blankMeasureCanvas) blankMeasureCanvas = document.createElement('canvas');
@@ -172,9 +174,8 @@ async function grade() {
     message.value = submitted.value ? '这次默写已经批改。请生成新的默写卷。' : '请先生成默写卷。';
     return;
   }
-  const correct = blankIndexes.value.filter((tokenIndex, answerIndex) =>
-    String(answers.value[answerIndex] || '').trim() === tokens.value[tokenIndex]).length;
-  const total = blankIndexes.value.length;
+  const correct = grading.value.reduce((sum, item) => sum + item.correct, 0);
+  const total = grading.value.reduce((sum, item) => sum + item.total, 0);
   const record = {
     at: new Date().toISOString(), rate: examRate.value, correct, total,
     score: Math.round(correct / total * examRate.value),
@@ -222,7 +223,13 @@ async function grade() {
         <button type="button" class="recite-close" aria-label="关闭" @click="emit('close')">✕</button>
       </header>
       <div class="recite-body">
-        <p class="recite-tip">先确认默写原文，再生成挖空练习。标点和章节号不会挖空；批改后点击错题可切换查看答案。</p>
+        <p class="recite-tip">先确认默写原文，再生成挖空练习。括号内的内容、标点和章节号不挖空、不计分；批改后点击错题可切换查看答案。</p>
+        <details class="recite-rules">
+          <summary>按字计分规则</summary>
+          <p>每个填空独立比对，忽略半角、全角空格及换行。以最少的错字、漏字、多字次数扣分，每次扣一个字的分；漏字不会使后面的正确文字连续扣分。</p>
+          <p>重复字按多字处理，漏掉重复片段按少的字数处理；相邻两字颠倒通常扣两个字，简繁体或同音字仍按字形比对。未填写得零分，每空最低零分。</p>
+          <p>得分＝计分字数 ÷ 挖空原文字数 × 挖空比例，四舍五入。计分字数为原文字数减去扣分字数；例如“就为你们不住的感谢神”计 9/10 字，“就为你不住的感谢神”计 8/10 字。</p>
+        </details>
         <div class="recite-meta-grid">
           <label class="recite-meta-field"><span>测试人</span><select :value="selectedUserID" :disabled="!canSelectMember || saving" @change="changeMember"><option v-for="member in memberOptions" :key="member.user_id" :value="member.user_id">{{ member.member_name || member.display_name || member.username }}</option></select></label>
           <label class="recite-meta-field"><span>测试范围</span><input :value="dailyVerse ? task?.logicalDate : task?.weekStart && task?.weekEnd ? `${task.weekStart} ~ ${task.weekEnd}` : (task?.title || '本周背经')" readonly /></label>
@@ -241,7 +248,7 @@ async function grade() {
           <template v-for="(token, index) in tokens" :key="index">
             <template v-if="blanks.has(index)">
               <input v-fit-blank="token" :value="submitted && revealed[blankIndexes.indexOf(index)] ? token : answers[blankIndexes.indexOf(index)]" class="recite-blank-input"
-                :class="submitted ? (String(answers[blankIndexes.indexOf(index)] || '').trim() === token ? 'correct' : revealed[blankIndexes.indexOf(index)] ? 'revealed' : 'incorrect') : ''"
+                :class="submitted ? (grading[blankIndexes.indexOf(index)].exact ? 'correct' : 'incorrect') : ''"
                 :aria-label="`第 ${blankIndexes.indexOf(index) + 1} 个空`" placeholder="..."
                 :readonly="Boolean(submitted)" @input="answers[blankIndexes.indexOf(index)] = $event.target.value; fitBlank($event.target)" @click="submitted && (revealed[blankIndexes.indexOf(index)] = !revealed[blankIndexes.indexOf(index)])" />
             </template>
@@ -250,7 +257,7 @@ async function grade() {
         </div>
         <div v-if="submitted" class="recite-score">
           得分：<strong>{{ scoreOf(submitted) }}</strong> 分
-          <small>当前难度 {{ submitted.rate }}%，全对满分 {{ submitted.rate }} 分；答对 {{ submitted.correct }} / {{ submitted.total }} 空</small>
+          <small>当前难度 {{ submitted.rate }}%，全对满分 {{ submitted.rate }} 分；计分 {{ submitted.correct }} / {{ submitted.total }} 字</small>
         </div>
         <p v-if="message" class="recite-message" role="status">{{ message }}</p>
         <section class="recite-leaderboard">
@@ -286,6 +293,9 @@ async function grade() {
 .recite-close { border: 0; background: transparent; font-size: 22px; cursor: pointer; }
 .recite-body { max-height: calc(90dvh - 65px); overflow: auto; padding: 20px; }
 .recite-tip { margin: 0 0 14px; color: var(--cd-muted); font-size: 13px; line-height: 1.6; text-align: center; }
+.recite-rules { margin-bottom: 14px; color: var(--cd-muted); font-size: 13px; line-height: 1.6; }
+.recite-rules summary { cursor: pointer; }
+.recite-rules p { margin: 6px 0; }
 .recite-meta-grid { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 12px; margin-bottom: 14px; }
 .recite-meta-field { display: grid; gap: 6px; color: var(--cd-muted); font-size: 12px; font-weight: 700; }
 .recite-meta-field input, .recite-meta-field select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--cd-border); border-radius: 8px; background: #fff; color: var(--cd-text); font-size: 14px; }
@@ -302,9 +312,8 @@ async function grade() {
 .recite-result input.recite-blank-input { display: inline-block; min-width: 50px; max-width: 100%; min-height: 0 !important; height: auto !important; margin: 0 4px; padding: 0 2px 1px !important; border: 0 !important; border-bottom: 1px solid var(--cd-text) !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; outline: none; color: var(--cd-text); font-size: 17px; line-height: 1.4; text-align: center; vertical-align: baseline; appearance: none; }
 .recite-result input.recite-blank-input::placeholder { color: var(--cd-muted); opacity: 1; }
 .recite-result input.recite-blank-input:focus { border-bottom-color: var(--cd-primary) !important; box-shadow: none !important; }
-.recite-result input.recite-blank-input.correct { border-bottom-color: var(--cd-success) !important; color: var(--cd-success); }
+.recite-result input.recite-blank-input.correct { border-bottom-color: #111 !important; color: #111; }
 .recite-result input.recite-blank-input.incorrect { border-bottom-color: var(--cd-danger) !important; color: var(--cd-danger); cursor: pointer; }
-.recite-result input.recite-blank-input.revealed { border-bottom-color: var(--cd-warning) !important; color: var(--cd-warning); cursor: pointer; }
 .recite-answer { color: var(--cd-warning); font-weight: 700; }
 .recite-score { margin-top: 14px; padding: 16px; border-radius: 8px; background: var(--cd-primary-soft); text-align: center; font-size: 17px; font-weight: 700; }
 .recite-score strong { color: var(--cd-primary); font-size: 28px; }
