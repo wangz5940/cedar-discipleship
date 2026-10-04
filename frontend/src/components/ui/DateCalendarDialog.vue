@@ -106,7 +106,7 @@ function shiftMonth(offset) {
         :class="{ outside: day.outside, selected: day.selected, recorded: day.count }"
         type="button"
         :disabled="day.disabled"
-        :aria-label="`${day.date}${day.count ? `，${day.count}项记录` : ''}`"
+        :aria-label="`${day.date}${day.count ? `，已完成${day.count}项` : ''}`"
         :aria-pressed="day.selected"
         @click="emit('select', day.date)"
       >

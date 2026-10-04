@@ -269,13 +269,44 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 	if err != nil {
 		return err
 	}
+	var revision uint64
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(JSON_EXTRACT(settings,'$._revision'),0)
+		FROM group_settings WHERE group_id=? FOR UPDATE`, groupID).Scan(&revision)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	settings["_revision"] = revision + 1
 	if err := learning.UpsertLearningConfigTx(ctx, tx, groupID, settings); err != nil {
+		return err
+	}
+	existingWeeks := map[string]uint64{}
+	rows, err := tx.QueryContext(ctx, `SELECT id,DATE_FORMAT(start_date,'%Y-%m-%d'),DATE_FORMAT(end_date,'%Y-%m-%d'),verse_ref
+		FROM study_weeks WHERE group_id=? FOR UPDATE`, groupID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id uint64
+		var start, end, ref string
+		if err := rows.Scan(&id, &start, &end, &ref); err != nil {
+			rows.Close()
+			return err
+		}
+		existingWeeks[start+"|"+end+"|"+ref] = id
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
 		return err
 	}
 	if err := learning.DeleteAllWeeksTx(ctx, tx, groupID); err != nil {
 		return err
 	}
 	weekIDs := make(map[uint64]uint64, len(payload.Weeks))
+	reciteWeekIDs := make(map[uint64]uint64)
+	currentReciteWeekIDs := make(map[uint64]uint64)
 	taskIDs := make(map[uint64]uint64)
 	candidates := make(backupTaskAssetCandidates)
 	for _, originalWeek := range payload.Weeks {
@@ -289,6 +320,10 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 		}
 		if originalWeek.ID > 0 {
 			weekIDs[originalWeek.ID] = weekID
+			reciteWeekIDs[originalWeek.ID] = weekID
+		}
+		if previousID := existingWeeks[originalWeek.StartDate+"|"+originalWeek.EndDate+"|"+originalWeek.VerseRef]; previousID > 0 {
+			currentReciteWeekIDs[previousID] = weekID
 		}
 		drafts := learning.BuildTaskDrafts(week, "")
 		newTaskIDs, err := learning.ReplaceWeekTasksWithIDsTx(ctx, tx, groupID, weekID, drafts, now)
@@ -299,6 +334,29 @@ func (r *MySQLRepository) ImportLocalBackup(ctx context.Context, groupID, actorI
 	}
 	if err := r.replaceCheckinsTx(ctx, tx, groupID, actorID, userIDs, weekIDs, taskIDs, payload.Checkins, now); err != nil {
 		return err
+	}
+	for oldID, newID := range currentReciteWeekIDs {
+		reciteWeekIDs[oldID] = newID
+	}
+	// Group JSON does not export quiz attempts. Keep existing same-group grades
+	// reachable when restored weeks receive new IDs; other groups are untouched.
+	if len(reciteWeekIDs) > 0 {
+		var cases, ids []string
+		var args []any
+		for oldID, newID := range reciteWeekIDs {
+			cases = append(cases, "WHEN ? THEN ?")
+			args = append(args, oldID, newID)
+			ids = append(ids, "?")
+		}
+		args = append(args, groupID)
+		for oldID := range reciteWeekIDs {
+			args = append(args, oldID)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE recite_attempts SET week_id=CASE week_id `+
+			strings.Join(cases, " ")+` ELSE week_id END WHERE group_id=? AND week_id IN (`+
+			strings.Join(ids, ",")+`)`, args...); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

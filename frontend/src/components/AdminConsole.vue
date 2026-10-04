@@ -102,6 +102,8 @@ const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
 const versePlansExpanded = ref(false);
 const verseText = ref('');
+const versePlanEnd = ref(todayString());
+const verseCompletionMode = ref('daily');
 
 function learningSectionKey(section) {
   return `cedar:learning-sections:${user.value?.id || user.value?.username || 'user'}:${currentGroupID.value || 0}:${section}`;
@@ -157,12 +159,14 @@ const verseRef = computed(() => generatedVerseTitle.value
 watch([versePlanDate, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
   const plan = versePlans.value.find((item) => item.date === versePlanDate.value);
   verseText.value = plan?.recite_text || '';
+  versePlanEnd.value = plan?.end_date || versePlanDate.value;
+  verseCompletionMode.value = plan?.completion_mode || 'daily';
 }, { immediate: true });
 
 function addVersePlan() {
   if (!canEditLearning.value) return;
   const last = versePlans.value.at(-1);
-  versePlanDate.value = last ? shiftDailyPlanDate(last.date, 1) : versePlanDate.value || todayString();
+  versePlanDate.value = last ? shiftDailyPlanDate(last.end_date || last.date, 1) : versePlanDate.value || todayString();
   verseText.value = '';
 }
 
@@ -180,10 +184,19 @@ async function saveVersePlan() {
     showToast('经文章节过多，请分到不同日期配置');
     return;
   }
+  const end = versePlanEnd.value || versePlanDate.value;
+  if (end < versePlanDate.value || (verseCompletionMode.value === 'weekly' && end > shiftDailyPlanDate(versePlanDate.value, 6))) {
+    showToast('结束日期不能早于开始日期，每周打卡的范围最多七天');
+    return;
+  }
+  if (versePlans.value.some(plan => plan.date !== versePlanDate.value && plan.date <= end && (plan.end_date || plan.date) >= versePlanDate.value)) {
+    showToast('背经日期范围与现有计划重叠，请调整日期');
+    return;
+  }
   const plans = versePlans.value.filter((item) => item.date !== versePlanDate.value);
-  plans.push({ date: versePlanDate.value, verse_ref: verseRef.value.trim(), recite_text: verseText.value.trim() });
+  plans.push({ date: versePlanDate.value, end_date: versePlanEnd.value || versePlanDate.value, completion_mode: verseCompletionMode.value, verse_ref: verseRef.value.trim(), recite_text: verseText.value.trim() });
   updateLearning(['task_sections', 'daily', 'verse', 'plans'], plans);
-  await saveLearningConfig('当天背经已保存');
+  await saveLearningConfig('背经已保存');
 }
 
 async function deleteVersePlan() {
@@ -964,19 +977,21 @@ async function runLocalBackupImport() {
                     </div>
                   </LearningConfigSection>
                 </div>
-                <LearningConfigSection title="每日背经配置" :storage-key="learningSectionKey('verse')">
+                <LearningConfigSection title="背经配置" :storage-key="learningSectionKey('verse')">
                   <div class="form-stack admin-form-grid">
-                    <label class="admin-toggle"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
+                    <label class="admin-toggle"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示背经任务</span></label>
                     <button class="icon-text-button daily-plan-add-button" :disabled="!canEditLearning" type="button" @click="addVersePlan">
                       <Plus :size="17" />
-                      新增一天
+                      新增背经
                     </button>
-                    <label class="admin-field"><span class="admin-field-label">背经日期</span><input v-model="versePlanDate" type="date" /></label>
+                    <label class="admin-field"><span class="admin-field-label">开始日期</span><input v-model="versePlanDate" type="date" /></label>
+                    <label class="admin-field"><span class="admin-field-label">结束日期</span><input v-model="versePlanEnd" type="date" :min="versePlanDate" /></label>
+                    <label class="admin-field"><span class="admin-field-label">打卡频率</span><select v-model="verseCompletionMode" :disabled="!canEditLearning"><option value="daily">每天打卡</option><option value="weekly">每周打卡一次</option></select></label>
                     <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写经文原文并保留章节标记，例如：创1:1 起初，神创造天地。"></textarea></label>
                     <p class="muted" aria-live="polite">{{ verseRef ? `${generatedVerseTitle ? '自动标题' : '沿用原标题'}：${verseRef}` : '标题将从原文中的章节标记自动生成，例如创1:1-2，罗8:5-6。' }}</p>
                     <div class="form-actions">
-                      <button :disabled="!canEditLearning" type="button" @click="saveVersePlan">保存当天背经</button>
-                      <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除当天背经</button>
+                      <button :disabled="!canEditLearning" type="button" @click="saveVersePlan">保存背经</button>
+                      <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除背经</button>
                       <button class="secondary" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存显示设置</button>
                     </div>
                     <div v-if="versePlans.length" class="daily-plan-list">
@@ -989,11 +1004,12 @@ async function runLocalBackupImport() {
                         </button>
                       </div>
                       <button v-for="plan in visibleVersePlans" :key="plan.date" :class="{ active: plan.date === versePlanDate }" type="button" @click="versePlanDate = plan.date">
-                        <span><b>{{ plan.date }}</b><small>{{ plan.verse_ref }}</small></span><ChevronRight :size="16" />
+                        <span><b>{{ plan.date }}{{ plan.end_date && plan.end_date !== plan.date ? ` — ${plan.end_date}` : '' }}</b><small>{{ plan.verse_ref }} · {{ plan.completion_mode === 'weekly' ? '每周一次' : '每天' }}</small></span><ChevronRight :size="16" />
                       </button>
                     </div>
                   </div>
                 </LearningConfigSection>
+
                 <LearningConfigSection v-if="weekDraft" title="周任务" :storage-key="learningSectionKey('weekly')" class="week-planner-card">
                   <div class="section-title">
                     <div class="inline-actions">
@@ -1027,7 +1043,6 @@ async function runLocalBackupImport() {
                     <div class="admin-checkbox-row">
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>书籍</span></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.video_enabled)" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>音视频</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.verse_enabled)" @change="updateWeekDraftField('verse_enabled', $event.target.checked)" /><span>背经</span></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.outline_enabled)" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>提纲</span></label>
                     </div>
                     <Transition name="admin-task-section">
@@ -1068,12 +1083,7 @@ async function runLocalBackupImport() {
                         <button v-if="ovcmLoadError" type="button" @click="loadCourseOptions">{{ ovcmLoadError }}，重试</button>
                       </div>
                     </Transition>
-                    <Transition name="admin-task-section">
-                      <div v-if="enabledFlag(weekDraft.verse_enabled)" class="admin-task-section-fields">
-                        <label class="admin-field"><span class="admin-field-label">默写经文</span><input :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref', $event.target.value)" /></label>
-                        <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text', $event.target.value)"></textarea></label>
-                      </div>
-                    </Transition>
+
                     <Transition name="admin-task-section">
                       <div v-if="enabledFlag(weekDraft.outline_enabled)" class="admin-binding-list">
                         <div class="admin-field-label">提纲背诵图片</div>

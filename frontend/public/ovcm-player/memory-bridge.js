@@ -5,12 +5,13 @@ suspendStudyMemory();
 parent.postMessage({ type: 'cedar-study-frame-ready' }, location.origin);
 
 const states = new WeakMap();
+const recovering = new WeakMap();
 let systemSession;
 let sessionElement;
 let lessonMetadata = {};
 function route() {
   const match = location.hash.match(/^#\/course\/([^/]+)\/([^?]+)(?:\?t=([\d.]+))?$/);
-  return match ? { key: courseMemoryKey(decodeURIComponent(match[1]), decodeURIComponent(match[2])), explicit: match[3] !== undefined, time: Number(match[3] || 0) } : null;
+  return match ? { key: lessonMetadata.kind === 'media' ? lessonMetadata.key : courseMemoryKey(decodeURIComponent(match[1]), decodeURIComponent(match[2])), explicit: match[3] !== undefined, time: Number(match[3] || 0) } : null;
 }
 function media(element) { return element instanceof HTMLMediaElement; }
 function syncPlaybackButton(element) {
@@ -26,7 +27,9 @@ function initialize(event) {
   const element = event.target;
   const current = route();
   if (!media(element) || !current || element.readyState < 1) return;
-  const state = { key: current.key, scope: studyMemoryScope(), source: element.currentSrc, lastSaved: 0, awaitingTime: current.time > 0 ? Math.min(current.time, element.duration) : null };
+  const recovery = recovering.get(element);
+  recovering.delete(element);
+  const state = { key: current.key, scope: studyMemoryScope(), source: element.currentSrc, lastSaved: 0, wasPlaying: false, awaitingTime: recovery ? recovery.time : current.time > 0 ? Math.min(current.time, element.duration) : null };
   states.set(element, state);
   parent.postMessage({ type: 'cedar-media-capabilities', pictureInPicture: supportsPictureInPicture(element) }, location.origin);
   if (sessionElement !== element) {
@@ -45,7 +48,12 @@ function initialize(event) {
   }
   queueMicrotask(() => {
     if (route()?.key !== state.key || element.currentSrc !== state.source) return;
-    if (!current.explicit && studyMemoryStatus().ready) element.currentTime = savedPosition(state.key, element.duration);
+    if (recovery) element.currentTime = Math.min(recovery.time, element.duration);
+    else if (!current.explicit && studyMemoryStatus().ready) element.currentTime = savedPosition(state.key, element.duration);
+    if (recovery?.playing || (lessonMetadata.kind === 'media' && lessonMetadata.autoplay)) {
+      lessonMetadata.autoplay = false;
+      void element.play().catch(() => {});
+    }
   });
 }
 function remember(element, force = false, completed = false) {
@@ -60,8 +68,28 @@ function remember(element, force = false, completed = false) {
   state.lastSaved = Date.now();
 }
 document.addEventListener('loadedmetadata', initialize, true);
-document.addEventListener('play', event => { if (media(event.target)) queueMicrotask(() => syncPlaybackButton(event.target)); }, true);
-document.addEventListener('timeupdate', event => { if (media(event.target)) remember(event.target); }, true);
+document.addEventListener('play', event => {
+  if (!media(event.target)) return;
+  const state = states.get(event.target);
+  if (state) state.wasPlaying = true;
+  queueMicrotask(() => syncPlaybackButton(event.target));
+}, true);
+document.addEventListener('error', event => {
+  const element = event.target, state = states.get(element);
+  if (!media(element) || element.error?.code !== 4 || lessonMetadata.kind !== 'media' || !lessonMetadata.fallbackURL) return;
+  const fallback = new URL(lessonMetadata.fallbackURL, location.href).href;
+  if (element.currentSrc === fallback || (state && route()?.key !== state.key)) return;
+  event.stopImmediatePropagation();
+  recovering.set(element, { time: element.currentTime || 0, playing: state?.wasPlaying || false });
+  element.src = fallback;
+  element.load();
+}, true);
+document.addEventListener('timeupdate', event => {
+  if (media(event.target)) {
+    remember(event.target);
+    if (lessonMetadata.kind === 'media') parent.postMessage({ type: 'cedar-local-time', time: event.target.currentTime }, location.origin);
+  }
+}, true);
 document.addEventListener('pause', event => {
   if (media(event.target)) { remember(event.target, true); queueMicrotask(() => syncPlaybackButton(event.target)); }
 }, true);
@@ -72,6 +100,9 @@ window.addEventListener('message', event => {
   if (event.data?.type === 'cedar-media-metadata') {
     lessonMetadata = event.data.item || {};
     systemSession?.updateMetadata();
+    document.querySelectorAll('audio,video').forEach(element => {
+      if (states.get(element)?.key !== route()?.key) initialize({ target: element });
+    });
     return;
   }
   if (event.data?.type === 'cedar-study-account') {

@@ -105,3 +105,53 @@ func TestConcurrentWeeklyCompletionUsesOneIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestConcurrentIndependentWeeklyVerseAcrossDates(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES (1,'verse','Verse','verse',NOW(),NOW())`)
+	repo := checkin.NewMySQLRepository(db)
+	type result struct {
+		id       uint64
+		existing bool
+		err      error
+	}
+	results := make(chan result, 8)
+	start := make(chan struct{})
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	for i := range 8 {
+		record := checkin.Record{GroupID: 1, UserID: 1, TaskType: "daily_verse", Detail: "约3:16",
+			LogicalDate: []string{"2026-09-30", "2026-10-01"}[i%2], PeriodStart: "2026-09-29", PeriodEnd: "2026-10-05"}
+		go func() {
+			<-start
+			id, existing, err := repo.Create(ctx, &record, 1)
+			results <- result{id, existing, err}
+		}()
+	}
+	close(start)
+	var id uint64
+	created := 0
+	for range 8 {
+		got := <-results
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if id == 0 {
+			id = got.id
+		}
+		if got.id != id {
+			t.Fatalf("different identities: %d and %d", id, got.id)
+		}
+		if !got.existing {
+			created++
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM checkin_records WHERE group_id=1 AND user_id=1`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if created != 1 || count != 1 {
+		t.Fatalf("created=%d rows=%d", created, count)
+	}
+}

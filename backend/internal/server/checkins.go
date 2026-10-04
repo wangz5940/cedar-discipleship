@@ -40,6 +40,9 @@ func (a *app) createAdmittedCheckin(
 		if record.TaskType == "daily_verse" {
 			plan, _ := learningdomain.DailyVersePlan(settings, record.LogicalDate)
 			record.Detail, _ = plan["verse_ref"].(string)
+			if learningdomain.WeeklyVersePlan(plan) {
+				record.PeriodStart, record.PeriodEnd = learningdomain.VersePlanRange(plan)
+			}
 		}
 	}
 	return a.checkins.Create(ctx, record, actorID)

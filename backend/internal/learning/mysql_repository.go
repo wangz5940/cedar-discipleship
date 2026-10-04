@@ -136,8 +136,9 @@ func (r *MySQLRepository) ListCompletionRecords(ctx context.Context, groupID, us
 		         SELECT MIN(ta.asset_id)
 		         FROM task_assets ta
 		         WHERE ta.group_id=c.group_id AND ta.task_id=c.task_id
-		       ),0) AS asset_id
+		       ),0) AS asset_id,COALESCE(checked_task.content,'')
 		FROM checkin_records c
+		LEFT JOIN study_tasks checked_task ON checked_task.id=c.task_id AND checked_task.group_id=c.group_id
 		WHERE c.group_id=?`+userFilter+` AND c.deleted_at IS NULL
 		  AND (
 		    c.logical_date BETWEEN ? AND ?
@@ -189,6 +190,7 @@ func (r *MySQLRepository) ListCompletionRecords(ctx context.Context, groupID, us
 			&record.Detail,
 			&note,
 			&record.AssetID,
+			&record.ReadingContent,
 		); err != nil {
 			return nil, err
 		}
@@ -294,6 +296,9 @@ func (r *MySQLRepository) SaveLearningConfigWithSnapshots(
 	groupID uint64,
 	settings map[string]any,
 ) (map[string]any, map[string]any, error) {
+	if settings == nil {
+		settings = map[string]any{}
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, nil, err
@@ -310,6 +315,10 @@ func (r *MySQLRepository) SaveLearningConfigWithSnapshots(
 	if err != nil {
 		return nil, nil, err
 	}
+	if _, supplied := settings["_revision"]; supplied && mapUint64(settings, "_revision") != mapUint64(existing, "_revision") {
+		return nil, nil, ErrLearningConfigConflict
+	}
+	settings["_revision"] = mapUint64(existing, "_revision") + 1
 	if err := preserveDailyScheduleHistory(existing, settings); err != nil {
 		return nil, nil, err
 	}

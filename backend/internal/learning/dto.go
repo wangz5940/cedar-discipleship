@@ -47,21 +47,24 @@ type WeekVO struct {
 }
 
 type TodayTaskVO struct {
-	ID        string           `json:"id"`
-	Type      string           `json:"type"`
-	Kind      string           `json:"kind"`
-	Title     string           `json:"title"`
-	Summary   string           `json:"summary"`
-	TaskID    uint64           `json:"task_id,omitempty"`
-	WeekID    uint64           `json:"week_id,omitempty"`
-	Part      string           `json:"part,omitempty"`
-	Detail    string           `json:"detail,omitempty"`
-	Content   string           `json:"content,omitempty"`
-	Required  bool             `json:"required"`
-	Status    string           `json:"status"`
-	Completed bool             `json:"completed"`
-	Record    *TodayRecord     `json:"record,omitempty"`
-	Assets    []map[string]any `json:"assets,omitempty"`
+	ReadingContent string           `json:"-"`
+	PeriodStart    string           `json:"period_start,omitempty"`
+	PeriodEnd      string           `json:"period_end,omitempty"`
+	ID             string           `json:"id"`
+	Type           string           `json:"type"`
+	Kind           string           `json:"kind"`
+	Title          string           `json:"title"`
+	Summary        string           `json:"summary"`
+	TaskID         uint64           `json:"task_id,omitempty"`
+	WeekID         uint64           `json:"week_id,omitempty"`
+	Part           string           `json:"part,omitempty"`
+	Detail         string           `json:"detail,omitempty"`
+	Content        string           `json:"content,omitempty"`
+	Required       bool             `json:"required"`
+	Status         string           `json:"status"`
+	Completed      bool             `json:"completed"`
+	Record         *TodayRecord     `json:"record,omitempty"`
+	Assets         []map[string]any `json:"assets,omitempty"`
 }
 
 type TodayProgress struct {
@@ -81,17 +84,18 @@ type TodayContent struct {
 }
 
 type TodayRecord struct {
-	ID          uint64  `json:"id"`
-	UserID      uint64  `json:"user_id"`
-	TaskID      *uint64 `json:"task_id,omitempty"`
-	WeekID      *uint64 `json:"week_id,omitempty"`
-	AssetID     uint64  `json:"-"`
-	LogicalDate string  `json:"logical_date"`
-	CheckinTime string  `json:"checkin_time"`
-	TaskType    string  `json:"task_type"`
-	Part        string  `json:"part"`
-	Detail      string  `json:"detail"`
-	Note        string  `json:"note"`
+	ID             uint64  `json:"id"`
+	UserID         uint64  `json:"user_id"`
+	TaskID         *uint64 `json:"task_id,omitempty"`
+	WeekID         *uint64 `json:"week_id,omitempty"`
+	AssetID        uint64  `json:"-"`
+	ReadingContent string  `json:"-"`
+	LogicalDate    string  `json:"logical_date"`
+	CheckinTime    string  `json:"checkin_time"`
+	TaskType       string  `json:"task_type"`
+	Part           string  `json:"part"`
+	Detail         string  `json:"detail"`
+	Note           string  `json:"note"`
 }
 
 type TodayVO struct {

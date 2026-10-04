@@ -1,6 +1,8 @@
 package checkin
 
 type Record struct {
+	PeriodStart string
+	PeriodEnd   string
 	ID          uint64
 	GroupID     uint64
 	UserID      uint64

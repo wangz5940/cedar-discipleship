@@ -95,7 +95,7 @@ func TestDailyVerseWebBotAndRecitation(t *testing.T) {
 	// Identical verse references on different dates and in the week have independent histories.
 	for _, date := range []string{"2026-09-22", "2026-09-23"} {
 		for attempt := 1; attempt <= 2; attempt++ {
-			got := call(a.handleCreateReciteAttempt, "/", fmt.Sprintf(`{"task_type":"daily_verse","logical_date":%q,"blank_percent":50,"blank_count":4,"correct_count":2}`, date), 1, http.StatusCreated)
+			got := call(a.handleCreateReciteAttempt, "/", fmt.Sprintf(`{"task_type":"daily_verse","logical_date":%q,"blank_percent":100,"blank_count":4,"correct_count":2}`, date), 1, http.StatusCreated)
 			if got["attempt_no"] != float64(attempt) {
 				t.Fatalf("date %s attempt=%v", date, got)
 			}
@@ -153,5 +153,55 @@ func TestDailyVerseMigrationPreservesHistoryAndIsIdempotent(t *testing.T) {
 	var kind string
 	if err := db.QueryRow(`SELECT task_type FROM study_tasks WHERE id=9`).Scan(&kind); err != nil || kind != "weekly_verse" {
 		t.Fatalf("task type=%s err=%v", kind, err)
+	}
+}
+
+func TestIndependentWeeklyVerseCheckinAndHistory(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at) VALUES(1,'verse','Verse',NOW(),NOW());
+ INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at) VALUES(1,'member','Member','member',NOW(),NOW());
+ INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at) VALUES(1,1,'Member',NOW(),NOW(),NOW())`)
+	a := &app{db: db, location: time.UTC, learning: learning.NewService(learning.NewMySQLRepository(db)),
+		checkins: checkin.NewService(checkin.NewMySQLRepository(db)), audits: audit.NewService(audit.NewMySQLRepository(db))}
+	call := func(handler http.HandlerFunc, path, body string, status int) map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), currentUserKey, currentUser{ID: 1, CurrentGroupID: 1}))
+		res := httptest.NewRecorder()
+		handler(res, req)
+		if res.Code != status {
+			t.Fatalf("%s: %d: %s", body, res.Code, res.Body)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	config := `{"task_sections":{"daily":{"devotion":{"enabled":false},"scripture":{"enabled":false},"verse":{"enabled":true,"plans":[{"date":"2026-09-29","end_date":"2026-10-05","completion_mode":"weekly","verse_ref":"约3:16","recite_text":"神爱世人"}]}}}}`
+	call(a.handleAdminSaveLearningConfig, "/", config, http.StatusOK)
+	first := call(a.handleCreateCheckin, "/", `{"task_type":"daily_verse","logical_date":"2026-09-30"}`, http.StatusCreated)
+	same := call(a.handleCreateCheckin, "/", `{"task_type":"daily_verse","logical_date":"2026-10-01"}`, http.StatusOK)
+	if first["id"] != same["id"] {
+		t.Fatal("weekly verse repeated across days")
+	}
+	for index, date := range []string{"2026-09-30", "2026-10-01"} {
+		got := call(a.handleCreateReciteAttempt, "/", fmt.Sprintf(`{"task_type":"daily_verse","logical_date":%q,"blank_percent":100,"blank_count":4,"correct_count":4}`, date), http.StatusCreated)
+		if got["score"] != float64(100) || got["attempt_no"] != float64(index+1) {
+			t.Fatalf("attempt=%v", got)
+		}
+	}
+	got := call(a.handleListReciteAttempts, "/?task_type=daily_verse&logical_date=2026-10-04", "", http.StatusOK)
+	if len(got["attempts"].([]any)) != 2 {
+		t.Fatalf("weekly history=%v", got)
+	}
+	call(a.handleCreateReciteAttempt, "/", `{"task_type":"daily_verse","logical_date":"2026-10-01","blank_percent":101,"blank_count":4,"correct_count":4}`, http.StatusBadRequest)
+	settings, err := a.groupLearningConfig(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calendar, err := a.learning.CalendarProgress(t.Context(), 1, 1, "2026-10", settings, time.UTC)
+	if err != nil || calendar["2026-10-04"].Completed != 1 || calendar["2026-10-06"].Total != 0 {
+		t.Fatalf("calendar=%v err=%v", calendar, err)
 	}
 }

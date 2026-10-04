@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"agp/backend/internal/reading"
 )
 
 var (
@@ -240,7 +242,7 @@ func (s *Service) TodayContent(ctx context.Context, groupID uint64, date string,
 }
 
 func (s *Service) TodayHubFromContent(ctx context.Context, groupID, userID uint64, content TodayContent) (TodayVO, error) {
-	records, err := s.repo.ListCompletionRecords(ctx, groupID, userID, content.RecordFrom, content.RecordTo)
+	records, err := s.completionRecords(ctx, groupID, userID, content)
 	if err != nil {
 		return TodayVO{}, err
 	}
@@ -273,7 +275,7 @@ func (s *Service) GroupTaskCompletionsFromContent(
 	groupID uint64,
 	content TodayContent,
 ) (GroupTaskCompletionsVO, error) {
-	records, err := s.repo.ListCompletionRecords(ctx, groupID, 0, content.RecordFrom, content.RecordTo)
+	records, err := s.completionRecords(ctx, groupID, 0, content)
 	if err != nil {
 		return GroupTaskCompletionsVO{}, err
 	}
@@ -545,19 +547,20 @@ func buildTodayTasks(date string, week map[string]any, rawTasks []map[string]any
 			title := firstNonEmpty(asString(raw["title"]), todayTaskFallbackTitle(taskType))
 			displayTitle := todayTaskDisplayTitle(taskType, title, asString(raw["content"]), raw["assets"])
 			tasks = append(tasks, TodayTaskVO{
-				ID:       todayTaskID(taskType, mapUint64(raw, "id"), title),
-				Type:     taskType,
-				Kind:     todayTaskKind(taskType),
-				Title:    displayTitle,
-				Summary:  todayTaskSummary(taskType),
-				TaskID:   mapUint64(raw, "id"),
-				WeekID:   weekID,
-				Part:     todayTaskPart(taskType, title),
-				Detail:   title,
-				Content:  taskContentURL(raw),
-				Required: true,
-				Status:   "pending",
-				Assets:   todayTaskAssets(raw["assets"]),
+				ID:             todayTaskID(taskType, mapUint64(raw, "id"), title),
+				Type:           taskType,
+				Kind:           todayTaskKind(taskType),
+				Title:          displayTitle,
+				Summary:        todayTaskSummary(taskType),
+				TaskID:         mapUint64(raw, "id"),
+				WeekID:         weekID,
+				Part:           todayTaskPart(taskType, title),
+				Detail:         title,
+				Content:        taskContentURL(raw),
+				ReadingContent: asString(raw["content"]),
+				Required:       true,
+				Status:         "pending",
+				Assets:         todayTaskAssets(raw["assets"]),
 			})
 		}
 
@@ -723,6 +726,12 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			if title != "" && (record.Part == title || record.Detail == title) {
 				return record
 			}
+			if task.WeekID > 0 && record.WeekID != nil && *record.WeekID == task.WeekID &&
+				record.AssetID > 0 && todayTaskHasAsset(task, record.AssetID) &&
+				(reading.Covers(record.Part, record.ReadingContent, title, firstNonEmpty(task.ReadingContent, task.Content)) ||
+					reading.Covers(record.Detail, record.ReadingContent, title, firstNonEmpty(task.ReadingContent, task.Content))) {
+				return record
+			}
 			continue
 		}
 		if task.Type == "weekly_video" {
@@ -738,7 +747,11 @@ func matchingTodayRecord(task TodayTaskVO, records []TodayRecord, date string) *
 			continue
 		}
 		if task.Type == "daily_verse" {
-			if record.LogicalDate == date && record.WeekID == nil && record.TaskID == nil {
+			matchesDate := record.LogicalDate == date
+			if task.PeriodStart != "" {
+				matchesDate = record.LogicalDate >= task.PeriodStart && record.LogicalDate <= task.PeriodEnd && record.Detail == task.Detail
+			}
+			if matchesDate && record.WeekID == nil && record.TaskID == nil {
 				return record
 			}
 			continue

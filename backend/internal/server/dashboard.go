@@ -260,11 +260,27 @@ func (a *app) handleMemberCalendar(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	memberID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	memberID, parseErr := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if parseErr != nil || memberID == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_user_id")
+		return
+	}
 	calendar, err := a.statistics.MemberCalendar(r.Context(), groupID, memberID, r.URL.Query().Get("month"), a.location)
 	if errors.Is(err, statisticsdomain.ErrInvalidMonth) {
 		writeError(w, http.StatusBadRequest, "invalid_month")
 		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "calendar_failed")
+		return
+	}
+	settings, err := a.groupLearningConfig(r.Context(), groupID)
+	if err == nil {
+		month := strings.TrimSpace(r.URL.Query().Get("month"))
+		if month == "" {
+			month = time.Now().In(a.location).Format("2006-01")
+		}
+		calendar.Progress, err = a.learning.CalendarProgress(r.Context(), groupID, memberID, month, settings, a.location)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "calendar_failed")

@@ -15,6 +15,7 @@ type reciteTarget struct {
 	WeekID   uint64
 	VerseRef string
 	Date     string
+	EndDate  string
 }
 
 func (t reciteTarget) weekValue() any {
@@ -37,7 +38,11 @@ func (a *app) dailyReciteTarget(r *http.Request, groupID uint64, date string) (r
 		return reciteTarget{}, sql.ErrNoRows
 	}
 	ref, _ := plan["verse_ref"].(string)
-	return reciteTarget{VerseRef: ref, Date: date}, nil
+	target := reciteTarget{VerseRef: ref, Date: date, EndDate: date}
+	if learningdomain.WeeklyVersePlan(plan) {
+		target.Date, target.EndDate = learningdomain.VersePlanRange(plan)
+	}
+	return target, nil
 }
 
 func (a *app) requestedReciteTarget(w http.ResponseWriter, r *http.Request, groupID uint64) (reciteTarget, error) {
@@ -168,8 +173,8 @@ func (a *app) handleReciteLeaderboard(w http.ResponseWriter, r *http.Request) {
 		FROM recite_attempts ra
 		JOIN users u ON u.id=ra.user_id
 		LEFT JOIN group_members gm ON gm.group_id=ra.group_id AND gm.user_id=ra.user_id
-		WHERE ra.group_id=? AND ra.week_id <=> ? AND ra.verse_ref=? AND (?='' OR ra.logical_date=?)`,
-		groupID, target.weekValue(), target.VerseRef, target.Date, target.Date)
+		WHERE ra.group_id=? AND ra.week_id <=> ? AND ra.verse_ref=? AND (?='' OR ra.logical_date BETWEEN ? AND ?)`,
+		groupID, target.weekValue(), target.VerseRef, target.Date, target.Date, target.EndDate)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "recite leaderboard query failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "recite_leaderboard_failed")
@@ -264,8 +269,8 @@ func (a *app) handleListReciteAttempts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `SELECT id,blank_percent,blank_count,correct_count,score,attempt_no,created_at
-		FROM recite_attempts WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date=?)
-		ORDER BY attempt_no DESC LIMIT 30`, groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date)
+		FROM recite_attempts WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date BETWEEN ? AND ?)
+		ORDER BY attempt_no DESC LIMIT 30`, groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date, target.EndDate)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "recite history query failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "recite_history_failed")
@@ -308,7 +313,7 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if (req.TaskID == 0 && req.TaskType != "daily_verse") || req.Rate < 0 || req.Rate > 90 || req.Total < 0 || req.Total > 10000 || req.Correct < 0 || req.Correct > req.Total || (req.Rate == 0 && req.Total != 0) {
+	if (req.TaskID == 0 && req.TaskType != "daily_verse") || req.Rate < 0 || req.Rate > 100 || req.Total < 0 || req.Total > 10000 || req.Correct < 0 || req.Correct > req.Total || (req.Rate == 0 && req.Total != 0) {
 		writeError(w, http.StatusBadRequest, "invalid_recite_attempt")
 		return
 	}
@@ -363,15 +368,18 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	}
 	var attemptNo int
 	if err := tx.QueryRowContext(r.Context(), `SELECT COALESCE(MAX(attempt_no),0)+1 FROM recite_attempts
-		WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date=?)`,
-		groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date).Scan(&attemptNo); err != nil {
+		WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date BETWEEN ? AND ?)`,
+		groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date, target.EndDate).Scan(&attemptNo); err != nil {
 		writeError(w, http.StatusInternalServerError, "recite_save_failed")
 		return
 	}
 	accuracy := reciteAccuracy(req.Correct, req.Total)
 	score := reciteScore(req.Correct, req.Total, req.Rate)
 	now := time.Now().In(a.location)
-	logicalDate := target.Date
+	logicalDate := req.Date
+	if req.TaskType != "daily_verse" {
+		logicalDate = ""
+	}
 	if logicalDate == "" {
 		logicalDate = now.Format("2006-01-02")
 	}

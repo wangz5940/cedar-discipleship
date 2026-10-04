@@ -52,6 +52,9 @@ func (s *LocalStorage) Save(ctx context.Context, relativeDir, fileName string, s
 	}()
 	hasher := sha256.New()
 	size, copyErr := io.Copy(dst, io.TeeReader(src, hasher))
+	if copyErr == nil {
+		copyErr = dst.Sync()
+	}
 	closeErr := dst.Close()
 	if copyErr != nil {
 		return nil, fmt.Errorf("%w: %w", ErrStorageWrite, copyErr)
@@ -69,6 +72,9 @@ func (s *LocalStorage) Save(ctx context.Context, relativeDir, fileName string, s
 		return nil, fmt.Errorf("%w: %w", ErrStorageWrite, err)
 	}
 	keepFile = true
+	if err := syncResourceDirectories(s.root, filepath.Dir(absolutePath)); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrStorageWrite, err)
+	}
 	return &StoredObject{
 		StoragePath:    relativePath,
 		FileSize:       uint64(size),
