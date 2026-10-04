@@ -32,6 +32,7 @@
   --cd-info: var(--cd-primary);
   --cd-gold: #A86531;
   --cd-gold-soft: #f4e9df;
+  --cd-card-blue-wash: linear-gradient(135deg, rgb(35 65 106 / 7%) 0%, rgb(35 65 106 / 1%) 48%, rgb(35 65 106 / 4%) 100%);
   --cd-on-primary: #ffffff;
   --cd-on-primary-muted: #d8e1ee;
   --cd-purple: #75638d;

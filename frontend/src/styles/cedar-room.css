@@ -1,4 +1,7 @@
 /* Cedar Room: editorial learning surfaces; media controls keep their own styling. */
+:is(.cedar-app-shell, .study-preview) :is(.card, .panel, .cd-group-card, .cd-resource-card, .course-card, .favorite-card, .member-card, .member-stack-card, .matrix-stack-card, .resource-stack-card, .ministry-stack-card, .bar-chart-card, .task-progress-card, .member-check-card):not(.task):not(.summary) {
+  background-image: var(--cd-card-blue-wash);
+}
 .sidebar.app-sidebar, .study-preview > .sidebar { background: var(--cd-surface); color: var(--cd-text); border-right: 1px solid var(--cd-border); }
 .sidebar .brandcopy b, .sidebar .sidebar-logo b, .sidebar .app-sidebar__account-copy b { color: var(--cd-primary); }
 .sidebar .muted, .sidebar .navlabel, .sidebar .eyebrow, .sidebar .sidebar-discover,
@@ -66,6 +69,7 @@
 .learning-fraction small { font-size: 11px; color: var(--cd-on-primary-muted); }
 .checkin-page .task.is-pending { background: #fff; border-inline-start: 1px solid var(--line); }
 .checkin-page .task.is-completed { background: var(--cd-status-subtle); }
+.checkin-page .task:is(.is-pending, .is-completed) { background-color: var(--cd-learning-bg, #e8eef7); background-image: var(--cd-card-blue-wash); border-color: var(--cd-border-strong); }
 @media (min-width: 1000px) { .checkin-page .tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 980px) { .study-preview > .sidebar { overflow: hidden; } .study-preview > .main-panel { overflow-y: auto; } .library-intro { gap: 24px; } }
 @media (max-width: 700px) {
