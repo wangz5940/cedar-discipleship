@@ -67,7 +67,7 @@ button {
   color: inherit;
   min-height: var(--cd-control-h-desktop);
   border: 1px solid var(--cd-border);
-  background: #ffffff;
+  background: var(--cd-primary-soft);
   border-radius: var(--cd-radius-base);
   padding: var(--cd-space-2) var(--cd-space-4);
   display: inline-flex;
@@ -91,7 +91,7 @@ button:active { transform: none; }
 button.secondary, button.ghost { box-shadow: none; }
 button.secondary { background: var(--cd-primary-soft); color: var(--cd-primary); }
 button.secondary:hover { background: var(--cd-surface-hover); box-shadow: none; }
-button.ghost { background: transparent; border-color: var(--cd-border); }
+button.ghost { background: var(--cd-primary-soft); border-color: var(--cd-border); color: var(--cd-primary); }
 button.ghost:hover { background: var(--cd-surface-subtle); box-shadow: none; }
 
 button:focus-visible,
@@ -115,8 +115,9 @@ button.primary:hover {
 }
 
 button.quiet:not(.primary) {
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--cd-border);
+  background: var(--cd-primary-soft);
+  color: var(--cd-primary);
 }
 
 button.quiet:not(.primary):hover {
@@ -124,25 +125,33 @@ button.quiet:not(.primary):hover {
 }
 
 button.taskdone {
-  background: var(--cd-primary-soft);
-  color: var(--cd-primary);
+  background: var(--cd-gold-soft);
+  color: var(--cd-gold);
   border-color: transparent;
   font-weight: 500;
 }
 
 button.taskdone:hover {
-  background: var(--cd-primary-soft);
+  background: var(--cd-status-border);
 }
 
 button.danger {
   border-color: var(--cd-danger);
-  color: var(--cd-danger);
-  background: #ffffff;
+  color: white;
+  background: var(--cd-danger);
 }
 
 button.danger:hover {
-  background: var(--cd-status-soft);
+  background: var(--cd-danger);
+  filter: brightness(.92);
 }
+
+button.accent, .task .actions > button.primary {
+  background: var(--cd-gold);
+  border-color: var(--cd-gold);
+  color: white;
+}
+button.accent:hover, .task .actions > button.primary:hover { filter: brightness(.92); }
 
 button:disabled {
   opacity: 0.55;

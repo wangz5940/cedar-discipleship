@@ -20,6 +20,7 @@
 .library-intro-copy > p { max-width: 440px; color: var(--muted); font-size: 14px; line-height: 1.95; margin-top: 20px; }
 .library-intro .course-search { margin-top: 26px; padding: 5px 16px; border-radius: 8px; box-shadow: none; max-width: 480px; }
 .library-intro .course-search input[type="search"] { font-size: 14px; border: 0; box-shadow: none; background: transparent; padding: 12px 0; }
+.app-resource-search .app-resource-search__refresh { background: var(--cd-primary-soft); color: var(--cd-primary); }
 .library-login { display: inline-flex; gap: 30px; color: var(--primary); font-size: 12px; text-decoration: none; margin-top: 18px; padding-block: 4px; }
 .library-note { min-height: 320px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; padding: 26px; background: var(--cd-surface-hover); border-radius: 100px 100px 10px 10px; text-align: center; color: var(--cd-text-secondary); }
 .library-note > .library-kicker { font-size: 9px; margin-top: 12px; }
@@ -66,6 +67,18 @@
 .learning-fraction small { font-size: 11px; color: var(--cd-on-primary-muted); }
 .checkin-page .task.is-pending { background: #fff; border-inline-start: 1px solid var(--line); }
 .checkin-page .task.is-completed { background: var(--cd-status-subtle); }
+.checkin-page .task .actions > button.secondary {
+  background: var(--cd-learning-action-soft);
+  border-color: var(--cd-learning-action-border);
+  color: var(--cd-gold);
+}
+.checkin-page .task .actions > button:is(.primary, .taskdone) {
+  background: var(--cd-learning-action);
+  border-color: var(--cd-learning-action);
+  color: var(--cd-on-primary);
+  font-weight: 700;
+}
+.checkin-page .task .actions > button:hover { filter: brightness(.96); }
 @media (min-width: 1000px) { .checkin-page .tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 980px) { .study-preview > .sidebar { overflow: hidden; } .study-preview > .main-panel { overflow-y: auto; } .library-intro { gap: 24px; } }
 @media (max-width: 700px) {

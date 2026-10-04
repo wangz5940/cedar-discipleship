@@ -32,6 +32,10 @@
   --cd-info: var(--cd-primary);
   --cd-gold: #A86531;
   --cd-gold-soft: #f4e9df;
+  --cd-learning-bg: #e8eef7;
+  --cd-learning-action: var(--cd-gold);
+  --cd-learning-action-soft: var(--cd-gold-soft);
+  --cd-learning-action-border: var(--cd-status-border);
   --cd-on-primary: #ffffff;
   --cd-on-primary-muted: #d8e1ee;
   --cd-purple: #75638d;
