@@ -20,7 +20,7 @@ func DailyVersePlan(settings map[string]any, date string) (map[string]any, bool)
 	for _, plan := range versePlans(config) {
 		from, to := VersePlanRange(plan)
 		if from <= date && date <= to {
-			return plan, true
+			return resolveVerseProgression(plan, date)
 		}
 	}
 	return nil, false
@@ -97,6 +97,13 @@ func ValidateDailyVerse(settings map[string]any) error {
 		mode := asString(plan["completion_mode"])
 		ref := strings.TrimSpace(asString(plan["verse_ref"]))
 		text := strings.TrimSpace(asString(plan["recite_text"]))
+		if value, exists := plan["verses_per_day"]; exists {
+			count, numeric := value.(float64)
+			_, validText := splitVerseLines(text)
+			if mode != "daily" || !numeric || count < 1 || count > 100 || math.IsNaN(count) || math.IsInf(count, 0) || math.Trunc(count) != count || !validText {
+				return ErrInvalidDailyVerse
+			}
+		}
 		if !ok || err != nil || endErr != nil || end.Before(start) ||
 			(mode != "" && mode != "daily" && mode != "weekly") ||
 			(mode == "weekly" && end.Sub(start) > 6*24*time.Hour) || ref == "" || text == "" ||

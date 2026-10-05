@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { weekVerseDraft, upsertWeekVersePlan } from './weekVerse';
+import { weekVerseDraft, upsertWeekVersePlan, resolvedDailyVerse } from './weekVerse';
 
 describe('周任务背经配置', () => {
+  it('每日递进使用后端的当日经文，背完不回退到整段', () => {
+    const plan = { completion_mode: 'daily', verses_per_day: 2, verse_ref: '创1:1-4', recite_text: '整段' };
+    const resolved = resolvedDailyVerse(plan, [{ type: 'daily_verse', title: '创1:3，创1:4', content: '今日两节' }]);
+    expect(resolved).toMatchObject({ verse_ref: '创1:3，创1:4', recite_text: '今日两节' });
+    expect(resolvedDailyVerse(plan, [])).toBeNull();
+    expect(plan.recite_text).toBe('整段');
+    expect(resolvedDailyVerse({ ...plan, completion_mode: 'weekly' }, [])?.recite_text).toBe('整段');
+    expect(resolvedDailyVerse({ completion_mode: 'daily', recite_text: '旧计划' }, [])?.recite_text).toBe('旧计划');
+  });
+  it('重新编辑保留每日节数', () => {
+    const plan = { date: '2026-10-05', completion_mode: 'daily', verses_per_day: 3 };
+    expect(weekVerseDraft([plan], { start: plan.date, end: '2026-10-11' }).verses_per_day).toBe(3);
+  });
   const week = { start: '2026-10-05', end: '2026-10-11' };
   it('新配置跟随周日期并默认整周一次', () => {
     expect(weekVerseDraft([], week)).toEqual({ date: week.start, end_date: week.end, recite_text: '', completion_mode: 'weekly' });

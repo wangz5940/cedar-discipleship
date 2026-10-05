@@ -7,7 +7,15 @@ export function weekVerseDraft(plans, week) {
     end_date: end,
     recite_text: plan?.recite_text || '',
     completion_mode: plan ? (plan.completion_mode || 'daily') : 'weekly',
+    ...(plan?.verses_per_day !== undefined ? { verses_per_day: plan.verses_per_day } : {}),
   };
+}
+
+// Daily tasks are resolved by the server so check-ins, reminders and quizzes agree.
+export function resolvedDailyVerse(plan, hubTasks) {
+  if (!plan || plan.completion_mode !== 'daily' || plan.verses_per_day === undefined) return plan;
+  const task = hubTasks?.find(item => item.type === 'daily_verse');
+  return task ? { ...plan, verse_ref: task.title, recite_text: task.content } : null;
 }
 
 export function upsertWeekVersePlan(plans, plan) {
