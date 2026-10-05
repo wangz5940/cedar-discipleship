@@ -41,6 +41,19 @@ func (s *Service) Summary(ctx context.Context, groupID uint64, from, to string) 
 }
 
 func (s *Service) MonthlyRanking(ctx context.Context, groupID uint64, month, fromInput, toInput string, loc *time.Location) (MonthlyRankingVO, error) {
+	if strings.TrimSpace(fromInput) == "all" {
+		firstDate, err := s.repo.EarliestRankingDate(ctx, groupID)
+		if err != nil {
+			return MonthlyRankingVO{}, err
+		}
+		if toInput == "" {
+			toInput = time.Now().In(loc).Format("2006-01-02")
+		}
+		if firstDate == "" || firstDate > toInput {
+			firstDate = toInput
+		}
+		fromInput = firstDate
+	}
 	start, end, err := rankingRange(month, fromInput, toInput, loc)
 	if err != nil {
 		return MonthlyRankingVO{}, err
