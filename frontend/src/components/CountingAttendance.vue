@@ -175,7 +175,6 @@ function currentMonth() {
   <section class="attendance-workspace">
     <div class="attendance-toolbar">
       <div>
-        <div class="eyebrow">数点与考勤</div>
         <h3>月度考勤表</h3>
       </div>
       <div class="attendance-month">

@@ -185,6 +185,9 @@
 }
 
 .app-resource-search {
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
   position: relative;
   display: flex;
   flex: 1 1 260px;
@@ -209,6 +212,8 @@
 }
 
 .app-resource-search input.app-resource-search__input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  border: 0;
+  box-shadow: none;
   width: 100%;
   min-width: 0;
   padding-left: 40px;
@@ -325,12 +330,11 @@
   color: var(--cd-muted);
 }
 
-.app-more-dialog { max-width: 420px; }
+.app-more-dialog { max-width: 420px; background: var(--cd-surface); }
+.app-more-dialog .cd-dialog-head, .app-more-dialog .cd-dialog-foot { background: var(--cd-surface); }
 .app-dialog-account { gap: 12px; min-width: 0; }
 .app-dialog-account > div:last-child { min-width: 0; }
 .app-dialog-account__name { overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
-.app-more-dialog { background: var(--cd-surface); }
-.app-more-dialog .cd-dialog-head, .app-more-dialog .cd-dialog-foot { background: var(--cd-surface); }
 .app-more-dialog__body { display: flex; flex-direction: column; gap: 10px; padding: 8px 20px 16px; background: var(--cd-surface); }
 .app-more-dialog__action { justify-content: flex-start; width: 100%; min-width: 0; min-height: 56px; padding: 14px 18px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: #fff; color: var(--cd-text-ink); font-size: 18px; font-weight: 700; line-height: 1.4; box-shadow: none; }
 .app-more-dialog .app-more-dialog__action:not(.app-more-dialog__danger):hover { background: var(--cd-bg); }

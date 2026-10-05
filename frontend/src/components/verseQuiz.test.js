@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { createVerseBlanks, gradeVerseAnswer, tokenizeVerse, verseBlankWidth } from './verseQuiz';
+import { createVerseBlanks, gradeVerseAnswer, gradeVersePaper, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 describe('verse quiz', () => {
+  it.each([' ', '　', '\t', '\u00a0'])('keeps Chinese text joined across horizontal whitespace %j', space => {
+    const text = `【弗1:16】就为你们不住地感谢${space}神。`;
+    const tokens = tokenizeVerse(text);
+    expect(tokens.join('')).toBe(text);
+    expect(createVerseBlanks(tokens, 100).map(index => tokens[index]))
+      .toEqual([`就为你们不住地感谢${space}神`]);
+  });
+
+  it('keeps English words, standalone verse numbers and newlines as boundaries', () => {
+    const tokens = tokenizeVerse('12 神爱世人\nGod loves us。');
+    expect(createVerseBlanks(tokens, 100).map(index => tokens[index]))
+      .toEqual(['神爱世人', 'God', 'loves', 'us']);
+  });
+
   it('keeps punctuation and verse references visible', () => {
     const tokens = tokenizeVerse('约 3:16，神爱世人。\n12 若住在你们心里——阿们！');
     const blanks = createVerseBlanks(tokens, 90, () => 0);
@@ -84,5 +98,47 @@ describe('character grading', () => {
       total: Array.from(expected.replace(/\s/gu, '')).length,
       correct, errors, exact: errors === 0,
     });
+  });
+});
+
+describe('paper grading and replay', () => {
+  it('does not deduct twice when an answer crosses a blank boundary', () => {
+    const result = gradeVersePaper(['就为你们不住地感谢', '　', '神'], [0, 2], ['就为你们不住的感谢神', '']);
+    expect(result).toMatchObject({ total: 10, correct: 9, blanks: [{ exact: false }, { exact: true }] });
+    expect(result.groups[0].diff.filter(item => item.type !== 'equal'))
+      .toEqual([{ type: 'replace', expected: '地', answer: '的' }]);
+  });
+
+  it('joins adjacent blanks across commas and retains the actual mistake locations', () => {
+    const tokens = tokenizeVerse('神爱世人，赐下独生子。');
+    const result = gradeVersePaper(tokens, [0, 2], ['神爱世人赐', '下独生了']);
+    expect(result).toMatchObject({ total: 9, correct: 8, blanks: [{ exact: true }, { exact: false }] });
+  });
+
+  it.each(['。', '！', '？', ';', '；', '.', '\n', '【约3:16】', '（注释）', '3:16', '12', '可见文字'])(
+    'does not move answers across a visible boundary %j', boundary => {
+      const result = gradeVersePaper(['神爱', boundary, '世人'], [0, 2], ['神爱世人', '']);
+      expect(result.groups).toHaveLength(2);
+      expect(result).toMatchObject({ total: 4, correct: 0 });
+    });
+
+  it.each([
+    ['神爱世人', '神爱世人'], ['神爱世人', '爱世人'], ['神爱世人', '神真爱世人'],
+    ['就为你们不住地感谢神', '就为你不住的常感谢神'], ['你们你们都来', '你们都来'],
+    ['神爱世人', '神世爱人'], ['𠮷神爱', '神爱'], ['神', '天地神爱世人'], ['神爱', ''],
+  ])('reconstructs both texts with the minimum edit count: %s / %s', (expected, answer) => {
+    const result = gradeVersePaper([expected], [0], [answer]);
+    const group = result.groups[0];
+    expect(group.diff.map(item => item.expected).join('')).toBe(expected);
+    expect(group.diff.map(item => item.answer).join('')).toBe(answer);
+    expect(group.errors).toBe(gradeVerseAnswer(expected, answer).errors);
+    expect(result.correct).toBe(gradeVerseAnswer(expected, answer).correct);
+  });
+
+  it('handles a long submitted answer without a quadratic traceback matrix', () => {
+    const expected = '神爱'.repeat(500);
+    const result = gradeVersePaper([expected], [0], [expected + '人'.repeat(1000)]);
+    expect(result).toMatchObject({ total: 1000, correct: 0 });
+    expect(result.groups[0].errors).toBe(1000);
   });
 });

@@ -112,7 +112,7 @@ func TestCreateFeedbackKeepsDiagnosticsOutOfUserResponse(t *testing.T) {
 	if err := form.WriteField("message", "  页面无法打开  "); err != nil {
 		t.Fatal(err)
 	}
-	if err := form.WriteField("diagnostics", `{"page":"resources","user_agent":"ignored"}`); err != nil {
+	if err := form.WriteField("diagnostics", `{"page":"resources","user_agent":"ignored","page_origin":"https://cedar.example.test","environment":"production"}`); err != nil {
 		t.Fatal(err)
 	}
 	part, err := form.CreateFormFile("images", "screen.png")
@@ -197,7 +197,7 @@ func TestAutomaticFeedbackUsesFailingRequestLogID(t *testing.T) {
 	if err := form.WriteField("error_log_id", "fedcba9876543210fedcba9876543210"); err != nil {
 		t.Fatal(err)
 	}
-	if err := form.WriteField("diagnostics", `{"request_method":"GET","request_path":"/api/assets/7/download","http_status":"404","error_code":"asset_not_found","business_action":"阅读","resource_title":"马可福音","group_name":"伪造小组","user_display_name":"伪造用户"}`); err != nil {
+	if err := form.WriteField("diagnostics", `{"request_method":"GET","request_path":"/api/assets/7/download","http_status":"404","error_code":"asset_not_found","business_action":"阅读","resource_title":"马可福音","group_name":"伪造小组","user_display_name":"伪造用户","page_origin":"https://cedar.example.test","environment":"production"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := form.Close(); err != nil {

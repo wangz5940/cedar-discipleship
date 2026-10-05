@@ -395,6 +395,61 @@ func TestQueueFailurePolicies(t *testing.T) {
 	}
 }
 
+type observingSource struct {
+	*fakeSource
+	events []Event
+	codes  []string
+	panics bool
+}
+
+func (s *observingSource) ReportNotificationFailure(event Event, code string) {
+	s.events = append(s.events, event)
+	s.codes = append(s.codes, code)
+	if s.panics {
+		panic("observer failed")
+	}
+}
+
+func TestQueueReportsOnlyTerminalFailureWithoutChangingDelivery(t *testing.T) {
+	for _, name := range []string{"permanent", "exhausted", "observer panic", "success", "disabled"} {
+		t.Run(name, func(t *testing.T) {
+			queue, source, sender, event, now := queueFixture(t)
+			observer := &observingSource{fakeSource: source, panics: name == "observer panic"}
+			queue.source = observer
+			event.LogID = "0123456789abcdef0123456789abcdef"
+			if name == "disabled" {
+				source.disabled = true
+			} else if name != "success" {
+				sender.err = &deliveryError{code: "http_400", retry: name == "exhausted"}
+			}
+			if err := queue.Enqueue(event); err != nil {
+				t.Fatal(err)
+			}
+			queue.processNext(t.Context(), now)
+			if name == "exhausted" {
+				if len(observer.events) != 0 || stateFiles(t, queue, "pending") != 1 {
+					t.Fatal("retryable failure was reported or archived prematurely")
+				}
+				for attempt := 1; attempt < 6; attempt++ {
+					queue.processNext(t.Context(), now.Add(time.Duration(attempt)*3*time.Minute))
+				}
+			}
+			if name == "success" || name == "disabled" {
+				if len(observer.events) != 0 || stateFiles(t, queue, "completed") != 1 {
+					t.Fatal("successful/skipped notification changed")
+				}
+				return
+			}
+			if len(observer.events) != 1 || observer.events[0].RecordID != event.RecordID ||
+				observer.events[0].GroupID != event.GroupID || observer.events[0].LogID != event.LogID ||
+				!observer.events[0].OccurredAt.Equal(event.OccurredAt) || observer.codes[0] != "http_400" ||
+				stateFiles(t, queue, "failed") != 1 {
+				t.Fatalf("events=%+v codes=%v failed=%d", observer.events, observer.codes, stateFiles(t, queue, "failed"))
+			}
+		})
+	}
+}
+
 func TestQueueSkipsIneligibleExpiredAndChangedTargets(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"ineligible", "expired", "changed", "unconfigured"} {
