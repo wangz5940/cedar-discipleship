@@ -25,6 +25,7 @@ import {
   openMemberCalendar,
   setSelectedDate,
   setStatsDateRange,
+  resetStatsRangeToHistory,
   shiftSelectedDate,
   toast as showToast,
   toggleCheckin,
@@ -329,10 +330,11 @@ async function exportRankingChart() {
       <section class="panel stats-center">
         <div class="stats-center-head spread">
           <div class="stats-center-title-row">
-            <h2 class="stats-center__title">周期统计</h2>
+            <h2 class="stats-center__title">{{ monthLabel === '全部历史' ? '历史统计' : '周期统计' }}</h2>
             <button v-if="statsView === 'chart'" class="primary stats-export" type="button" @click="exportRankingChart">导出图片</button>
           </div>
           <div class="inline stats-controls">
+            <button class="secondary compact-control" type="button" :aria-pressed="monthLabel === '全部历史'" @click="resetStatsRangeToHistory">全部历史</button>
             <div class="inline date-range" aria-label="统计时间范围">
               <DateField
                 :model-value="statsFrom"

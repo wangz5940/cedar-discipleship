@@ -15,6 +15,20 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+func (r *MySQLRepository) EarliestRankingDate(ctx context.Context, groupID uint64) (string, error) {
+	var earliest sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT MIN(first_date) FROM (
+		SELECT MIN(logical_date) AS first_date FROM checkin_records
+		WHERE group_id=? AND deleted_at IS NULL AND status='done'
+		UNION ALL
+		SELECT MIN(start_date) AS first_date FROM study_weeks WHERE group_id=?
+	) history`, groupID, groupID).Scan(&earliest)
+	if err != nil || !earliest.Valid {
+		return "", err
+	}
+	return earliest.Time.Format("2006-01-02"), nil
+}
+
 // DailyEvents preserves all non-deleted historical events, including former
 // members. Expected/completed tasks have a separate current-member scope.
 func (r *MySQLRepository) DailyEvents(ctx context.Context, groupID uint64) ([]DailySummary, error) {

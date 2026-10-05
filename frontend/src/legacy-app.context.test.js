@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI } from './legacy-app';
+import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, resetStatsRangeToHistory, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI } from './legacy-app';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useAppStateStore } from './stores/appState';
 import { useDashboardStore } from './stores/dashboard';
@@ -138,6 +138,29 @@ describe('main data context', () => {
     release();
     await old;
     expect(useDashboardStore().rankingFrom).toBe('2026-07-02');
+  });
+
+  it('loads all historical statistics and switches to a selected date range', async () => {
+    const request = fetch.getMockImplementation();
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).includes('monthly-ranking?from=all')) {
+        return Response.json({ from: '2024-03-02', to: '2026-10-05', items: [{ user_id: 1, total: 23, counts: { daily_scripture: 23 } }] });
+      }
+      return request(url, options);
+    }));
+    await login('member', 'password');
+    setTab('dashboard');
+    await resetStatsRangeToHistory();
+    const dashboard = useDashboardStore();
+    expect(dashboard.monthLabel).toBe('全部历史');
+    expect(dashboard.statsFrom).toBe('2024-03-02');
+    expect(dashboard.ranking[0].total).toBe(23);
+    await setStatsDateRange('to', '2026-08-31');
+    expect(dashboard.rankingFrom).toBe('2024-03-02');
+    expect(dashboard.rankingTo).toBe('2026-08-31');
+    expect(dashboard.monthLabel).not.toBe('全部历史');
+    await resetStatsRangeToHistory();
+    expect(dashboard.monthLabel).toBe('全部历史');
   });
 
   it('keeps draft edits separate from saved weeks and reuses unchanged admin data across toast updates', async () => {

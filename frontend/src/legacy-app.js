@@ -106,7 +106,7 @@ const state = shallowReactive({
   homeStatsLoading: false,
   homeStatsCheckedGroupID: 0,
   homeStatsCheckedAt: 0,
-  statsFrom: monthStartString(),
+  statsFrom: '',
   statsTo: todayString(),
   checkins: [],
   members: [],
@@ -246,7 +246,7 @@ function dashboardSnapshot() {
   const completed = ownTaskStates.filter((item) => item.done).length;
   const rankingFrom = state.monthlyRanking?.from || state.statsFrom || monthStartString();
   const rankingTo = state.monthlyRanking?.to || state.statsTo || todayString();
-  const monthLabel = formatDateRangeLabel(rankingFrom, rankingTo);
+  const monthLabel = !state.statsFrom ? '全部历史' : formatDateRangeLabel(rankingFrom, rankingTo);
   const ranking = monthlyRankingItems();
   const leader = ranking[0];
   const activeMemberRule = normalizeActiveMemberRule(state.monthlyRanking?.active_rule);
@@ -312,7 +312,7 @@ function dashboardSnapshot() {
     leaderNote: leader ? `${leader.total} 次打卡` : '暂无记录',
     rankingFrom,
     rankingTo,
-    statsFrom: state.statsFrom,
+    statsFrom: state.statsFrom || state.monthlyRanking?.from || '',
     statsTo: state.statsTo,
     statsMaxDate: todayString(),
     activeCount,
@@ -686,7 +686,7 @@ async function loadAll(options = {}) {
       api(`/dashboard/task-completions?date=${selectedDate}`),
       api('/library').catch(() => ({ sections: [] })),
       loadRanking
-        ? api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`)
+        ? api(`/dashboard/monthly-ranking?from=${state.statsFrom || 'all'}&to=${state.statsTo}`)
         : Promise.resolve(state.monthlyRanking),
     ]);
     if (!isCurrent()) return;
@@ -932,6 +932,7 @@ export async function setStatsDateRange(part, value) {
     if (state.statsFrom > state.statsTo) state.statsTo = state.statsFrom;
   } else if (part === 'to') {
     state.statsTo = next;
+    if (!state.statsFrom) state.statsFrom = state.monthlyRanking?.from || monthStartString();
     if (state.statsTo < state.statsFrom) state.statsFrom = state.statsTo;
   }
   try {
@@ -940,6 +941,15 @@ export async function setStatsDateRange(part, value) {
   } catch (error) {
     toast(error.message);
   }
+}
+
+export async function resetStatsRangeToHistory() {
+  state.statsFrom = '';
+  state.statsTo = todayString();
+  try {
+    await loadMonthlyRanking();
+    render();
+  } catch (error) { toast(error.message); }
 }
 
 export async function resetStatsRangeToMonth() {
@@ -969,11 +979,11 @@ export async function saveActiveMemberRule(rule) {
   render();
 }
 
-async function loadMonthlyRanking() {
+async function loadMonthlyRanking(homeOnly = false) {
   normalizeStatsRange();
   const context = statisticsContextKey();
   const requestID = ++rankingRequestID;
-  const result = await api(`/dashboard/monthly-ranking?from=${state.statsFrom}&to=${state.statsTo}`);
+  const result = await api(`/dashboard/monthly-ranking?from=${homeOnly ? monthStartString() : state.statsFrom || 'all'}&to=${homeOnly ? todayString() : state.statsTo}`);
   if (context !== statisticsContextKey() || requestID !== rankingRequestID) return;
   state.monthlyRanking = result;
 }
@@ -990,7 +1000,7 @@ async function refreshDashboardData() {
   const rankingTo = state.statsTo;
   const pending = Promise.all([
     api(`/dashboard/task-completions?date=${selectedDate}`),
-    api(`/dashboard/monthly-ranking?from=${rankingFrom}&to=${rankingTo}`),
+    api(`/dashboard/monthly-ranking?from=${rankingFrom || 'all'}&to=${rankingTo}`),
   ]).then(([taskCompletions, monthlyRanking]) => {
     if (context !== statisticsContextKey() || state.tab !== 'dashboard') return;
     state.dashboardCompletions = taskCompletions.items || [];
@@ -1031,7 +1041,7 @@ async function refreshHomeStats() {
     state.homeStatsCheckedGroupID = groupID;
     state.homeStatsCheckedAt = Date.now();
     if (state.homeStatsEligible) {
-      await loadMonthlyRanking();
+      await loadMonthlyRanking(true);
     }
   } finally {
     if (context === dataContextKey()) {
@@ -2240,7 +2250,6 @@ function matchesActiveMemberRule(item, rule) {
 }
 
 function normalizeStatsRange() {
-  if (!state.statsFrom) state.statsFrom = monthStartString();
   if (!state.statsTo) state.statsTo = todayString();
   if (state.statsTo > todayString()) state.statsTo = todayString();
   if (state.statsFrom > state.statsTo) state.statsFrom = state.statsTo;

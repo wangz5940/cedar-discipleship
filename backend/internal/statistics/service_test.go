@@ -15,6 +15,30 @@ type serviceTestRepository struct {
 	summary     map[string]int
 	from        string
 	to          string
+	earliest    string
+}
+
+func (r *serviceTestRepository) EarliestRankingDate(context.Context, uint64) (string, error) {
+	return r.earliest, nil
+}
+
+func TestMonthlyRankingAllHistory(t *testing.T) {
+	for _, earliest := range []string{"2024-03-02", "", "9999-01-01"} {
+		t.Run(earliest, func(t *testing.T) {
+			repo := &serviceTestRepository{earliest: earliest, members: []Member{{UserID: 2}}, counts: []TaskCount{{UserID: 2, TaskType: "daily_scripture", Count: 23}}}
+			result, err := NewService(repo).MonthlyRanking(t.Context(), 1, "", "all", "", time.UTC)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := earliest
+			if want == "" || want > time.Now().UTC().Format("2006-01-02") {
+				want = time.Now().UTC().Format("2006-01-02")
+			}
+			if result.From != want || result.To != time.Now().UTC().Format("2006-01-02") || result.Items[0].Total != 23 {
+				t.Fatalf("historical ranking = %#v", result)
+			}
+		})
+	}
 }
 
 func (r *serviceTestRepository) DailySummary(context.Context, uint64, string, string) (map[string]int, error) {
