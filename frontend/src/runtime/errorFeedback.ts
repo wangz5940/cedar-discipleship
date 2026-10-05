@@ -1,4 +1,6 @@
-import { authHeaders, csrfToken, getAccessToken } from './authSession';
+import {
+  authHeaders, authSessionGeneration, csrfToken, getAccessToken, refreshAccessSession,
+} from './authSession';
 import { collectFeedbackDiagnostics, isLoopbackHostname } from './feedbackDiagnostics';
 import {
   createLogID,
@@ -39,8 +41,16 @@ type AutomaticFeedbackSettings = {
 
 const duplicateWindowMs = 5 * 60 * 1000;
 const recentReports = new Map<string, number>();
-let settingsRequest: Promise<AutomaticFeedbackSettings | null> | null = null;
-let reporting = false;
+const settingsRequests = new Map<number, Promise<AutomaticFeedbackSettings>>();
+type PendingReport = {
+  key: string;
+  generation: number;
+  errorType: string;
+  form: FormData;
+  attempts: number;
+  timer?: ReturnType<typeof setTimeout>;
+};
+const pendingReports = new Map<string, PendingReport>();
 let installed = false;
 
 function limited(value: unknown, max: number): string {
@@ -79,31 +89,114 @@ function automaticFeedbackMessage(context: ErrorContext, actionContext: string):
   return `系统自动上报：${action}${content}时发生错误`;
 }
 
-async function automaticFeedbackSettings(): Promise<AutomaticFeedbackSettings | null> {
-  if (settingsRequest) return settingsRequest;
+class FeedbackRequestError extends Error {
+  constructor(public status: number) {
+    super('automatic_feedback_request_failed');
+  }
+}
 
-  settingsRequest = (async () => {
-    try {
-      const response = await fetch('/api/feedback/automatic-settings', {
-        headers: authHeaders({ [LOG_ID_HEADER]: createLogID() }),
-        credentials: 'same-origin',
-      });
-      if (!response.ok) return null;
-      const data = await response.json();
-      const value = {
-        enabled: data.settings?.enabled === true,
-        muted_error_types: Array.isArray(data.settings?.muted_error_types)
-          ? data.settings.muted_error_types.map(normalizeErrorType).filter(Boolean)
-          : [],
-      };
-      return value;
-    } catch {
-      return null;
-    } finally {
-      settingsRequest = null;
+async function feedbackRequest(path: string, generation: number, form?: FormData): Promise<{
+  status: number;
+  ok: boolean;
+  settings?: AutomaticFeedbackSettings;
+}> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (generation !== authSessionGeneration() || !getAccessToken()) {
+      throw new FeedbackRequestError(403);
     }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    let settings: AutomaticFeedbackSettings | undefined;
+    try {
+      response = await fetch(path, {
+        method: form ? 'POST' : 'GET',
+        body: form,
+        headers: authHeaders({
+          [LOG_ID_HEADER]: createLogID(),
+          ...(form ? { 'X-CSRF-Token': csrfToken() } : {}),
+        }),
+        credentials: 'same-origin',
+        signal: controller.signal,
+      });
+      if (!form && response.ok) {
+        const data = await response.json();
+        settings = {
+          enabled: data.settings?.enabled === true,
+          muted_error_types: Array.isArray(data.settings?.muted_error_types)
+            ? data.settings.muted_error_types.map(normalizeErrorType).filter(Boolean)
+            : [],
+        };
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (generation !== authSessionGeneration()) throw new FeedbackRequestError(403);
+    if (response.status !== 401 || attempt > 0) return { status: response.status, ok: response.ok, settings };
+    const refreshController = new AbortController();
+    const refreshTimeout = setTimeout(() => refreshController.abort(), 10_000);
+    try {
+      if (!await refreshAccessSession(undefined, {
+        preserveTokenOnFailure: true, signal: refreshController.signal,
+      })) throw new FeedbackRequestError(401);
+    } finally {
+      clearTimeout(refreshTimeout);
+    }
+  }
+  throw new FeedbackRequestError(401);
+}
+
+async function automaticFeedbackSettings(generation: number): Promise<AutomaticFeedbackSettings> {
+  const existing = settingsRequests.get(generation);
+  if (existing) return existing;
+  const request = (async () => {
+    const response = await feedbackRequest('/api/feedback/automatic-settings', generation);
+    if (!response.ok || !response.settings) throw new FeedbackRequestError(response.status);
+    return response.settings;
   })();
-  return settingsRequest;
+  settingsRequests.set(generation, request);
+  try {
+    return await request;
+  } finally {
+    if (settingsRequests.get(generation) === request) settingsRequests.delete(generation);
+  }
+}
+
+function active(report: PendingReport): boolean {
+  return pendingReports.get(report.key) === report
+    && report.generation === authSessionGeneration() && !!getAccessToken();
+}
+
+async function deliver(report: PendingReport): Promise<boolean> {
+  report.timer = undefined;
+  let retry = false;
+  try {
+    if (!active(report)) return false;
+    report.attempts += 1;
+    const settings = await automaticFeedbackSettings(report.generation);
+    if (!active(report) || !settings.enabled || settings.muted_error_types.includes(report.errorType)) {
+      return false;
+    }
+    const response = await feedbackRequest('/api/feedback/automatic', report.generation, report.form);
+    if (!active(report)) return false;
+    if (response.status === 201) {
+      recentReports.set(report.key, Date.now());
+      if (recentReports.size > 200) recentReports.delete(recentReports.keys().next().value!);
+      return true;
+    }
+    if (!response.ok) throw new FeedbackRequestError(response.status);
+    return false;
+  } catch (error) {
+    retry = !(error instanceof FeedbackRequestError)
+      || error.status >= 500 || error.status === 401 || error.status === 408 || error.status === 429;
+    return false;
+  } finally {
+    if (retry && active(report) && report.attempts < 3) {
+      report.timer = setTimeout(() => { void deliver(report); }, report.attempts === 1 ? 1000 : 5000);
+    } else if (pendingReports.get(report.key) === report) {
+      pendingReports.delete(report.key);
+    }
+  }
 }
 
 export async function reportAutomaticFeedback(
@@ -113,7 +206,6 @@ export async function reportAutomaticFeedback(
   try {
     if (
       !getAccessToken()
-      || reporting
       || typeof window === 'undefined'
       || typeof navigator === 'undefined'
       || isLoopbackHostname(window.location.hostname)
@@ -122,8 +214,15 @@ export async function reportAutomaticFeedback(
     return false;
   }
 
-  reporting = true;
   try {
+    const generation = authSessionGeneration();
+    for (const [key, report] of pendingReports) {
+      if (report.generation !== generation) {
+        clearTimeout(report.timer);
+        pendingReports.delete(key);
+      }
+    }
+    if (pendingReports.size >= 20) return false;
     const context = typeof contextInput === 'function' ? contextInput() : contextInput;
     const error = (
       rawError instanceof Error ? rawError : new Error(String(rawError))
@@ -147,6 +246,7 @@ export async function reportAutomaticFeedback(
     const taskTitle = limited(context.taskTitle, 256);
     const logicalDate = limited(context.logicalDate, 32);
     const signature = [
+      generation,
       errorType,
       errorMessage,
       requestMethod,
@@ -160,14 +260,7 @@ export async function reportAutomaticFeedback(
     for (const [key, reportedAt] of recentReports) {
       if (now - reportedAt > duplicateWindowMs) recentReports.delete(key);
     }
-    if (recentReports.has(signature)) return false;
-
-    const settings = await automaticFeedbackSettings();
-    if (
-      !settings?.enabled
-      || (errorType && settings.muted_error_types.includes(errorType))
-    ) return false;
-    recentReports.set(signature, now);
+    if (recentReports.has(signature) || pendingReports.has(signature)) return false;
 
     const diagnostics = {
       ...collectFeedbackDiagnostics(actionContext),
@@ -193,27 +286,25 @@ export async function reportAutomaticFeedback(
     form.append('diagnostics', JSON.stringify(diagnostics));
     if (errorLogID) form.append('error_log_id', errorLogID);
 
-    const headers = authHeaders({
-      [LOG_ID_HEADER]: createLogID(),
-      'X-CSRF-Token': csrfToken(),
-    });
-    const response = await fetch('/api/feedback/automatic', {
-      method: 'POST',
-      body: form,
-      headers,
-      credentials: 'same-origin',
-    });
-    return response.status === 201;
+    const report: PendingReport = { key: signature, generation, errorType, form, attempts: 0 };
+    pendingReports.set(signature, report);
+    return await deliver(report);
   } catch {
     return false;
-  } finally {
-    reporting = false;
   }
 }
 
 export function installAutomaticFeedbackReporting() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
+  window.addEventListener('online', () => {
+    for (const report of pendingReports.values()) {
+      if (report.timer !== undefined) {
+        clearTimeout(report.timer);
+        void deliver(report);
+      }
+    }
+  });
   window.addEventListener('error', (event) => {
     void reportAutomaticFeedback(event.error || event.message, () => ({
       actionContext: 'runtime_error',
@@ -232,7 +323,8 @@ export function installAutomaticFeedbackReporting() {
 
 export function resetAutomaticFeedbackStateForTest() {
   recentReports.clear();
-  settingsRequest = null;
-  reporting = false;
+  for (const report of pendingReports.values()) clearTimeout(report.timer);
+  pendingReports.clear();
+  settingsRequests.clear();
   installed = false;
 }

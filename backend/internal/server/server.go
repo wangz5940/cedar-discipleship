@@ -79,6 +79,8 @@ type app struct {
 		BindingGroupID(string, int64) uint64
 	}
 	botAPIKey []byte
+
+	automaticFeedback *automaticFeedbackReporter
 }
 
 type config struct {
@@ -203,10 +205,11 @@ func Run() error {
 	if err != nil {
 		return err
 	}
+	a.automaticFeedback = newAutomaticFeedbackReporter(a.feedbacks)
 	fleet, err := notificationdomain.NewFleet(
 		cfg.NotificationDir,
 		robotConfigs,
-		notificationdomain.NewCheckinSource(db, loc),
+		feedbackNotificationSource{notificationdomain.NewCheckinSource(db, loc), a.automaticFeedback},
 	)
 	if err != nil {
 		return err
@@ -219,6 +222,7 @@ func Run() error {
 	notificationContext, stopNotifications := context.WithCancel(context.Background())
 	var workers sync.WaitGroup
 	workers.Go(func() { fleet.Run(notificationContext) })
+	workers.Go(func() { a.automaticFeedback.run(notificationContext) })
 	defer func() {
 		stopNotifications()
 		workers.Wait()
@@ -402,6 +406,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/checkins/{id}", a.auth(a.handleDeleteOwnCheckin))
 	mux.HandleFunc("GET /api/checkins", a.auth(a.handleListCheckins))
 	mux.HandleFunc("GET /api/recite-attempts", a.auth(a.handleListReciteAttempts))
+	mux.HandleFunc("GET /api/recite-attempts/{id}/paper", a.auth(a.handleGetRecitePaper))
 	mux.HandleFunc("POST /api/recite-attempts", a.auth(a.handleCreateReciteAttempt))
 	mux.HandleFunc("GET /api/recite-leaderboard", a.auth(a.handleReciteLeaderboard))
 	mux.HandleFunc("DELETE /api/admin/checkins/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminDeleteCheckin)))

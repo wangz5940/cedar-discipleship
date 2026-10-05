@@ -5,7 +5,20 @@ export function tokenizeVerse(text) {
   const closings = [];
   let plain = '';
   let annotation = '';
-  const appendPlain = value => tokens.push(...value.split(/(\d+:\d+|[\p{P}\s])/u).filter(Boolean));
+  const appendPlain = value => {
+    const parts = value.split(/(\d+:\d+|[\p{P}]|\s+)/u).filter(Boolean);
+    for (let index = 0; index < parts.length; index++) {
+      const part = parts[index];
+      if (/^[^\S\r\n\u2028\u2029]+$/u.test(part)
+        && /\p{Script=Han}$/u.test(tokens.at(-1) || '')
+        && /^\p{Script=Han}/u.test(parts[index + 1] || '')) {
+        tokens[tokens.length - 1] += part + parts[++index];
+      } else {
+        // Keep the existing one-token-per-whitespace contract outside Chinese text.
+        tokens.push(...(/^\s+$/u.test(part) ? Array.from(part) : [part]));
+      }
+    }
+  };
   for (const char of String(text || '')) {
     if (brackets[char]) {
       if (!closings.length) {
@@ -47,8 +60,13 @@ export function createVerseBlanks(tokens, percent, random = Math.random) {
 export function gradeVerseAnswer(expected, answer) {
   const original = Array.from(String(expected || '').replace(/\s/gu, ''));
   const entered = Array.from(String(answer || '').replace(/\s/gu, ''));
+  const errors = distanceRow(original, entered)[entered.length];
+  return { total: original.length, correct: Math.max(0, original.length - errors), errors, exact: errors === 0 };
+}
+
+function distanceRow(original, entered) {
   // Minimum insertions, deletions and substitutions avoid cascading errors after a missing character.
-  const distance = Array.from({ length: entered.length + 1 }, (_, index) => index);
+  const distance = Uint32Array.from({ length: entered.length + 1 }, (_, index) => index);
   for (let row = 1; row <= original.length; row++) {
     let diagonal = distance[0];
     distance[0] = row;
@@ -62,8 +80,76 @@ export function gradeVerseAnswer(expected, answer) {
       diagonal = previous;
     }
   }
-  const errors = distance[entered.length];
-  return { total: original.length, correct: Math.max(0, original.length - errors), errors, exact: errors === 0 };
+  return distance;
+}
+
+// Hirschberg alignment retains only distance rows instead of a quadratic matrix.
+function alignCharacters(original, entered) {
+  if (!original.length) return entered.map(answer => ({ type: 'insert', expected: '', answer }));
+  if (!entered.length) return original.map(expected => ({ type: 'delete', expected, answer: '' }));
+  if (original.length === 1) {
+    const match = entered.indexOf(original[0]);
+    const index = match < 0 ? 0 : match;
+    return entered.map((answer, position) => ({
+      type: position === index ? (match < 0 ? 'replace' : 'equal') : 'insert',
+      expected: position === index ? original[0] : '', answer,
+    }));
+  }
+  const middle = Math.floor(original.length / 2);
+  const left = distanceRow(original.slice(0, middle), entered);
+  const right = distanceRow(original.slice(middle).reverse(), [...entered].reverse());
+  let split = 0;
+  for (let index = 1; index <= entered.length; index++) {
+    if (left[index] + right[entered.length - index] < left[split] + right[entered.length - split]) split = index;
+  }
+  return [
+    ...alignCharacters(original.slice(0, middle), entered.slice(0, split)),
+    ...alignCharacters(original.slice(middle), entered.slice(split)),
+  ];
+}
+
+// Version 1 paper snapshots use this tokenizer and grouping contract for replay.
+export function gradeVersePaper(tokens, blankIndexes, answers) {
+  const groups = [];
+  blankIndexes.forEach((tokenIndex, answerIndex) => {
+    const previous = blankIndexes[answerIndex - 1];
+    const gap = previous === undefined ? '' : tokens.slice(previous + 1, tokenIndex).join('');
+    const continuous = previous !== undefined && /^[^\p{L}\p{N}\r\n\u2028\u2029。！？.!?；;]*$/u.test(gap)
+      && !Array.from(gap).some(char => brackets[char]);
+    if (!continuous) groups.push({ indexes: [], expected: '', answer: '', originalOwners: [], answerOwners: [] });
+    const group = groups.at(-1);
+    const expected = String(tokens[tokenIndex] || '').replace(/\s/gu, '');
+    const answer = String(answers[answerIndex] || '').replace(/\s/gu, '');
+    group.indexes.push(answerIndex);
+    group.expected += expected;
+    group.answer += answer;
+    group.originalOwners.push(...Array.from(expected, () => answerIndex));
+    group.answerOwners.push(...Array.from(answer, () => answerIndex));
+  });
+  const blanks = blankIndexes.map(() => ({ exact: true }));
+  let total = 0;
+  let correct = 0;
+  for (const group of groups) {
+    group.diff = alignCharacters(Array.from(group.expected), Array.from(group.answer));
+    let originalPosition = 0;
+    let answerPosition = 0;
+    for (const item of group.diff) {
+      if (item.type !== 'equal') {
+        if (item.expected) blanks[group.originalOwners[originalPosition]].exact = false;
+        if (item.answer) blanks[group.answerOwners[answerPosition]].exact = false;
+      }
+      if (item.expected) originalPosition++;
+      if (item.answer) answerPosition++;
+    }
+    group.total = group.originalOwners.length;
+    group.errors = group.diff.filter(item => item.type !== 'equal').length;
+    group.correct = Math.max(0, group.total - group.errors);
+    total += group.total;
+    correct += group.correct;
+    delete group.originalOwners;
+    delete group.answerOwners;
+  }
+  return { total, correct, groups, blanks };
 }
 
 export function verseBlankWidth(value) {

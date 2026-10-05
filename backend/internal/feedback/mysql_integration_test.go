@@ -3,11 +3,53 @@
 package feedback
 
 import (
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
 	"agp/backend/internal/testdb"
 )
+
+func TestSystemFeedbackStoresNullAuthorAndRemainsAdminOnly(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Apply(t, db, "018_feedback_workflow.sql")
+	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
+		VALUES(1,'feedback','反馈组',NOW(),NOW());
+		INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+		VALUES(11,'member','成员','member',NOW(),NOW())`)
+	service := NewService(NewMySQLRepository(db), NewLocalStorage(t.TempDir()))
+	result, err := service.CreateSystemAutomatic(t.Context(), CreateInput{
+		GroupID: 1, Message: "通知最终失败",
+		Diagnostics: map[string]string{"environment": "server", "error_code": "notification_delivery_failed"},
+	}, time.Now())
+	if err != nil || result.Feedback == nil {
+		t.Fatalf("system create=%+v err=%v", result, err)
+	}
+	var author sql.NullInt64
+	if err := db.QueryRow(`SELECT user_id FROM feedbacks WHERE id=?`, result.Feedback.ID).Scan(&author); err != nil || author.Valid {
+		t.Fatalf("author=%+v err=%v", author, err)
+	}
+	manual, err := service.Create(t.Context(), CreateInput{
+		UserID: 11, GroupID: 1, Message: "用户反馈",
+		Diagnostics: map[string]string{"page_origin": "https://cedar.example.test", "environment": "production"},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := service.ListOwn(t.Context(), 11, 100)
+	if err != nil || len(items) != 1 || items[0].ID != manual.ID {
+		t.Fatalf("user items=%+v err=%v", items, err)
+	}
+	if _, err := service.OwnDetail(t.Context(), 11, result.Feedback.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("system feedback exposed to user: %v", err)
+	}
+	detail, err := service.AdminDetail(t.Context(), result.Feedback.ID)
+	if err != nil || detail.UserID != 0 || detail.LegacyName != "系统" || detail.GroupName != "反馈组" ||
+		detail.Diagnostics["environment"] != "server" {
+		t.Fatalf("admin detail=%+v err=%v", detail, err)
+	}
+}
 
 func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 	db := testdb.Open(t)
