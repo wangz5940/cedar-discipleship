@@ -68,17 +68,17 @@
 .checkin-page .task.is-pending { background: #fff; border-inline-start: 1px solid var(--line); }
 .checkin-page .task.is-completed { background: var(--cd-status-subtle); }
 .checkin-page .task .actions > button.secondary {
-  background: var(--cd-learning-action-soft);
+  background: linear-gradient(180deg, #ffffff, var(--cd-learning-action-soft));
   border-color: var(--cd-learning-action-border);
-  color: var(--cd-gold);
+  color: var(--cd-button-accent-dark);
 }
 .checkin-page .task .actions > button:is(.primary, .taskdone) {
-  background: var(--cd-learning-action);
-  border-color: var(--cd-learning-action);
+  background: linear-gradient(180deg, var(--cd-button-accent-dark), var(--cd-button-accent-deep));
+  border-color: rgb(34 40 50 / 0.24);
   color: var(--cd-on-primary);
   font-weight: 700;
 }
-.checkin-page .task .actions > button:hover { filter: brightness(.96); }
+.checkin-page .task .actions > button:hover { filter: brightness(1.06); }
 @media (min-width: 1000px) { .checkin-page .tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 980px) { .study-preview > .sidebar { overflow: hidden; } .study-preview > .main-panel { overflow-y: auto; } .library-intro { gap: 24px; } }
 @media (max-width: 700px) {
