@@ -7,6 +7,10 @@ import VerseGradingDetails from './VerseGradingDetails.vue';
 const props = defineProps({ open: Boolean, task: Object, scope: String, userName: String, userId: Number, members: Array, canSelectMember: Boolean });
 const emit = defineEmits(['close']);
 const rate = ref(100);
+const defaultRate = computed(() => {
+  const value = Number(props.task?.defaultBlankRate ?? 100);
+  return Number.isInteger(value) && value >= 0 && value <= 100 ? value : 100;
+});
 const examRate = ref(100);
 const originalText = ref('');
 const examText = ref('');
@@ -130,8 +134,8 @@ async function loadRecords() {
 watch(() => [props.open, props.task?.taskID, props.task?.type, props.task?.logicalDate, props.scope], () => {
   if (!props.open) return;
   selectedUserID.value = Number(props.userId || 0);
-  rate.value = 100;
-  examRate.value = 100;
+  rate.value = defaultRate.value;
+  examRate.value = defaultRate.value;
   originalText.value = String(props.task?.reciteText || '').trim();
   examText.value = '';
   originVisible.value = true;
@@ -187,8 +191,8 @@ function generate() {
 function reset() {
   originalText.value = '';
   examText.value = '';
-  rate.value = 100;
-  examRate.value = 100;
+  rate.value = defaultRate.value;
+  examRate.value = defaultRate.value;
   blankIndexes.value = [];
   answers.value = [];
   revealed.value = [];

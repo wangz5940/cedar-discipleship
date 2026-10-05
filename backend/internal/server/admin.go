@@ -172,6 +172,33 @@ func (a *app) handleAdminRemoveMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (a *app) handleAdminResetMemberPassword(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
+	}
+	memberID, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil || memberID == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_member_id")
+		return
+	}
+	targetID, err := a.users.ResetMemberPassword(r.Context(), groupID, memberID, u.IsSuperAdmin, time.Now().UTC())
+	switch {
+	case errors.Is(err, userdomain.ErrMemberNotFound):
+		writeError(w, http.StatusNotFound, "member_not_found")
+	case errors.Is(err, userdomain.ErrCannotResetPrivilegedUser):
+		writeError(w, http.StatusForbidden, "cannot_reset_privileged_user")
+	case errors.Is(err, userdomain.ErrGroupDefaultPasswordMissing):
+		writeError(w, http.StatusBadRequest, "group_default_password_missing")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "member_password_reset_failed")
+	default:
+		a.audit(groupID, u.ID, "reset_member_password", "users", targetID, nil, map[string]any{"password_changed": true, "sessions_revoked": true}, r)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
 func (a *app) handleAdminSetGroupDefaultPassword(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)

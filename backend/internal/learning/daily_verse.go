@@ -2,6 +2,7 @@ package learning
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -66,6 +67,12 @@ func ValidateDailyVerse(settings map[string]any) error {
 	config, ok := nestedMap(settings, "task_sections", "daily", "verse")
 	if !ok {
 		return nil
+	}
+	if value, exists := config["default_blank_rate"]; exists {
+		rate, ok := value.(float64)
+		if !ok || math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 || rate > 100 || math.Trunc(rate) != rate {
+			return ErrInvalidDailyVerse
+		}
 	}
 	var plans []any
 	switch value := config["plans"].(type) {

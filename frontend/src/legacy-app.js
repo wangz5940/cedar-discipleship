@@ -1693,6 +1693,7 @@ export function currentTaskOptions() {
       summary: dailyVerse.completion_mode === 'weekly' ? '整周完成一次' : '每日背经',
       periodStart: dailyVerse.completion_mode === 'weekly' ? dailyVerse.date : '',
       periodEnd: dailyVerse.end_date || dailyVerse.date, reciteText: dailyVerse.recite_text || '',
+      defaultBlankRate: dailyConfig.verse?.default_blank_rate ?? 100,
       contentURL: '', contentLinks: link ? [link] : [],
     });
   }
@@ -1755,6 +1756,7 @@ export function currentTaskOptions() {
       detail: verseTitle,
       summary: '整周完成一次',
       reciteText: week.recite_text || verseTask.content || '',
+      defaultBlankRate: dailyConfig.verse?.default_blank_rate ?? 100,
       contentURL: '',
       contentLinks: verseLink ? [verseLink] : [],
     });

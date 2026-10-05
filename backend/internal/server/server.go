@@ -448,6 +448,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/imports/local-backup", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminImportLocalBackupJSON)))
 	mux.HandleFunc("POST /api/admin/members", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminCreateMember)))
 	mux.HandleFunc("DELETE /api/admin/members/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminRemoveMember)))
+	mux.HandleFunc("POST /api/admin/members/{id}/reset-password", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResetMemberPassword)))
 	mux.HandleFunc("PUT /api/admin/group/default-password", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminSetGroupDefaultPassword)))
 	mux.HandleFunc("POST /api/admin/members/{id}/admins", a.auth(a.requireRole(roleGroupAdmin, a.handleGrantGroupAdmin)))
 	mux.HandleFunc("DELETE /api/admin/members/{id}/admins", a.auth(a.requireRole(roleGroupAdmin, a.handleRevokeGroupAdmin)))

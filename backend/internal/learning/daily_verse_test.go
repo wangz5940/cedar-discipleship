@@ -2,6 +2,18 @@ package learning
 
 import "testing"
 
+func TestDefaultBlankRateValidation(t *testing.T) {
+	for _, value := range []any{float64(0), float64(50), float64(100), float64(-1), float64(101), float64(50.5), "50", nil} {
+		settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{"verse": map[string]any{"default_blank_rate": value}}}}
+		err := ValidateDailyVerse(settings)
+		rate, numeric := value.(float64)
+		valid := numeric && rate >= 0 && rate <= 100 && rate == float64(int(rate))
+		if (err == nil) != valid {
+			t.Errorf("value=%v error=%v", value, err)
+		}
+	}
+}
+
 func TestIndependentVerseFrequencyAndRanges(t *testing.T) {
 	plan := map[string]any{"date": "2026-09-29", "end_date": "2026-10-05", "completion_mode": "weekly", "verse_ref": "约3:16", "recite_text": "神爱世人"}
 	config := map[string]any{"enabled": true, "plans": []any{plan}}

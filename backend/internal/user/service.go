@@ -20,6 +20,8 @@ var ErrCannotManageSelf = errors.New("cannot_manage_self")
 var ErrCannotManageSuperAdmin = errors.New("cannot_manage_super_admin")
 var ErrCannotManageGroupLeader = errors.New("cannot_manage_group_leader")
 var ErrGroupDefaultPasswordMissing = errors.New("group_default_password_missing")
+var ErrCannotResetPrivilegedUser = errors.New("cannot_reset_privileged_user")
+
 var ErrUserCreateFailed = errors.New("user_create_failed")
 var ErrUsernameExists = errors.New("username_exists")
 var ErrMemberAddFailed = errors.New("member_add_failed")
@@ -266,6 +268,10 @@ func (s *Service) SetRole(ctx context.Context, groupID, memberID, actorID uint64
 		return ErrCannotManageGroupLeader
 	}
 	return s.repo.SetRole(ctx, groupID, member.UserID, role, grant, at)
+}
+
+func (s *Service) ResetMemberPassword(ctx context.Context, groupID, memberID uint64, allowAdmins bool, at time.Time) (uint64, error) {
+	return s.repo.ResetMemberPassword(ctx, groupID, memberID, allowAdmins, at)
 }
 
 func (s *Service) ResetNonSuperPasswords(ctx context.Context, passwordHash string, at time.Time) (int64, error) {
