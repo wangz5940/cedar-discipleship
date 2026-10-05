@@ -533,10 +533,10 @@ async function refreshResources() {
                   <p class="muted small app-resource-card__path"><template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}</p>
                 </div>
                 <div class="app-resource-stack-card__actions">
-                  <button class="quiet app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
+                  <button class="primary app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
                     <Eye :size="15" aria-hidden="true" /> 查看
                   </button>
-                  <button v-if="resourceDownloadsEnabled" class="primary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
+                  <button v-if="resourceDownloadsEnabled" class="secondary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
                     <Download :size="16" aria-hidden="true" />
                     <span class="app-resource-stack-card__download-label">下载</span>
                   </button>
