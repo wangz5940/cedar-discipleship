@@ -501,7 +501,17 @@ async function exportRankingChart() {
 <style scoped>
 .dashboard-page { min-width: 0; }
 .page-header { margin-bottom: 24px; }
-.metric__suffix { font-size: 16px; }
+.metric__suffix { font-size: .42em; font-weight: 600; }
+.metricgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.metricgrid > .metric { position: relative; min-height: 164px; display: grid; grid-template-rows: auto 1fr auto; align-items: start; padding: 24px 26px; overflow: hidden; text-align: left; border: 1px solid var(--cd-border); background: var(--cd-surface); background-image: none; }
+.metricgrid > .metric > .muted:first-child { color: var(--cd-text-secondary); font-size: 15px; font-weight: 600; }
+.metricgrid > .metric b { align-self: center; font-size: clamp(46px, 6vw, 68px); font-weight: 700; line-height: .95; letter-spacing: -.04em; margin: 12px 0; color: var(--cd-primary); }
+.metricgrid > .metric > .small { font-size: 13px; }
+.metricgrid > .metric::after { content: ''; position: absolute; right: 24px; bottom: 22px; width: 34px; height: 3px; border-radius: 999px; background: var(--cd-primary); opacity: .22; }
+.metricgrid > .metric:nth-child(1), .metricgrid > .metric:nth-child(4) { background: var(--cd-primary); border-color: var(--cd-primary); box-shadow: inset 0 4px var(--cd-gold-accent, var(--cd-gold)), var(--cd-shadow-card); }
+.metricgrid > .metric:nth-child(1) b, .metricgrid > .metric:nth-child(4) b { color: var(--cd-on-primary); }
+.metricgrid > .metric:nth-child(1) .muted, .metricgrid > .metric:nth-child(4) .muted { color: var(--cd-on-primary-muted); }
+.metricgrid > .metric:nth-child(1)::after, .metricgrid > .metric:nth-child(4)::after { background: var(--cd-gold-accent, var(--cd-gold)); opacity: 1; }
 .daily-detail { margin-bottom: 24px; }
 .daily-detail, .daily-table { min-width: 0; }
 .daily-table table { width: max-content; min-width: 100%; }
@@ -563,7 +573,10 @@ async function exportRankingChart() {
 @media (max-width: 767px) {
   .page-header { align-items: stretch; gap: 16px; }
   .panel { padding: 16px; }
-  .metric { padding: 16px 12px; }
+  .metricgrid { gap: 10px; }
+  .metricgrid > .metric { min-height: 142px; padding: 18px 16px; }
+  .metricgrid > .metric b { font-size: clamp(40px, 13vw, 52px); margin: 10px 0; }
+  .metricgrid > .metric::after { right: 16px; bottom: 16px; width: 24px; }
   .spread { flex-wrap: wrap; gap: 10px; }
   .spread > .inline { flex-wrap: wrap; }
   .stats-center-head { align-items: stretch; }
