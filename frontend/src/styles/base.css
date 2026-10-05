@@ -94,13 +94,13 @@ button.secondary {
   border-color: var(--cd-button-accent-border);
   color: var(--cd-button-accent-dark);
 }
-button.secondary:hover { background: linear-gradient(180deg, #ffffff, #e8ebf0); box-shadow: none; }
+button.secondary:hover { background: linear-gradient(180deg, #ffffff, #f5e4e2); box-shadow: none; }
 button.ghost {
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(242 244 247 / 0.86));
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.94), rgb(250 242 241 / 0.9));
   border-color: var(--cd-button-accent-border);
   color: var(--cd-button-accent-dark);
 }
-button.ghost:hover { background: linear-gradient(180deg, #ffffff, #eaedf2); box-shadow: none; }
+button.ghost:hover { background: linear-gradient(180deg, #ffffff, #f8e9e7); box-shadow: none; }
 
 button:focus-visible,
 input:focus-visible,
@@ -112,7 +112,7 @@ textarea:focus-visible {
 
 button.primary {
   background: linear-gradient(180deg, var(--cd-button-accent-dark), var(--cd-button-accent-deep));
-  border-color: rgb(34 40 50 / 0.24);
+  border-color: rgb(142 29 19 / 0.46);
   color: #ffffff;
   font-weight: 500;
   text-shadow: 0 1px 1px rgb(25 32 41 / 0.28);
@@ -123,14 +123,14 @@ button.primary:hover {
   border-color: rgb(91 17 10 / 0.34);
 }
 
-button.quiet:not(.primary) {
+button.quiet:not(.primary):not(.date-navigator__icon):not(.date-navigator__label):not(.date-navigator__today):not(.date-calendar__today):not(.icon-button) {
   border-color: var(--cd-button-accent-border);
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(242 244 247 / 0.86));
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.94), rgb(250 242 241 / 0.9));
   color: var(--cd-button-accent-dark);
 }
 
-button.quiet:not(.primary):hover {
-  background: linear-gradient(180deg, #ffffff, #eaedf2);
+button.quiet:not(.primary):not(.date-navigator__icon):not(.date-navigator__label):not(.date-navigator__today):not(.date-calendar__today):not(.icon-button):hover {
+  background: linear-gradient(180deg, #ffffff, #f8e9e7);
 }
 
 button.taskdone {
@@ -141,7 +141,7 @@ button.taskdone {
 }
 
 button.taskdone:hover {
-  background: linear-gradient(180deg, #ffffff, #e7eaf0);
+  background: linear-gradient(180deg, #ffffff, #f5e4e2);
 }
 
 button.danger {
@@ -157,7 +157,7 @@ button.danger:hover {
 
 button.accent, .task .actions > button.primary {
   background: linear-gradient(180deg, var(--cd-button-accent-dark), var(--cd-button-accent-deep));
-  border-color: rgb(34 40 50 / 0.24);
+  border-color: rgb(142 29 19 / 0.46);
   color: white;
   text-shadow: 0 1px 1px rgb(25 32 41 / 0.28);
 }
@@ -178,12 +178,9 @@ button.accent,
   isolation: isolate;
   overflow: hidden;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.58),
-    inset 0 -1px 0 rgb(17 35 58 / 0.12),
-    0 1px 2px rgb(25 32 41 / 0.1),
-    0 7px 16px -13px rgb(25 45 72 / 0.68);
-  -webkit-backdrop-filter: blur(12px) saturate(135%);
-  backdrop-filter: blur(12px) saturate(135%);
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 -1px 0 rgb(68 9 4 / 0.24),
+    0 2px 8px rgb(35 65 106 / 0.15);
 }
 
 button.primary::before,
@@ -197,10 +194,9 @@ button.accent::before,
 .icon-text-button::before {
   content: "";
   position: absolute;
-  inset: 1px 3px auto;
-  height: 40%;
-  border-radius: calc(var(--cd-radius-base) - 2px) calc(var(--cd-radius-base) - 2px) 55% 55%;
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.24), rgb(255 255 255 / 0.04) 62%, transparent);
+  inset: 1px;
+  border-radius: calc(var(--cd-radius-base) - 1px);
+  background: linear-gradient(122deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.05) 32%, transparent 56%);
   pointer-events: none;
 }
 
@@ -214,10 +210,9 @@ button.accent:hover,
 .form-actions > button:hover,
 .icon-text-button:hover {
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.68),
-    inset 0 -1px 0 rgb(17 35 58 / 0.12),
-    0 2px 4px rgb(25 32 41 / 0.11),
-    0 9px 18px -13px rgb(25 45 72 / 0.76);
+    inset 0 1px 0 rgb(255 255 255 / 0.38),
+    inset 0 -1px 0 rgb(68 9 4 / 0.2),
+    0 4px 12px rgb(35 65 106 / 0.2);
 }
 
 button.primary:active,
@@ -230,10 +225,10 @@ button.accent:active,
 .form-actions > button:active,
 .icon-text-button:active {
   box-shadow:
-    inset 0 2px 5px rgb(17 35 58 / 0.18),
-    inset 0 1px 0 rgb(255 255 255 / 0.48),
-    0 1px 2px rgb(25 32 41 / 0.08);
-  filter: brightness(0.98);
+    inset 0 2px 5px rgb(68 9 4 / 0.26),
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 1px 3px rgb(35 65 106 / 0.1);
+  filter: brightness(0.97);
 }
 
 button:disabled {

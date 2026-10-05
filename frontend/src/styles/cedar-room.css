@@ -74,7 +74,7 @@
 }
 .checkin-page .task .actions > button:is(.primary, .taskdone) {
   background: linear-gradient(180deg, var(--cd-button-accent-dark), var(--cd-button-accent-deep));
-  border-color: rgb(34 40 50 / 0.24);
+  border-color: rgb(142 29 19 / 0.46);
   color: var(--cd-on-primary);
   font-weight: 700;
 }
