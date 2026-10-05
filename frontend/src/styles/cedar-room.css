@@ -1,4 +1,7 @@
 /* Cedar Room: editorial learning surfaces; media controls keep their own styling. */
+:is(.cedar-app-shell, .study-preview) :is(.cd-resource-card, .course-card, .favorite-card) {
+  background-image: var(--cd-card-blue-wash);
+}
 .sidebar.app-sidebar, .study-preview > .sidebar { background: var(--cd-surface); color: var(--cd-text); border-right: 1px solid var(--cd-border); }
 .sidebar .brandcopy b, .sidebar .sidebar-logo b, .sidebar .app-sidebar__account-copy b { color: var(--cd-primary); }
 .sidebar .muted, .sidebar .navlabel, .sidebar .eyebrow, .sidebar .sidebar-discover,
@@ -82,6 +85,7 @@ body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, 
 .learning-fraction small { font-size: 11px; color: var(--cd-on-primary-muted); }
 .checkin-page .task.is-pending { background: #fff; border-inline-start: 1px solid var(--line); }
 .checkin-page .task.is-completed { background: var(--cd-status-subtle); }
+.checkin-page .task:is(.is-pending, .is-completed) { background-color: var(--cd-learning-bg, #e8eef7); background-image: var(--cd-card-blue-wash); border-color: var(--cd-border-strong); }
 .checkin-page .task .actions > button.secondary {
   background: linear-gradient(180deg, #ffffff, var(--cd-learning-action-soft));
   border-color: var(--cd-learning-action-border);
