@@ -185,6 +185,9 @@
 }
 
 .app-resource-search {
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
   position: relative;
   display: flex;
   flex: 1 1 260px;
@@ -209,6 +212,8 @@
 }
 
 .app-resource-search input.app-resource-search__input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  border: 0;
+  box-shadow: none;
   width: 100%;
   min-width: 0;
   padding-left: 40px;

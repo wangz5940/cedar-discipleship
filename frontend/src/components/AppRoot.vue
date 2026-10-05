@@ -96,7 +96,10 @@ const calendarMaxDate = (() => {
 const resourceRefreshing = ref(false);
 
 async function submitResourceSearch() {
-  const phrase = resourceSearchQuery.value;
+  await submitStudySearch(resourceSearchQuery.value, () => { resourceSearchQuery.value = ''; });
+}
+
+async function submitStudySearch(phrase, clearSearch) {
   if (!phrase || resourceUnlocking.value) return;
   resourceUnlocking.value = true;
   try {
@@ -104,7 +107,7 @@ async function submitResourceSearch() {
       await loadStudyAccess(user.value?.id, studyAccountAPI);
     }
     const unlocked = await toggleStudyAccess(phrase, studyAccountAPI);
-    resourceSearchQuery.value = '';
+    clearSearch();
     showToast(unlocked ? 'OVCM 课程与收藏夹已开启' : 'OVCM 课程与收藏夹已关闭');
     openOvcmFromSearch.value = unlocked;
     setTab('courses');
@@ -441,7 +444,7 @@ async function refreshResources() {
           <button type="button" :class="{ active: tab === 'resources' }" :aria-current="tab === 'resources' ? 'page' : undefined" @click="setTab('resources')">学习资料</button>
         </nav>
 
-        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :weeks="weeks" :open-ovcm="openOvcmFromSearch" />
+        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :weeks="weeks" :open-ovcm="openOvcmFromSearch" @search-submit="submitStudySearch" />
 
         <!-- Cedar Public Library (tab === 'resources') -->
         <section v-if="!showGroupPicker && tab === 'resources'">

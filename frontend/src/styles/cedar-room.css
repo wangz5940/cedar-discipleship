@@ -6,6 +6,15 @@
 .sidebar .nav button, .sidebar .preview-back, .sidebar .app-sidebar__action, .sidebar .sidebar-toggle { color: var(--cd-muted); background: transparent; border-color: transparent; }
 .sidebar .nav button.active { color: var(--cd-primary); background: var(--cd-primary-soft); border-color: transparent; box-shadow: none; font-weight: 600; }
 .sidebar .nav button:hover, .sidebar .preview-back:hover { background: var(--cd-bg); color: var(--cd-primary); }
+.sidebar .nav button.active:hover { background: var(--cd-primary-soft); }
+/* Touch hover must not leave a second navigation item looking selected. */
+@media (hover: none) {
+  .sidebar .nav button:not(.active):hover,
+  .app-mobile-nav button:not(.active):hover { background: transparent; color: var(--cd-muted); }
+}
+.app-mobile-nav button:focus-visible { outline-offset: -3px; }
+body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, .course-source-tabs, .admin-tabs) button { font-weight: 600; }
+body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, .course-source-tabs, .admin-tabs) button.active { font-weight: 700; }
 .sidebar .brandmark { background: var(--cd-primary-soft); color: var(--cd-primary); border-radius: 12px; }
 .sidebar .nav button > svg { flex-shrink: 0; }
 .sidebar .sidefoot, .sidebar .nav .separator { border-color: var(--cd-border); }
@@ -21,6 +30,12 @@
 .library-intro .course-search { margin-top: 26px; padding: 5px 16px; border-radius: 8px; box-shadow: none; max-width: 480px; }
 .library-intro .course-search input[type="search"] { font-size: 14px; border: 0; box-shadow: none; background: transparent; padding: 12px 0; }
 .app-resource-search .app-resource-search__refresh { background: var(--cd-primary-soft); color: var(--cd-primary); }
+.course-search input[type="search"]:focus,
+.course-search input[type="search"]:focus-visible,
+.app-resource-search input.app-resource-search__input:focus,
+.app-resource-search input.app-resource-search__input:focus-visible { outline: none; box-shadow: none; }
+.course-search:focus-within, .app-resource-search:focus-within { border-color: var(--cd-primary); outline: 2px solid var(--cd-primary-soft); outline-offset: 2px; }
+.course-search .course-search__submit { flex: 0 0 40px; min-height: 40px; padding: 8px; border: 0; background: var(--cd-primary-soft); color: var(--cd-primary); }
 .library-login { display: inline-flex; gap: 30px; color: var(--primary); font-size: 12px; text-decoration: none; margin-top: 18px; padding-block: 4px; }
 .library-note { min-height: 320px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; padding: 26px; background: var(--cd-surface-hover); border-radius: 100px 100px 10px 10px; text-align: center; color: var(--cd-text-secondary); }
 .library-note > .library-kicker { font-size: 9px; margin-top: 12px; }
@@ -141,7 +156,7 @@
 .learning-fraction strong { font-weight: 600; }
 .checkin-page .actions button, .app-resource-stack-card__actions button,
 .course-source-tabs button, .library-feature button { font-size: 15px; font-weight: 600; }
-.sidebar.app-sidebar .nav button { font-weight: 500; }
+.sidebar.app-sidebar .nav button { font-weight: 600; }
 .sidebar.app-sidebar .nav button.active { font-weight: 700; }
 .checkin-page .task-status { font-size: 13px; font-weight: 600; }
 @media (max-width: 767px) {
