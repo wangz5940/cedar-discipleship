@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { loadOvcmCourses, ovcmLessonURL } from '../runtime/ovcmCourses';
 import { storeToRefs } from 'pinia';
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from '@lucide/vue';
-import { alertDialog, promptDialog } from '../ui/dialog';
+import { alertDialog, confirmDialog, promptDialog } from '../ui/dialog';
 import { useAppStateStore } from '../stores/appState';
 import { lazyPage } from '../ui/lazyPage';
 import { bibleBookReferences, inferDailyDevotionContentType } from '../runtime/content';
@@ -124,6 +124,19 @@ function navigateTabs(event) {
 
 const canManageMinistryCatalog = computed(() => Boolean(user.value?.is_super_admin || user.value?.is_tenant_admin || user.value?.roles?.includes('group_admin')));
 const canManageRoles = computed(() => canManageStudyGroup(user.value));
+const resettingMemberID = ref(0);
+async function resetMemberPassword(member) {
+  if (resettingMemberID.value) return;
+  const confirmed = await confirmDialog({ title: '重置成员密码', message: `将“${member.member_name || member.display_name || member.username}”的密码重置为当前小组默认密码。该账号所有设备将退出登录，下次登录需要修改密码。是否继续？` });
+  if (!confirmed) return;
+  resettingMemberID.value = member.member_id;
+  try {
+    await api(`/admin/members/${member.member_id}/reset-password`, { method: 'POST' });
+    showToast('已重置为本组默认密码');
+  } catch (error) {
+    showToast(({ group_default_password_missing: '请先设置本组默认密码', cannot_reset_privileged_user: '无权重置该管理员账号', member_not_found: '成员已不在当前小组' })[error.message] || '密码重置失败，请重试');
+  } finally { resettingMemberID.value = 0; }
+}
 watch(() => Boolean(user.value?.is_super_admin || user.value?.is_tenant_admin), (canManageHistory) => {
   if (!canManageHistory && adminSection.value === 'recite-history') setAdminSection('learning');
 });
@@ -830,6 +843,7 @@ async function runLocalBackupImport() {
               >
                 删除人员
               </button>
+              <button v-if="canManageRoles && !member.is_super_admin && (user?.is_super_admin || !member.roles?.some(role => ['group_admin', 'group_leader'].includes(role)))" class="secondary" type="button" :disabled="Boolean(resettingMemberID)" @click="resetMemberPassword(member)">重置密码</button>
             </div>
           </div>
         </div>
@@ -1059,6 +1073,8 @@ async function runLocalBackupImport() {
                       </div>
                     </Transition>
                     <div class="admin-binding-list weekly-verse-config">
+                      <label class="admin-field"><span class="admin-field-label">本组默认挖空率（%）</span><input type="number" min="0" max="100" step="1" :value="dailyVerse.default_blank_rate ?? 100" :disabled="!canEditLearning" @change="updateLearning(['task_sections', 'daily', 'verse', 'default_blank_rate'], Number($event.target.value))" /></label>
+                      <div class="form-actions"><button class="primary" type="button" :disabled="!canEditLearning" @click="saveLearningConfig('默认挖空率已保存')">保存默认挖空率</button></div>
                       <label class="admin-field"><span class="admin-field-label">默写经文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写经文原文并保留章节标记，例如：创1:1 起初，神创造天地。"></textarea></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="verseCompletionMode === 'daily'" :disabled="!canEditLearning" @change="verseCompletionMode = $event.target.checked ? 'daily' : 'weekly'" /><span>每天打卡</span></label>
                       <div class="form-actions">

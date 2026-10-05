@@ -24,6 +24,7 @@ type Repository interface {
 	RemoveMember(ctx context.Context, groupID, memberID, userID, actorID uint64, at time.Time) error
 	SetRole(ctx context.Context, groupID, userID uint64, role string, grant bool, at time.Time) error
 	ResetNonSuperPasswords(ctx context.Context, passwordHash string, at time.Time) (int64, error)
+	ResetMemberPassword(ctx context.Context, groupID, memberID uint64, allowAdmins bool, at time.Time) (uint64, error)
 	SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time) (int64, error)
 	GroupDefaultPasswordHash(ctx context.Context, groupID uint64) (string, error)
 	HasSuperAdmin(ctx context.Context) (bool, error)

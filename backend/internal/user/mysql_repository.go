@@ -590,6 +590,45 @@ func (r *MySQLRepository) GroupDefaultPasswordHash(ctx context.Context, groupID 
 	return hash, err
 }
 
+func (r *MySQLRepository) ResetMemberPassword(ctx context.Context, groupID, memberID uint64, allowAdmins bool, at time.Time) (uint64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var hash string
+	if err := tx.QueryRowContext(ctx, `SELECT default_password_hash FROM study_groups WHERE id=? FOR UPDATE`, groupID).Scan(&hash); err != nil {
+		return 0, err
+	}
+	if hash == "" {
+		return 0, ErrGroupDefaultPasswordMissing
+	}
+	var id uint64
+	var super bool
+	if err := tx.QueryRowContext(ctx, `SELECT u.id,u.is_super_admin FROM users u
+		JOIN group_members m ON m.user_id=u.id WHERE m.id=? AND m.group_id=? AND m.status=1 AND u.status=1 FOR UPDATE`, memberID, groupID).Scan(&id, &super); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrMemberNotFound
+		}
+		return 0, err
+	}
+	var privileged bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_group_roles WHERE user_id=? AND role IN ('group_admin','group_leader'))
+		OR EXISTS(SELECT 1 FROM tenant_members WHERE user_id=? AND role='admin' AND status=1)`, id, id).Scan(&privileged); err != nil {
+		return 0, err
+	}
+	if super || (!allowAdmins && privileged) {
+		return 0, ErrCannotResetPrivilegedUser
+	}
+	if _, err := resetPasswordsTx(ctx, tx, []uint64{id}, hash, at); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 func (r *MySQLRepository) HasSuperAdmin(ctx context.Context) (bool, error) {
 	var count int
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE is_super_admin = 1`).Scan(&count); err != nil {

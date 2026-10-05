@@ -84,6 +84,62 @@ func TestPasswordResetRevokesOnlyAffectedSessions(t *testing.T) {
 	}
 }
 
+func TestResetSelectedMemberPassword(t *testing.T) {
+	for _, tc := range []struct {
+		name                            string
+		target, group                   uint64
+		super, ordinary, missingDefault bool
+		want                            int
+	}{
+		{name: "member with multiple groups", target: 2, group: 1, want: 200},
+		{name: "wrong group", target: 1, group: 2, want: 404},
+		{name: "inactive member", target: 5, group: 1, want: 404},
+		{name: "ordinary actor", target: 1, group: 1, ordinary: true, want: 403},
+		{name: "protected administrator", target: 3, group: 1, want: 403},
+		{name: "super resets administrator", target: 3, group: 1, super: true, want: 200},
+		{name: "protected super", target: 4, group: 1, super: true, want: 403},
+		{name: "missing default", target: 1, group: 1, missingDefault: true, want: 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, db := passwordSessionFixture(t)
+			if !tc.missingDefault {
+				testdb.Exec(t, db, `UPDATE study_groups SET default_password_hash='group-default'`)
+			}
+			var memberID uint64
+			if err := db.QueryRow(`SELECT id FROM group_members WHERE group_id=1 AND user_id=?`, tc.target).Scan(&memberID); err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/", nil)
+			req.SetPathValue("id", fmt.Sprint(memberID))
+			actor := currentUser{ID: 3, CurrentGroupID: tc.group, IsSuperAdmin: tc.super}
+			if !tc.ordinary {
+				actor.Roles = []string{roleGroupAdmin}
+			}
+			req = req.WithContext(context.WithValue(req.Context(), currentUserKey, actor))
+			response := httptest.NewRecorder()
+			a.requireRole(roleGroupAdmin, a.handleAdminResetMemberPassword)(response, req)
+			if response.Code != tc.want {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body)
+			}
+			for id := uint64(1); id <= 5; id++ {
+				changed := tc.want == 200 && id == tc.target
+				var hash string
+				var mustChange bool
+				var revoked int
+				if err := db.QueryRow(`SELECT password_hash,must_change_password FROM users WHERE id=?`, id).Scan(&hash, &mustChange); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.QueryRow(`SELECT COUNT(*) FROM refresh_sessions WHERE user_id=? AND revoked_at IS NOT NULL`, id).Scan(&revoked); err != nil {
+					t.Fatal(err)
+				}
+				if (hash == "group-default") != changed || mustChange != changed || (revoked == 2) != changed {
+					t.Errorf("user=%d hash_changed=%v must_change=%v revoked=%d", id, hash == "group-default", mustChange, revoked)
+				}
+			}
+		})
+	}
+}
+
 func TestChangePasswordRejectsOldCookiesAndAccessToken(t *testing.T) {
 	a, db := passwordSessionFixture(t)
 	hash, err := hashPassword("old-password")

@@ -45,6 +45,21 @@ async function mountQuiz(task = {}) {
 }
 const posts = () => api.mock.calls.filter(([, options]) => options?.method === 'POST');
 
+it.each([0, 30, 100])('uses group default %i and lets an ordinary member change it', async (defaultBlankRate) => {
+  const state = await mountQuiz({ defaultBlankRate });
+  expect(state.rate).toBe(defaultBlankRate);
+  state.rate = 65;
+  state.generate();
+  expect(state.examRate).toBe(65);
+  state.reset();
+  expect(state.rate).toBe(defaultBlankRate);
+});
+
+it.each([undefined, -1, 101, 'invalid'])('keeps legacy 100%% for missing or invalid defaults: %s', async (defaultBlankRate) => {
+  const state = await mountQuiz({ defaultBlankRate });
+  expect(state.rate).toBe(100);
+});
+
 it.each([
   ['就为你们不住的感谢神', 9, 90],
   ['就为你不住的感谢神', 8, 80],
