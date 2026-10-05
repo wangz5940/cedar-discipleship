@@ -590,7 +590,7 @@ async function refreshResources() {
         </header>
         <div class="cd-dialog-body app-more-dialog__body">
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="setTab('guide'); showMobileMoreMenu = false;"
           >
@@ -598,7 +598,7 @@ async function refreshResources() {
             <span>使用文档</span>
           </button>
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="setTab('feedback'); showMobileMoreMenu = false;"
           >
@@ -606,19 +606,19 @@ async function refreshResources() {
             <span>建议与反馈</span>
           </button>
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="setTab('settings'); showMobileMoreMenu = false;"
           >
             <User :size="18" class="app-more-dialog__icon" />
             <span>个人设置</span>
           </button>
-          <button v-if="currentGroupID && defaultGroupID !== currentGroupID" class="quiet app-more-dialog__action" type="button" @click="setDefaultGroupAction(currentGroupID)">
+          <button v-if="currentGroupID && defaultGroupID !== currentGroupID" class="app-more-dialog__action" type="button" @click="setDefaultGroupAction(currentGroupID)">
             将当前小组设为默认
           </button>
           <button
             v-if="groups.length > 1"
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="showGroupPicker = true; showMobileMoreMenu = false;"
           >
@@ -627,7 +627,7 @@ async function refreshResources() {
           </button>
 
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="downloadManager.openPanel(); showMobileMoreMenu = false;"
           >
@@ -648,7 +648,7 @@ async function refreshResources() {
           </button>
         </div>
         <footer class="cd-dialog-foot">
-          <button class="quiet app-dialog-full-button" type="button" @click="showMobileMoreMenu = false">
+          <button class="app-dialog-full-button" type="button" @click="showMobileMoreMenu = false">
             关闭
           </button>
         </footer>
