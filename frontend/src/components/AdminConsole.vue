@@ -1040,7 +1040,6 @@ async function runLocalBackupImport() {
                         placeholder="留空时根据已选任务内容自动生成"
                         @change="updateWeekDraftField('title', $event.target.value.trim())"
                       />
-                      <small class="muted">该标题会显示在任务列表与周任务选择器中。</small>
                     </label>
                     <div class="admin-checkbox-row">
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>书籍</span></label>
@@ -1112,7 +1111,6 @@ async function runLocalBackupImport() {
               <div class="grid">
                 <div class="card">
                   <h2>上传本组资源</h2>
-                  <p class="muted">上传后会自动刷新列表，随后即可在“周任务”里选择挂载。</p>
                   <div class="form-stack admin-form-grid">
                     <label class="admin-field">
                       <span class="admin-field-label">上传到</span>
