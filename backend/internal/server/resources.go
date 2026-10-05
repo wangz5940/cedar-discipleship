@@ -130,10 +130,14 @@ func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
 		validSignature = a.verifyAssetPlaybackSource(id, groupID, expiresAt, source, signature)
 	}
 	if id == 0 || groupID == 0 || expiresAt < time.Now().Unix() || !validSignature {
+		if validSignature && id != 0 && groupID != 0 {
+			a.reportPlaybackRejection(r.Context(), groupID, id, "playback_link_expired")
+		}
 		writeError(w, http.StatusForbidden, "invalid_playback_url")
 		return
 	}
 	if a.db != nil && !a.playbackSessionAllowed(r, groupID) {
+		a.reportPlaybackRejection(r.Context(), groupID, id, "playback_session_unavailable")
 		writeError(w, http.StatusForbidden, "invalid_playback_url")
 		return
 	}

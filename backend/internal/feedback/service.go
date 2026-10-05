@@ -46,6 +46,8 @@ const (
 var diagnosticLimits = map[string]int{
 	"app_version":       128,
 	"page":              256,
+	"page_origin":       512,
+	"environment":       32,
 	"action_context":    128,
 	"recent_log_id":     32,
 	"user_agent":        1024,
@@ -86,13 +88,29 @@ func (s *Service) Create(ctx context.Context, input CreateInput, now time.Time) 
 		return nil, ErrInvalidSource
 	}
 	input.Source = SourceManual
-	return s.create(ctx, input, now)
+	return s.create(ctx, input, now, false)
 }
 
 func (s *Service) CreateAutomatic(
 	ctx context.Context,
 	input CreateInput,
 	now time.Time,
+) (*AutomaticCreateResult, error) {
+	return s.createAutomatic(ctx, input, now, false)
+}
+
+// CreateSystemAutomatic is for trusted background observers, never HTTP callers.
+// System feedback has no user or uploaded attachments.
+func (s *Service) CreateSystemAutomatic(
+	ctx context.Context, input CreateInput, now time.Time,
+) (*AutomaticCreateResult, error) {
+	input.UserID = 0
+	input.Images = nil
+	return s.createAutomatic(ctx, input, now, true)
+}
+
+func (s *Service) createAutomatic(
+	ctx context.Context, input CreateInput, now time.Time, system bool,
 ) (*AutomaticCreateResult, error) {
 	settings, err := s.repo.AutomaticSettings(ctx)
 	if err != nil {
@@ -108,7 +126,7 @@ func (s *Service) CreateAutomatic(
 		}
 	}
 	input.Source = SourceAutomatic
-	item, err := s.create(ctx, input, now)
+	item, err := s.create(ctx, input, now, system)
 	if err != nil {
 		return nil, err
 	}
@@ -135,14 +153,14 @@ func (s *Service) UpdateAutomaticSettings(
 	return normalized, nil
 }
 
-func (s *Service) create(ctx context.Context, input CreateInput, now time.Time) (*UserView, error) {
+func (s *Service) create(ctx context.Context, input CreateInput, now time.Time, system bool) (*UserView, error) {
 	message := strings.TrimSpace(input.Message)
 	switch {
 	case message == "":
 		return nil, ErrMessageRequired
 	case utf8.RuneCountInString(message) > maxMessageRunes:
 		return nil, ErrMessageTooLong
-	case input.UserID == 0:
+	case input.UserID == 0 && !system:
 		return nil, ErrNotFound
 	case len(input.Images) > MaxImages:
 		return nil, ErrTooManyImages
@@ -203,6 +221,9 @@ func (s *Service) create(ctx context.Context, input CreateInput, now time.Time) 
 		DiagnosticsJSON: diagnosticsJSON,
 		CreatedAt:       now.UTC(),
 		UpdatedAt:       now.UTC(),
+	}
+	if system {
+		item.LegacyName = "系统"
 	}
 	id, err := s.repo.Create(ctx, item, attachments)
 	if err != nil {

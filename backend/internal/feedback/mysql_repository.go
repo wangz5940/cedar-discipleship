@@ -83,7 +83,7 @@ func (r *MySQLRepository) Create(ctx context.Context, item Feedback, attachments
 		(group_id,user_id,name,contact,message,source,status,page,user_agent,log_id,
 		 diagnostics_json,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		nullableID(item.GroupID), item.UserID, "", "", item.Message, item.Source, item.Status, "", "", item.LogID,
+		nullableID(item.GroupID), nullableID(item.UserID), item.LegacyName, "", item.Message, item.Source, item.Status, "", "", item.LogID,
 		nullableDiagnostics(item.DiagnosticsJSON), item.CreatedAt, item.UpdatedAt)
 	if err != nil {
 		return 0, err
