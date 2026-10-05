@@ -31,6 +31,8 @@ import {
   resourceCategoryAccept,
 } from '../runtime/resources';
 import DateField from './ui/DateField.vue';
+import BibleVersePicker from './BibleVersePicker.vue';
+import { cleanVerseSource } from '../runtime/verseSource';
 import LearningConfigSection from './ui/LearningConfigSection.vue';
 import {
   api,
@@ -105,6 +107,11 @@ const versePlanDate = ref(todayString());
 const verseText = ref('');
 const versePlanEnd = ref(todayString());
 const verseCompletionMode = ref('weekly');
+const versesPerDay = ref(2);
+function selectVerseSource(selection) {
+  verseText.value = cleanVerseSource(selection.append && verseText.value.trim()
+    ? `${verseText.value.trim()}\n${selection.text}` : selection.text);
+}
 
 function learningSectionKey(section) {
   return `cedar:learning-sections:${user.value?.id || user.value?.username || 'user'}:${currentGroupID.value || 0}:${section}`;
@@ -176,9 +183,11 @@ watch([() => weekDraft.value?.start, () => weekDraft.value?.end, () => JSON.stri
   versePlanEnd.value = draft.end_date;
   verseText.value = draft.recite_text;
   verseCompletionMode.value = draft.completion_mode;
+  versesPerDay.value = draft.verses_per_day ?? 2;
 }, { immediate: true });
 async function saveVersePlan() {
   if (!canEditLearning.value) return;
+  verseText.value = cleanVerseSource(verseText.value);
   if (!versePlanDate.value || !verseText.value.trim()) {
     showToast('请填写背经日期和默写原文');
     return;
@@ -197,8 +206,12 @@ async function saveVersePlan() {
     return;
   }
   let plans;
+  if (verseCompletionMode.value === 'daily' && (!Number.isInteger(versesPerDay.value) || versesPerDay.value < 1 || versesPerDay.value > 100)) {
+    showToast('每天背诵节数须为 1–100 的整数');
+    return;
+  }
   try {
-    plans = upsertWeekVersePlan(versePlans.value, { date: versePlanDate.value, end_date: end, completion_mode: verseCompletionMode.value, verse_ref: verseRef.value.trim(), recite_text: verseText.value.trim() });
+    plans = upsertWeekVersePlan(versePlans.value, { date: versePlanDate.value, end_date: end, completion_mode: verseCompletionMode.value, verse_ref: verseRef.value.trim(), recite_text: verseText.value.trim(), ...(verseCompletionMode.value === 'daily' ? { verses_per_day: versesPerDay.value } : {}) });
   } catch (error) {
     showToast(error.message);
     return;
@@ -1075,8 +1088,10 @@ async function runLocalBackupImport() {
                     <div class="admin-binding-list weekly-verse-config">
                       <label class="admin-field"><span class="admin-field-label">本组默认挖空率（%）</span><input type="number" min="0" max="100" step="1" :value="dailyVerse.default_blank_rate ?? 100" :disabled="!canEditLearning" @change="updateLearning(['task_sections', 'daily', 'verse', 'default_blank_rate'], Number($event.target.value))" /></label>
                       <div class="form-actions"><button class="primary" type="button" :disabled="!canEditLearning" @click="saveLearningConfig('默认挖空率已保存')">保存默认挖空率</button></div>
-                      <label class="admin-field"><span class="admin-field-label">默写经文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写经文原文并保留章节标记，例如：创1:1 起初，神创造天地。"></textarea></label>
+                      <BibleVersePicker :disabled="!canEditLearning" @select="selectVerseSource" />
+                      <label class="admin-field"><span class="admin-field-label">默写经文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="选择经文或填写原文并保留章节标记，例如：创1:1 起初，神创造天地。" @change="verseText = cleanVerseSource(verseText)"></textarea></label>
                       <label class="admin-toggle"><input type="checkbox" :checked="verseCompletionMode === 'daily'" :disabled="!canEditLearning" @change="verseCompletionMode = $event.target.checked ? 'daily' : 'weekly'" /><span>每天打卡</span></label>
+                      <label v-if="verseCompletionMode === 'daily'" class="admin-field"><span class="admin-field-label">每天背诵节数</span><input v-model.number="versesPerDay" type="number" min="1" max="100" step="1" :disabled="!canEditLearning" /><span class="muted">每节经文单独一行，保留章节标记，例如“创1:1 原文”。从周任务开始日期依次递进，背完后不再生成任务。</span></label>
                       <div class="form-actions">
                         <button class="primary" :disabled="!canEditLearning || !verseText.trim()" type="button" @click="saveVersePlan">保存背经</button>
                         <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate && (plan.end_date || plan.date) === versePlanEnd)" type="button" @click="deleteVersePlan">删除背经</button>

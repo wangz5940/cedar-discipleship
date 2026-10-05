@@ -5,6 +5,7 @@ import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useDashboardStore } from './stores/dashboard';
 import { useAppStateStore } from './stores/appState';
 import { confirmDialog, promptDialog } from './ui/dialog';
+import { resolvedDailyVerse } from './runtime/weekVerse';
 import {
   currentCalendarWeekRange,
   currentMonthString,
@@ -1683,8 +1684,9 @@ export function currentTaskOptions() {
       contentLinks: dailyLinks,
     });
   }
-  const dailyVerse = dailyConfig.verse?.enabled === true
+  const configuredVerse = dailyConfig.verse?.enabled === true
     ? dailyConfig.verse.plans?.find((plan) => plan.date <= state.selectedDate && state.selectedDate <= (plan.end_date || plan.date)) : null;
+  const dailyVerse = resolvedDailyVerse(configuredVerse, state.todayHub?.tasks);
   if (dailyVerse) {
     const link = buildWeeklyVerseContentLink(dailyVerse.verse_ref, dailyVerse.recite_text);
     tasks.push({
@@ -2371,7 +2373,7 @@ export async function saveLearningConfig(successMessage = '学习内容配置已
     await loadAll();
     return true;
   } catch (error) {
-    toast(error.message === 'learning_config_conflict' ? '配置已被其他管理员更新。本地编辑已保留，请重新读取最新配置后保存。' : error.message);
+    toast(error.message === 'learning_config_conflict' ? '配置已被其他管理员更新。本地编辑已保留，请重新读取最新配置后保存。' : error.message === 'invalid_daily_verse' ? '请检查背经日期、频率和节数；自动递进的经文须每节单独一行并保留章节标记，不能用一个范围标记代替多节。' : error.message);
     return false;
   }
 }
