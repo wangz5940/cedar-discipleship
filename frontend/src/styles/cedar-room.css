@@ -29,6 +29,12 @@ body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, 
 .library-intro-copy > p { max-width: 440px; color: var(--muted); font-size: 14px; line-height: 1.95; margin-top: 20px; }
 .library-intro .course-search { margin-top: 26px; padding: 5px 16px; border-radius: 8px; box-shadow: none; max-width: 480px; }
 .library-intro .course-search input[type="search"] { font-size: 14px; border: 0; box-shadow: none; background: transparent; padding: 12px 0; }
+.course-search input[type="search"]:focus,
+.course-search input[type="search"]:focus-visible,
+.app-resource-search input.app-resource-search__input:focus,
+.app-resource-search input.app-resource-search__input:focus-visible { outline: none; box-shadow: none; }
+.course-search:focus-within, .app-resource-search:focus-within { border-color: var(--cd-primary); outline: 2px solid var(--cd-primary-soft); outline-offset: 2px; }
+.course-search .course-search__submit { flex: 0 0 40px; min-height: 40px; padding: 8px; border: 0; background: var(--cd-primary-soft); color: var(--cd-primary); }
 .library-login { display: inline-flex; gap: 30px; color: var(--primary); font-size: 12px; text-decoration: none; margin-top: 18px; padding-block: 4px; }
 .library-note { min-height: 320px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; padding: 26px; background: var(--cd-surface-hover); border-radius: 100px 100px 10px 10px; text-align: center; color: var(--cd-text-secondary); }
 .library-note > .library-kicker { font-size: 9px; margin-top: 12px; }

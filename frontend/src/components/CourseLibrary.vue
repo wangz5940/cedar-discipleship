@@ -12,12 +12,17 @@ import { courseMemoryKey } from '../../public/study-memory.js';
 import { studyAccessStatus } from '../../public/study-access.js';
 
 const props = defineProps({ sections: { type: Array, default: () => [] }, weeks: { type: Array, default: () => [] }, preview: { type: Boolean, default: false }, openOvcm: { type: Boolean, default: false } });
+const emit = defineEmits(['search-submit']);
 const source = ref(props.openOvcm ? 'ovcm' : 'local');
 const access = ref(studyAccessStatus());
 const courses = ref([]);
 const loading = ref(true);
 const error = ref('');
 const query = ref('');
+function submitSearch() {
+  emit('search-submit', query.value.trim(), () => { query.value = ''; });
+}
+watch(() => props.openOvcm, unlocked => { source.value = unlocked ? 'ovcm' : 'local'; });
 const selectedCourse = ref(null);
 const selectedLesson = ref(null);
 const startTime = ref(0);
@@ -145,7 +150,7 @@ async function openFavorite(item) {
       <div class="library-intro-copy">
 
         <h1>留一点时间，给生命的成长。</h1>
-        <label class="course-search"><Search :size="20" /><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></label>
+        <form class="course-search" @submit.prevent="submitSearch"><button class="course-search__submit" type="submit" aria-label="提交课程搜索"><Search :size="20" /></button><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></form>
         <a v-if="preview" class="library-login" href="/">登录并同步学习 <span aria-hidden="true">↗</span></a>
       </div>
       <div v-if="access.unlocked && courses[0]" class="library-feature">
