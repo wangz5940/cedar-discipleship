@@ -22,7 +22,7 @@ onBeforeUnmount(() => { window.removeEventListener('storage', update); window.re
     <button v-if="unlocked" type="button" :disabled="!status.ready" :aria-pressed="Boolean(favorite)" @click="toggle"><Bookmark :size="15" :fill="favorite ? 'currentColor' : 'none'" />{{ favorite ? '已收藏' : '收藏课时' }}</button>
     <button v-if="position > 0" type="button" @click="emit('resume', position)"><History :size="15" />继续 {{ formatMediaTime(position) }}</button>
     <span v-if="failure" role="status">{{ failure }}</span>
-    <span v-if="status.accountId" role="status">{{ status.failure || (status.syncing ? '正在同步…' : '账号同步') }}</span>
+    <span v-if="status.accountId && (status.failure || status.syncing)" role="status">{{ status.failure || '正在同步…' }}</span>
     <button v-if="status.failure" type="button" @click="retryStudySync">重试同步</button>
   </div>
 </template>
