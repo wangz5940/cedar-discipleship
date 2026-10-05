@@ -9,7 +9,8 @@ const script = compileScript(descriptor, { id: 'verse-quiz-test' }).content
   .replace(/^import .*;\r?$/gm, '').replace('export default', 'return');
 const api = vi.fn();
 const Quiz = new Function('bindings', `const { computed, ref, watch, api,
-  createVerseBlanks, gradeVerseAnswer, tokenizeVerse, verseBlankWidth } = bindings;\n${script}`)({ ...vue, ...quiz, api });
+  createVerseBlanks, gradeVersePaper, tokenizeVerse, verseBlankWidth } = bindings;
+  const VerseGradingDetails = {};\n${script}`)({ ...vue, ...quiz, api });
 Quiz.render = () => null;
 const renderer = vue.createRenderer({
   insert() {}, remove() {}, patchProp() {}, setText() {}, setElementText() {},
@@ -45,19 +46,20 @@ async function mountQuiz(task = {}) {
 const posts = () => api.mock.calls.filter(([, options]) => options?.method === 'POST');
 
 it.each([
-  ['就为你们不住的感谢', 9, 90],
-  ['就为你不住的感谢', 8, 80],
+  ['就为你们不住的感谢神', 9, 90],
+  ['就为你不住的感谢神', 8, 80],
 ])('grades and saves the actual weekly answer by character: %s', async (answer, correct, score) => {
   const state = await mountQuiz();
   state.generate();
-  expect(state.blankIndexes.map(index => state.tokens[index])).toEqual(['就为你们不住地感谢', '神']);
-  state.answers = [answer, ' 神 '];
+  expect(state.blankIndexes.map(index => state.tokens[index])).toEqual(['就为你们不住地感谢　神']);
+  state.answers = [answer];
   await state.grade();
   expect(JSON.parse(posts()[0][1].body)).toEqual({
     task_id: 18, user_id: 7, blank_percent: 100, blank_count: 10, correct_count: correct,
+    paper: { version: 1, text: '【弗1:16】就为你们不住地感谢　神。', blank_indexes: [1], answers: [answer] },
   });
   expect(state.submitted).toMatchObject({ correct, total: 10, score });
-  expect(state.grading.map(item => item.exact)).toEqual([false, true]);
+  expect(state.grading.map(item => item.exact)).toEqual([false]);
   await state.grade();
   expect(posts()).toHaveLength(1);
 });
@@ -78,11 +80,12 @@ it('saves daily attempts for the selected member without changing task identity'
   state.changeMember({ target: { value: '9' } });
   await vue.nextTick();
   state.generate();
-  state.answers = ['就为你们不住地感谢', '神'];
+  state.answers = ['就为你们不住地感谢神'];
   await state.grade();
   expect(JSON.parse(posts()[0][1].body)).toEqual({
     task_id: 18, user_id: 9, task_type: 'daily_verse', logical_date: '2026-10-04',
     blank_percent: 100, blank_count: 10, correct_count: 10,
+    paper: { version: 1, text: '【弗1:16】就为你们不住地感谢　神。', blank_indexes: [1], answers: ['就为你们不住地感谢神'] },
   });
   expect(api).toHaveBeenCalledWith('/recite-attempts?task_type=daily_verse&logical_date=2026-10-04&user_id=9');
 });
@@ -93,14 +96,65 @@ it('retains old scores and stores new character scores locally on save failure',
   const state = await mountQuiz();
   api.mockRejectedValue(new Error('offline'));
   state.generate();
-  state.answers = ['就为你不住的感谢', '神'];
+  state.answers = ['就为你不住的感谢神'];
   await state.grade();
   expect(state.submitted).toMatchObject({ correct: 8, total: 10, score: 80 });
   expect(state.history[1]).toEqual(old);
-  expect(JSON.parse(storage.get('verse-quiz:group:2:7:4'))[0]).toMatchObject({ score: 80 });
+  const stored = JSON.parse(storage.get('verse-quiz:group:2:7:4'))[0];
+  expect(stored).toMatchObject({ score: 80, paper: { answers: ['就为你不住的感谢神'] } });
+  await state.reviewRecord(stored);
+  expect(state.reviewedRecord.paper).toEqual(stored.paper);
   state.changeMember({ target: { value: '9' } });
   expect(state.localHistory).toEqual([]);
   expect(state.submitted).toBeNull();
+});
+
+it('grades continuous blanks together through the submit entry point', async () => {
+  const state = await mountQuiz({ reciteText: '神爱世人，赐下独生子。' });
+  state.generate();
+  state.answers = ['神爱世人赐', '下独生了'];
+  await state.grade();
+  expect(state.submitted).toMatchObject({ correct: 8, total: 9, score: 89 });
+  expect(state.grading.map(item => item.exact)).toEqual([true, false]);
+  state.revealed = [false, true];
+  expect(state.grading.map(item => item.exact)).toEqual([true, false]);
+  expect(state.submittedPaper.answers).toEqual(['神爱世人赐', '下独生了']);
+});
+
+it('loads the saved paper independently of the current verse and preserves the old score', async () => {
+  const state = await mountQuiz();
+  const paper = { version: 1, text: '旧原文', blank_indexes: [0], answers: ['旧答案'] };
+  api.mockResolvedValue({ paper });
+  const record = { id: 108, has_paper: true, score: 94, at: '2026-10-04T14:18:01Z' };
+  await state.reviewRecord(record);
+  expect(api).toHaveBeenCalledWith('/recite-attempts/108/paper');
+  expect(state.reviewedRecord).toEqual({ ...record, paper });
+  await state.reviewRecord({ score: 68 });
+  expect(state.reviewedRecord).toEqual({ score: 68 });
+});
+
+it('discards a paper response after the selected member changes', async () => {
+  const state = await mountQuiz();
+  let resolve;
+  api.mockImplementation(url => url.endsWith('/paper')
+    ? new Promise(done => { resolve = done; }) : Promise.resolve({}));
+  const pending = state.reviewRecord({ id: 108, has_paper: true });
+  state.changeMember({ target: { value: '9' } });
+  await vue.nextTick();
+  resolve({ paper: { text: '前一位成员的答案' } });
+  await pending;
+  expect(state.reviewedRecord).toBeNull();
+});
+
+it('shows a retryable paper error without affecting a saved score', async () => {
+  const state = await mountQuiz();
+  state.generate();
+  state.answers = ['就为你们不住地感谢神'];
+  await state.grade();
+  api.mockRejectedValue(new Error('offline'));
+  await state.reviewRecord({ id: 108, has_paper: true });
+  expect(state.reviewError).toContain('请重试');
+  expect(state.submitted.score).toBe(100);
 });
 
 it('does not submit a paper containing only bracketed notes or zero blanks', async () => {

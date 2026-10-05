@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { api } from '../legacy-app';
-import { createVerseBlanks, gradeVerseAnswer, tokenizeVerse, verseBlankWidth } from './verseQuiz';
+import { createVerseBlanks, gradeVersePaper, tokenizeVerse, verseBlankWidth } from './verseQuiz';
+import VerseGradingDetails from './VerseGradingDetails.vue';
 
 const props = defineProps({ open: Boolean, task: Object, scope: String, userName: String, userId: Number, members: Array, canSelectMember: Boolean });
 const emit = defineEmits(['close']);
@@ -22,6 +23,9 @@ const saving = ref(false);
 const syncError = ref(false);
 const message = ref('');
 const selectedUserID = ref(0);
+const reviewedRecord = ref(null);
+const reviewLoading = ref(false);
+const reviewError = ref('');
 const memberOptions = computed(() => {
   const groupMembers = (props.members || []).filter(member => Number(member.user_id) > 0);
   if (groupMembers.some(member => Number(member.user_id) === Number(props.userId))) return groupMembers;
@@ -29,8 +33,9 @@ const memberOptions = computed(() => {
 });
 const tokens = computed(() => tokenizeVerse(examText.value));
 const blanks = computed(() => new Set(blankIndexes.value));
-const grading = computed(() => blankIndexes.value.map((tokenIndex, answerIndex) =>
-  gradeVerseAnswer(tokens.value[tokenIndex], answers.value[answerIndex])));
+const paperGrading = computed(() => gradeVersePaper(tokens.value, blankIndexes.value, answers.value));
+const grading = computed(() => paperGrading.value.blanks);
+const submittedPaper = ref(null);
 let blankMeasureCanvas;
 function fitBlank(el) {
   if (!blankMeasureCanvas) blankMeasureCanvas = document.createElement('canvas');
@@ -65,6 +70,33 @@ const targetParams = computed(() => dailyVerse.value
   : `task_id=${props.task?.taskID}`);
 const key = computed(() => `verse-quiz:${props.scope || 'user'}:${selectedUserID.value}:${dailyVerse.value ? `daily_verse:${props.task?.periodStart || props.task?.logicalDate}:${props.task?.title}` : (props.task?.weekID || props.task?.taskID || '')}`);
 const legacyKey = computed(() => `verse-quiz:${props.scope || 'user'}:${props.task?.weekID || props.task?.taskID || ''}`);
+let reviewRequest = 0;
+watch(() => [props.open, key.value], () => {
+  reviewRequest++;
+  reviewedRecord.value = null;
+  reviewLoading.value = false;
+  reviewError.value = '';
+});
+
+async function reviewRecord(record) {
+  const request = ++reviewRequest;
+  reviewedRecord.value = null;
+  reviewError.value = '';
+  if (record.paper || !record.has_paper) {
+    reviewLoading.value = false;
+    reviewedRecord.value = record;
+    return;
+  }
+  reviewLoading.value = true;
+  try {
+    const saved = await api(`/recite-attempts/${record.id}/paper`);
+    if (request === reviewRequest && props.open) reviewedRecord.value = { ...record, paper: saved.paper };
+  } catch {
+    if (request === reviewRequest) reviewError.value = '答卷加载失败，请重试。';
+  } finally {
+    if (request === reviewRequest) reviewLoading.value = false;
+  }
+}
 
 function loadLocalHistory() {
   try {
@@ -174,11 +206,15 @@ async function grade() {
     message.value = submitted.value ? '这次默写已经批改。请生成新的默写卷。' : '请先生成默写卷。';
     return;
   }
-  const correct = grading.value.reduce((sum, item) => sum + item.correct, 0);
-  const total = grading.value.reduce((sum, item) => sum + item.total, 0);
+  const { correct, total } = paperGrading.value;
+  const paper = {
+    version: 1, text: examText.value, blank_indexes: [...blankIndexes.value],
+    answers: blankIndexes.value.map((_, index) => String(answers.value[index] || '')),
+  };
+  submittedPaper.value = paper;
   const record = {
     at: new Date().toISOString(), rate: examRate.value, correct, total,
-    score: Math.round(correct / total * examRate.value),
+    score: Math.round(correct / total * examRate.value), paper,
   };
   const openedKey = key.value;
   const openedParams = targetParams.value;
@@ -191,12 +227,12 @@ async function grade() {
       body: JSON.stringify({
         ...(dailyVerse.value ? { task_type: 'daily_verse', logical_date: props.task.logicalDate } : {}),
         task_id: props.task.taskID, user_id: selectedUserID.value, blank_percent: examRate.value,
-        blank_count: total, correct_count: correct,
+        blank_count: total, correct_count: correct, paper,
       }),
     });
     if (!props.open || key.value !== openedKey) return;
-    submitted.value = saved;
-    serverHistory.value = [saved, ...serverHistory.value].slice(0, 30);
+    submitted.value = { ...saved, paper };
+    serverHistory.value = [{ ...saved, paper }, ...serverHistory.value].slice(0, 30);
     message.value = `已保存，这是第 ${saved.attempt_no} 次测试。`;
     syncError.value = false;
     try {
@@ -226,8 +262,8 @@ async function grade() {
         <p class="recite-tip">先确认默写原文，再生成挖空练习。括号内的内容、标点和章节号不挖空、不计分；批改后点击错题可切换查看答案。</p>
         <details class="recite-rules">
           <summary>按字计分规则</summary>
-          <p>每个填空独立比对，忽略半角、全角空格及换行。以最少的错字、漏字、多字次数扣分，每次扣一个字的分；漏字不会使后面的正确文字连续扣分。</p>
-          <p>重复字按多字处理，漏掉重复片段按少的字数处理；相邻两字颠倒通常扣两个字，简繁体或同音字仍按字形比对。未填写得零分，每空最低零分。</p>
+          <p>同一句内连续挖空合并比对，中文内部空格不拆空，作答空白不计分。遇到句末、换行、章节、注释或未挖空文字时分开计算，避免相邻空错位重复扣分。</p>
+          <p>以最少的错字、漏字、多字次数扣分，每次扣一个字的分。重复字按多字处理；相邻两字颠倒通常扣两个字，简繁体或同音字仍按字形比对。未填写得零分，每组最低零分。</p>
           <p>得分＝计分字数 ÷ 挖空原文字数 × 挖空比例，四舍五入。计分字数为原文字数减去扣分字数；例如“就为你们不住的感谢神”计 9/10 字，“就为你不住的感谢神”计 8/10 字。</p>
         </details>
         <div class="recite-meta-grid">
@@ -259,6 +295,7 @@ async function grade() {
           得分：<strong>{{ scoreOf(submitted) }}</strong> 分
           <small>当前难度 {{ submitted.rate }}%，全对满分 {{ submitted.rate }} 分；计分 {{ submitted.correct }} / {{ submitted.total }} 字</small>
         </div>
+        <VerseGradingDetails v-if="submitted" :paper="submittedPaper" />
         <p v-if="message" class="recite-message" role="status">{{ message }}</p>
         <section class="recite-leaderboard">
           <div class="recite-leaderboard-head">
@@ -276,7 +313,15 @@ async function grade() {
         <section class="recite-history">
           <h3>所选人员的默写历史</h3>
           <p v-if="!history.length">暂无默写记录</p>
-          <ul v-else><li v-for="(item, index) in history" :key="item.id || `${item.at}-${index}`">{{ new Date(item.at).toLocaleString('zh-CN') }} · 挖空 {{ item.rate }}% · {{ scoreOf(item) }} 分（{{ item.correct }}/{{ item.total }}）</li></ul>
+          <ul v-else><li v-for="(item, index) in history" :key="item.id || `${item.at}-${index}`">{{ new Date(item.at).toLocaleString('zh-CN') }} · 挖空 {{ item.rate }}% · {{ scoreOf(item) }} 分（{{ item.correct }}/{{ item.total }}）
+            <button type="button" @click="reviewRecord(item)">查看答卷</button>
+          </li></ul>
+          <p v-if="reviewLoading" role="status">正在加载答卷…</p>
+          <p v-if="reviewError" role="status">{{ reviewError }}</p>
+          <div v-if="reviewedRecord">
+            <p>{{ new Date(reviewedRecord.at).toLocaleString('zh-CN') }} · 原成绩 {{ scoreOf(reviewedRecord) }} 分</p>
+            <VerseGradingDetails :key="`${reviewedRecord.id || reviewedRecord.at}-${selectedUserID}`" :paper="reviewedRecord.paper" />
+          </div>
           <p v-if="syncError" class="recite-message">服务器记录暂不可用；本地记录仅保存在此浏览器。</p>
         </section>
       </div>

@@ -402,6 +402,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/checkins/{id}", a.auth(a.handleDeleteOwnCheckin))
 	mux.HandleFunc("GET /api/checkins", a.auth(a.handleListCheckins))
 	mux.HandleFunc("GET /api/recite-attempts", a.auth(a.handleListReciteAttempts))
+	mux.HandleFunc("GET /api/recite-attempts/{id}/paper", a.auth(a.handleGetRecitePaper))
 	mux.HandleFunc("POST /api/recite-attempts", a.auth(a.handleCreateReciteAttempt))
 	mux.HandleFunc("GET /api/recite-leaderboard", a.auth(a.handleReciteLeaderboard))
 	mux.HandleFunc("DELETE /api/admin/checkins/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminDeleteCheckin)))
