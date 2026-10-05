@@ -3,6 +3,7 @@ package server
 import (
 	learningdomain "agp/backend/internal/learning"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -67,6 +68,7 @@ type reciteAttempt struct {
 	Total     int    `json:"total"`
 	Score     int    `json:"score"`
 	AttemptNo int    `json:"attempt_no"`
+	HasPaper  bool   `json:"has_paper,omitempty"`
 }
 
 type reciteAdminAttempt struct {
@@ -268,7 +270,7 @@ func (a *app) handleListReciteAttempts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "recite_history_failed")
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT id,blank_percent,blank_count,correct_count,score,attempt_no,created_at
+	rows, err := a.db.QueryContext(r.Context(), `SELECT id,blank_percent,blank_count,correct_count,score,attempt_no,created_at,paper IS NOT NULL
 		FROM recite_attempts WHERE group_id=? AND user_id=? AND week_id <=> ? AND verse_ref=? AND (?='' OR logical_date BETWEEN ? AND ?)
 		ORDER BY attempt_no DESC LIMIT 30`, groupID, userID, target.weekValue(), target.VerseRef, target.Date, target.Date, target.EndDate)
 	if err != nil {
@@ -281,7 +283,7 @@ func (a *app) handleListReciteAttempts(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item reciteAttempt
 		var at time.Time
-		if err := rows.Scan(&item.ID, &item.Rate, &item.Total, &item.Correct, &item.Score, &item.AttemptNo, &at); err != nil {
+		if err := rows.Scan(&item.ID, &item.Rate, &item.Total, &item.Correct, &item.Score, &item.AttemptNo, &at, &item.HasPaper); err != nil {
 			writeError(w, http.StatusInternalServerError, "recite_history_failed")
 			return
 		}
@@ -302,13 +304,14 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var req struct {
-		TaskType string `json:"task_type"`
-		Date     string `json:"logical_date"`
-		TaskID   uint64 `json:"task_id"`
-		UserID   uint64 `json:"user_id"`
-		Rate     int    `json:"blank_percent"`
-		Total    int    `json:"blank_count"`
-		Correct  int    `json:"correct_count"`
+		TaskType string       `json:"task_type"`
+		Date     string       `json:"logical_date"`
+		TaskID   uint64       `json:"task_id"`
+		UserID   uint64       `json:"user_id"`
+		Rate     int          `json:"blank_percent"`
+		Total    int          `json:"blank_count"`
+		Correct  int          `json:"correct_count"`
+		Paper    *recitePaper `json:"paper"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -316,6 +319,19 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	if (req.TaskID == 0 && req.TaskType != "daily_verse") || req.Rate < 0 || req.Rate > 100 || req.Total < 0 || req.Total > 10000 || req.Correct < 0 || req.Correct > req.Total || (req.Rate == 0 && req.Total != 0) {
 		writeError(w, http.StatusBadRequest, "invalid_recite_attempt")
 		return
+	}
+	if !validRecitePaper(req.Paper) {
+		writeError(w, http.StatusBadRequest, "invalid_recite_paper")
+		return
+	}
+	var paperValue any
+	if req.Paper != nil {
+		data, err := json.Marshal(req.Paper)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_recite_paper")
+			return
+		}
+		paperValue = string(data)
 	}
 	userID := u.ID
 	if req.UserID != 0 {
@@ -384,9 +400,9 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 		logicalDate = now.Format("2006-01-02")
 	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO recite_attempts
-		(group_id,user_id,week_id,checkin_record_id,verse_ref,logical_date,blank_percent,blank_count,correct_count,accuracy,score,attempt_no,created_at)
-		VALUES (?,?,?,NULL,?,?,?,?,?,?,?,?,?)`,
-		groupID, userID, target.weekValue(), target.VerseRef, logicalDate, req.Rate, req.Total, req.Correct, accuracy, score, attemptNo, now.UTC())
+		(group_id,user_id,week_id,checkin_record_id,verse_ref,logical_date,blank_percent,blank_count,correct_count,accuracy,score,attempt_no,created_at,paper)
+		VALUES (?,?,?,NULL,?,?,?,?,?,?,?,?,?,?)`,
+		groupID, userID, target.weekValue(), target.VerseRef, logicalDate, req.Rate, req.Total, req.Correct, accuracy, score, attemptNo, now.UTC(), paperValue)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "recite attempt save failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "recite_save_failed")
@@ -410,7 +426,7 @@ func (a *app) handleCreateReciteAttempt(w http.ResponseWriter, r *http.Request) 
 	}, r)
 	writeJSON(w, http.StatusCreated, reciteAttempt{
 		ID: uint64(id), At: now.Format(time.RFC3339), Rate: req.Rate,
-		Correct: req.Correct, Total: req.Total, Score: score, AttemptNo: attemptNo,
+		Correct: req.Correct, Total: req.Total, Score: score, AttemptNo: attemptNo, HasPaper: req.Paper != nil,
 	})
 }
 

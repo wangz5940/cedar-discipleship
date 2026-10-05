@@ -25,6 +25,12 @@ type TextSender interface {
 	SendText(context.Context, Target, string) error
 }
 
+// FailureReporter observes terminal failures without changing delivery state.
+// Implementations must enqueue work without blocking the notification queue.
+type FailureReporter interface {
+	ReportNotificationFailure(Event, string)
+}
+
 type Queue struct {
 	dir     string
 	targets map[uint64][]Target
@@ -619,7 +625,21 @@ func (q *Queue) finish(ctx context.Context, path string, item *job, start time.T
 		}
 	}
 	if item.Status != "pending" {
+		if item.Status == "failed" {
+			q.reportFailure(item.Event, item.ErrorCode)
+		}
 		q.finalize(ctx, path, item)
+	}
+}
+
+func (q *Queue) reportFailure(event Event, code string) {
+	defer func() {
+		if recover() != nil {
+			slog.Error("notification failure observer panicked")
+		}
+	}()
+	if reporter, ok := q.source.(FailureReporter); ok {
+		reporter.ReportNotificationFailure(event, code)
 	}
 }
 

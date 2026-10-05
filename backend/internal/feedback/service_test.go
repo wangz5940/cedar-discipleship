@@ -157,6 +157,33 @@ func TestCreateValidatesContentAndDiagnostics(t *testing.T) {
 	}
 }
 
+func TestBrowserDiagnosticsContract(t *testing.T) {
+	for _, automatic := range []bool{false, true} {
+		repo := &memoryRepository{settings: AutomaticSettings{Enabled: true}}
+		service := NewService(repo, &memoryStorage{})
+		input := CreateInput{UserID: 9, Message: "浏览器反馈", Diagnostics: map[string]string{
+			"app_version": "test", "page": "/reader", "page_origin": "https://cedar.example.test",
+			"environment": "production", "action_context": "reading", "recent_log_id": "",
+			"user_agent": "Safari", "language": "zh-CN", "platform": "iOS",
+			"viewport": "390x844", "screen": "390x844",
+		}}
+		var err error
+		if automatic {
+			_, err = service.CreateAutomatic(t.Context(), input, time.Now())
+		} else {
+			_, err = service.Create(t.Context(), input, time.Now())
+		}
+		if err != nil {
+			t.Fatalf("automatic=%v: %v", automatic, err)
+		}
+		view, err := service.AdminDetail(t.Context(), repo.item.ID)
+		if err != nil || view.Diagnostics["page_origin"] != input.Diagnostics["page_origin"] ||
+			view.Diagnostics["environment"] != "production" {
+			t.Fatalf("diagnostics not preserved: view=%+v err=%v", view, err)
+		}
+	}
+}
+
 func TestCreateSanitizesImageAndSeparatesViews(t *testing.T) {
 	t.Parallel()
 
@@ -248,6 +275,35 @@ func TestAutomaticFeedbackHonorsSettings(t *testing.T) {
 	}
 	if repo.item.Source != SourceAutomatic {
 		t.Fatalf("source = %q", repo.item.Source)
+	}
+}
+
+func TestSystemAutomaticFeedbackKeepsUserEntryPointsProtected(t *testing.T) {
+	repo := &memoryRepository{settings: AutomaticSettings{Enabled: true}}
+	service := NewService(repo, &memoryStorage{})
+	input := CreateInput{GroupID: 7, Message: "通知发送失败", Diagnostics: map[string]string{
+		"environment": "server", "error_code": "notification_delivery_failed",
+	}}
+	if _, err := service.Create(t.Context(), input, time.Now()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("manual userless create: %v", err)
+	}
+	if _, err := service.CreateAutomatic(t.Context(), input, time.Now()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("browser userless create: %v", err)
+	}
+	result, err := service.CreateSystemAutomatic(t.Context(), input, time.Now())
+	if err != nil || result.Feedback == nil || repo.item.UserID != 0 || repo.item.GroupID != 7 ||
+		repo.item.Source != SourceAutomatic {
+		t.Fatalf("system result=%+v item=%+v err=%v", result, repo.item, err)
+	}
+	repo.settings.MutedErrorTypes = []string{"notification_delivery_failed"}
+	result, err = service.CreateSystemAutomatic(t.Context(), input, time.Now())
+	if err != nil || result.Reason != "muted" || result.Feedback != nil {
+		t.Fatalf("muted result=%+v err=%v", result, err)
+	}
+	repo.settings.Enabled = false
+	result, err = service.CreateSystemAutomatic(t.Context(), input, time.Now())
+	if err != nil || result.Reason != "disabled" || result.Feedback != nil {
+		t.Fatalf("disabled result=%+v err=%v", result, err)
 	}
 }
 

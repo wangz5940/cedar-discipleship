@@ -8,6 +8,7 @@ let accessToken = '';
 let sessionGeneration = 0;
 type RefreshedSession = { token: string; user?: unknown };
 let refreshPromise: Promise<RefreshedSession | null> | null = null;
+let clearTokenOnRefreshFailure = true;
 
 export function getAccessToken() {
   return accessToken;
@@ -27,14 +28,24 @@ export function authSessionGeneration(): number {
   return sessionGeneration;
 }
 
-export function refreshAccessSession(explicitLogID?: string): Promise<RefreshedSession | null> {
-  if (refreshPromise) return refreshPromise;
+export function refreshAccessSession(
+  explicitLogID?: string,
+  options: { preserveTokenOnFailure?: boolean; signal?: AbortSignal } = {},
+): Promise<RefreshedSession | null> {
+  if (refreshPromise) {
+    // A business request joining an observational refresh keeps its normal
+    // invalidation semantics.
+    clearTokenOnRefreshFailure ||= !options.preserveTokenOnFailure;
+    return refreshPromise;
+  }
+  clearTokenOnRefreshFailure = !options.preserveTokenOnFailure;
   const generation = sessionGeneration;
   const logID = requestLogID(explicitLogID);
   const pending = Promise.resolve().then(async () => {
     try {
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
+        signal: options.signal,
         headers: {
           'X-CSRF-Token': csrfToken(),
           [LOG_ID_HEADER]: logID,
@@ -45,13 +56,13 @@ export function refreshAccessSession(explicitLogID?: string): Promise<RefreshedS
       const data = await response.json().catch(() => ({}));
       if (generation !== sessionGeneration) return null;
       if (!response.ok || !data.token) {
-        accessToken = '';
+        if (clearTokenOnRefreshFailure) accessToken = '';
         return null;
       }
       accessToken = String(data.token);
       return { ...data, token: accessToken } as RefreshedSession;
     } catch {
-      if (generation === sessionGeneration) accessToken = '';
+      if (generation === sessionGeneration && clearTokenOnRefreshFailure) accessToken = '';
       return null;
     } finally {
       if (refreshPromise === pending) refreshPromise = null;

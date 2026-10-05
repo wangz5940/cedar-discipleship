@@ -157,7 +157,6 @@ const chapters = [
   <article class="user-guide">
     <header class="pagehead user-guide__header">
       <h1>使用文档</h1>
-      <p class="muted">从学习打卡到任务布置、专项小组和资料管理。请按当前角色选择对应章节。</p>
     </header>
 
     <div class="user-guide__layout">

@@ -96,7 +96,10 @@ const calendarMaxDate = (() => {
 const resourceRefreshing = ref(false);
 
 async function submitResourceSearch() {
-  const phrase = resourceSearchQuery.value;
+  await submitStudySearch(resourceSearchQuery.value, () => { resourceSearchQuery.value = ''; });
+}
+
+async function submitStudySearch(phrase, clearSearch) {
   if (!phrase || resourceUnlocking.value) return;
   resourceUnlocking.value = true;
   try {
@@ -104,7 +107,7 @@ async function submitResourceSearch() {
       await loadStudyAccess(user.value?.id, studyAccountAPI);
     }
     const unlocked = await toggleStudyAccess(phrase, studyAccountAPI);
-    resourceSearchQuery.value = '';
+    clearSearch();
     showToast(unlocked ? 'OVCM 课程与收藏夹已开启' : 'OVCM 课程与收藏夹已关闭');
     openOvcmFromSearch.value = unlocked;
     setTab('courses');
@@ -441,14 +444,14 @@ async function refreshResources() {
           <button type="button" :class="{ active: tab === 'resources' }" :aria-current="tab === 'resources' ? 'page' : undefined" @click="setTab('resources')">学习资料</button>
         </nav>
 
-        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :weeks="weeks" :open-ovcm="openOvcmFromSearch" />
+        <CourseLibrary v-if="!showGroupPicker && tab === 'courses'" :sections="resourceLibrary" :weeks="weeks" :open-ovcm="openOvcmFromSearch" @search-submit="submitStudySearch" />
 
         <!-- Cedar Public Library (tab === 'resources') -->
         <section v-if="!showGroupPicker && tab === 'resources'">
           <div class="pagehead spread">
             <div>
               <h1>小组资料库</h1>
-              <p class="muted">共 {{ filteredResources.length }} 项资料，选择一份开始学习</p>
+              <p class="muted">共 {{ filteredResources.length }} 项资料</p>
             </div>
             <div class="inline app-resource-page-actions">
               <div v-if="resourceDownloadsEnabled && selectedResourceKeys.size" class="inline app-resource-selection">
@@ -530,10 +533,10 @@ async function refreshResources() {
                   <p class="muted small app-resource-card__path"><template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}</p>
                 </div>
                 <div class="app-resource-stack-card__actions">
-                  <button class="quiet app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
+                  <button class="primary app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
                     <Eye :size="15" aria-hidden="true" /> 查看
                   </button>
-                  <button v-if="resourceDownloadsEnabled" class="primary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
+                  <button v-if="resourceDownloadsEnabled" class="secondary" type="button" :aria-label="`下载${optionText(asset)}`" @click="downloadResource(asset)">
                     <Download :size="16" aria-hidden="true" />
                     <span class="app-resource-stack-card__download-label">下载</span>
                   </button>
@@ -590,7 +593,7 @@ async function refreshResources() {
         </header>
         <div class="cd-dialog-body app-more-dialog__body">
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="setTab('guide'); showMobileMoreMenu = false;"
           >
@@ -598,7 +601,7 @@ async function refreshResources() {
             <span>使用文档</span>
           </button>
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="setTab('feedback'); showMobileMoreMenu = false;"
           >
@@ -606,19 +609,19 @@ async function refreshResources() {
             <span>建议与反馈</span>
           </button>
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="setTab('settings'); showMobileMoreMenu = false;"
           >
             <User :size="18" class="app-more-dialog__icon" />
             <span>个人设置</span>
           </button>
-          <button v-if="currentGroupID && defaultGroupID !== currentGroupID" class="quiet app-more-dialog__action" type="button" @click="setDefaultGroupAction(currentGroupID)">
+          <button v-if="currentGroupID && defaultGroupID !== currentGroupID" class="app-more-dialog__action" type="button" @click="setDefaultGroupAction(currentGroupID)">
             将当前小组设为默认
           </button>
           <button
             v-if="groups.length > 1"
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="showGroupPicker = true; showMobileMoreMenu = false;"
           >
@@ -627,7 +630,7 @@ async function refreshResources() {
           </button>
 
           <button
-            class="quiet app-more-dialog__action"
+            class="app-more-dialog__action"
             type="button"
             @click="downloadManager.openPanel(); showMobileMoreMenu = false;"
           >
@@ -648,7 +651,7 @@ async function refreshResources() {
           </button>
         </div>
         <footer class="cd-dialog-foot">
-          <button class="quiet app-dialog-full-button" type="button" @click="showMobileMoreMenu = false">
+          <button class="app-dialog-full-button" type="button" @click="showMobileMoreMenu = false">
             关闭
           </button>
         </footer>

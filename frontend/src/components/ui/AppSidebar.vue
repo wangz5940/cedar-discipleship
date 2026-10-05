@@ -27,11 +27,9 @@ function navIcon(id) {
       </div>
       <div class="brandcopy">
         <b>门训</b>
-        <div class="eyebrow">DISCIPLESHIP</div>
       </div>
     </div>
 
-    <p class="navlabel">每日同行</p>
     <nav class="nav" aria-label="主导航">
       <button
         v-for="item in navItems.filter((entry) => entry[0] !== 'admin' && entry[0] !== 'resources')"
@@ -91,7 +89,6 @@ function navIcon(id) {
           <span class="accountcopy">退出</span>
         </button>
       </div>
-      <p class="small muted sidefoot-quote app-sidebar__quote">扎根真理，一同成长。</p>
     </div>
   </aside>
 </template>

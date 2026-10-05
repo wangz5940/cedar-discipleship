@@ -3,6 +3,7 @@ package statistics
 import "context"
 
 type Repository interface {
+	EarliestRankingDate(ctx context.Context, groupID uint64) (string, error)
 	DailyEvents(ctx context.Context, groupID uint64) ([]DailySummary, error)
 	DailySummary(ctx context.Context, groupID uint64, from, to string) (map[string]int, error)
 	Members(ctx context.Context, groupID uint64) ([]Member, error)
