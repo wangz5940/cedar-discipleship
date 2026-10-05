@@ -6,7 +6,7 @@ describe('desktop resource cards', () => {
     const component = readFileSync(new URL('./AppRoot.vue', import.meta.url), 'utf8');
 
     expect(component).toMatch(
-      /class="quiet app-resource-card__cta"[\s\S]*?@click="openAsset\(asset\)"[\s\S]*?>[\s\S]*?查看[\s\S]*?<\/button>/,
+      /class="[^"]*\bapp-resource-card__cta\b[^"]*"[\s\S]*?@click="openAsset\(asset\)"[\s\S]*?>[\s\S]*?查看[\s\S]*?<\/button>/,
     );
     expect(component).not.toContain('<span class="app-resource-card__cta"');
   });

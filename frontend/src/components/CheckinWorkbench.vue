@@ -263,7 +263,6 @@ async function exportStatsChart() {
             <div v-if="!tasks.length" class="panel task-empty">
               <Book :size="28" />
               <strong>这一天没有学习任务</strong>
-              <span class="muted small">可通过上方日期选择其他学习日。</span>
             </div>
           </div>
 

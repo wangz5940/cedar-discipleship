@@ -27,6 +27,8 @@ func TestImportLocalBackupPreservesRecitationHistoryAndAdvancesConfigRevision(t 
 		INSERT INTO recite_attempts(group_id,user_id,week_id,verse_ref,logical_date,blank_percent,blank_count,correct_count,accuracy,score,attempt_no,created_at)
 		VALUES (1,1,7,'约3:16','2026-10-01',50,1,1,100,100,1,NOW()),
 		       (2,1,7,'约3:16','2026-10-01',50,1,1,100,100,1,NOW())`)
+	paper := `{"version":1,"text":"神爱世人","blank_indexes":[0],"answers":["神爱世人"]}`
+	testdb.Exec(t, db, `UPDATE recite_attempts SET paper=? WHERE group_id=1`, paper)
 	repo := NewMySQLRepository(db)
 	payload, err := NewService(repo).LocalBackup(t.Context(), 1, time.Now().Format(time.RFC3339))
 	if err != nil {
@@ -65,6 +67,15 @@ func TestImportLocalBackupPreservesRecitationHistoryAndAdvancesConfigRevision(t 
 	}
 	if historyWeek != newWeek {
 		t.Fatalf("history lost on repeated restore: week=%d history=%d", newWeek, historyWeek)
+	}
+	var savedAnswer string
+	var nullPapers int
+	if err := db.QueryRow(`SELECT JSON_UNQUOTE(JSON_EXTRACT(paper,'$.answers[0]'))
+		FROM recite_attempts WHERE group_id=1`).Scan(&savedAnswer); err != nil || savedAnswer != "神爱世人" {
+		t.Fatalf("paper lost on repeated restore: answer=%q err=%v", savedAnswer, err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM recite_attempts WHERE group_id=2 AND paper IS NULL`).Scan(&nullPapers); err != nil || nullPapers != 1 {
+		t.Fatalf("other group's legacy paper changed: count=%d err=%v", nullPapers, err)
 	}
 }
 

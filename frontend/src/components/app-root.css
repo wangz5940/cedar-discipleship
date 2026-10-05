@@ -185,6 +185,9 @@
 }
 
 .app-resource-search {
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-surface);
   position: relative;
   display: flex;
   flex: 1 1 260px;
@@ -209,6 +212,8 @@
 }
 
 .app-resource-search input.app-resource-search__input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  border: 0;
+  box-shadow: none;
   width: 100%;
   min-width: 0;
   padding-left: 40px;
@@ -325,17 +330,20 @@
   color: var(--cd-muted);
 }
 
-.app-more-dialog { max-width: 420px; }
+.app-more-dialog { max-width: 420px; background: var(--cd-surface); }
+.app-more-dialog .cd-dialog-head, .app-more-dialog .cd-dialog-foot { background: var(--cd-surface); }
 .app-dialog-account { gap: 12px; min-width: 0; }
 .app-dialog-account > div:last-child { min-width: 0; }
 .app-dialog-account__name { overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
-.app-more-dialog__body { display: flex; flex-direction: column; gap: 10px; padding: 20px; }
-.app-more-dialog__action { justify-content: flex-start; width: 100%; min-width: 0; min-height: 46px; border: 1px solid var(--cd-border); }
+.app-more-dialog__body { display: flex; flex-direction: column; gap: 0; padding: 6px 20px 14px; background: var(--cd-surface); }
+.app-more-dialog__action { justify-content: flex-start; width: 100%; min-width: 0; min-height: 52px; padding-inline: 4px; border: 0; border-bottom: 1px solid var(--cd-border); border-radius: 0; background: transparent; color: var(--cd-text); box-shadow: none; }
+.app-more-dialog .app-more-dialog__action.quiet:not(.primary) { background: transparent; color: var(--cd-text); }
+.app-more-dialog__action.quiet:hover { background: var(--cd-bg); }
 .app-more-dialog__action span:not(.pill) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-more-dialog__icon { flex: 0 0 auto; color: var(--cd-primary); }
 .app-more-dialog__count { flex: 0 0 auto; margin-left: auto; }
-.app-more-dialog__danger { margin-top: 10px; }
-.app-dialog-full-button { width: 100%; }
+.app-more-dialog__danger { margin-top: 14px; border: 0; border-radius: var(--cd-radius-base); }
+.app-more-dialog .app-dialog-full-button.quiet:not(.primary) { width: 100%; border: 0; background: transparent; color: var(--cd-muted); }
 
 .app-resource-masonry .mobile-card-collection__masonry {
   display: grid;

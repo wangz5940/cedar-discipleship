@@ -869,12 +869,12 @@ async function runLocalBackupImport() {
                 </LearningConfigSection>
                 <div class="grid cols-2 admin-grid">
                   <LearningConfigSection title="每日灵修配置" :storage-key="learningSectionKey('devotion')">
-                    <div class="form-stack admin-form-grid">
+                    <div class="form-stack admin-form-grid" :class="{ 'devotion-paired-grid': devotionPlanMode === 'automatic' && devotionContentType === 'markdown' }">
                       <div class="admin-checkbox-row daily-config-toggle-row">
                         <label class="admin-toggle"><input type="checkbox" :checked="daily.checkin_mode === 'separate'" @change="updateLearning(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
                         <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修</span></label>
                       </div>
-                      <div class="admin-field">
+                      <div class="admin-field devotion-plan-mode-field">
                         <span class="admin-field-label">灵修计划方式</span>
                         <div class="segmented-control daily-plan-mode" role="group" aria-label="灵修计划方式">
                           <button :class="{ active: devotionPlanMode === 'automatic' }" type="button" @click="setDevotionPlanMode('automatic')">连续计划</button>
@@ -914,7 +914,7 @@ async function runLocalBackupImport() {
                         </button>
                         <label class="admin-field">
                           <span class="admin-field-label">计划日期</span>
-                          <input type="date" :value="dailyPlanDate" @change="selectDailyPlanDate($event.target.value)" />
+                          <DateField :model-value="dailyPlanDate" label="计划日期" @change="selectDailyPlanDate" />
                         </label>
                         <label class="admin-field">
                           <span class="admin-field-label">当天标题</span>
@@ -956,8 +956,8 @@ async function runLocalBackupImport() {
                     </div>
                   </LearningConfigSection>
                   <LearningConfigSection title="每日读经配置" :storage-key="learningSectionKey('scripture')">
-                    <div class="form-stack admin-form-grid">
-                      <label class="admin-toggle"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
+                    <div class="form-stack admin-form-grid scripture-paired-grid">
+                      <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
                       <label class="admin-field">
                         <span class="admin-field-label">起始书卷</span>
                         <select :value="scripture.book_id || ''" @change="updateScriptureBook($event.target.value)">
@@ -1001,7 +1001,6 @@ async function runLocalBackupImport() {
                         placeholder="留空时根据已选任务内容自动生成"
                         @change="updateWeekDraftField('title', $event.target.value.trim())"
                       />
-                      <small class="muted">该标题会显示在任务列表与周任务选择器中。</small>
                     </label>
                     <div class="admin-checkbox-row">
                       <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>书籍</span></label>
@@ -1081,7 +1080,6 @@ async function runLocalBackupImport() {
               <div class="grid">
                 <div class="card">
                   <h2>上传本组资源</h2>
-                  <p class="muted">上传后会自动刷新列表，随后即可在“周任务”里选择挂载。</p>
                   <div class="form-stack admin-form-grid">
                     <label class="admin-field">
                       <span class="admin-field-label">上传到</span>
@@ -1212,6 +1210,12 @@ async function runLocalBackupImport() {
 .admin-learning-stack > .week-planner-card { order: -1; }
 .admin-grid > .learning-config-section { align-self: start; }
 .week-planner-card { min-width: 0; }
+.admin-wrapper .devotion-paired-grid, .admin-wrapper .scripture-paired-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.devotion-paired-grid > .daily-config-toggle-row, .devotion-paired-grid > .devotion-plan-mode-field, .devotion-paired-grid > .form-actions,
+.scripture-paired-grid > .learning-toggle-card, .scripture-paired-grid > .admin-paired-fields, .scripture-paired-grid > .form-actions { grid-column: 1 / -1; }
+.admin-wrapper .learning-toggle-card, .admin-wrapper .daily-config-toggle-row .admin-toggle { min-height: 44px; padding: 10px 12px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-primary-soft); }
+.devotion-paired-grid .admin-field, .scripture-paired-grid .admin-field { min-width: 0; }
+.devotion-paired-grid select, .scripture-paired-grid select { width: 100%; min-width: 0; padding-inline: 8px; }
 .admin-checkbox-row.daily-config-toggle-row {
   grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
 }
