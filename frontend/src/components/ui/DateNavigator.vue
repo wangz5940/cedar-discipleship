@@ -49,15 +49,17 @@ defineEmits(['previous', 'next', 'today', 'select']);
   border-radius: var(--cd-radius-base);
   background: var(--cd-surface, #fff);
 }
-.date-navigator__icon {
+.date-navigator > .date-navigator__icon {
   display: inline-grid;
   place-items: center;
   width: 44px;
   min-width: 44px;
   min-height: 44px;
   padding: 0;
+  background: #fff;
+  box-shadow: none;
 }
-.date-navigator__label {
+.date-navigator > .date-navigator__label {
   min-width: 92px;
   min-height: 44px;
   padding: 0 8px;
@@ -67,12 +69,14 @@ defineEmits(['previous', 'next', 'today', 'select']);
   font-weight: 600;
   text-align: center;
   white-space: nowrap;
+  background: #fff;
+  box-shadow: none;
 }
-.date-navigator__label:hover {
+.date-navigator > .date-navigator__label:hover {
   background: var(--cd-primary-soft);
   color: var(--cd-primary);
 }
-.date-navigator__today {
+.date-navigator > .date-navigator__today {
   min-height: 44px;
   margin-left: 3px;
   padding: 0 12px;
@@ -80,6 +84,8 @@ defineEmits(['previous', 'next', 'today', 'select']);
   border-radius: 0;
   color: var(--cd-primary);
   font-size: 12px;
+  background: #fff;
+  box-shadow: none;
 }
 @media (max-width: 479px) {
   .date-navigator { width: 100%; }

@@ -985,8 +985,8 @@ async function runLocalBackupImport() {
                       新增背经
                     </button>
                     <div class="verse-schedule-row">
-                    <div class="admin-field"><span class="admin-field-label">开始日期</span><DateField v-model="versePlanDate" label="背经开始日期" compact /></div>
-                    <div class="admin-field"><span class="admin-field-label">结束日期</span><DateField v-model="versePlanEnd" label="背经结束日期" :min="versePlanDate" compact /></div>
+                    <div class="admin-field"><span class="admin-field-label">开始日期</span><DateField v-model="versePlanDate" label="背经开始日期" /></div>
+                    <div class="admin-field"><span class="admin-field-label">结束日期</span><DateField v-model="versePlanEnd" label="背经结束日期" :min="versePlanDate" /></div>
                     <label class="admin-field"><span class="admin-field-label">打卡频率</span><select v-model="verseCompletionMode" :disabled="!canEditLearning"><option value="daily">每天打卡</option><option value="weekly">每周打卡一次</option></select></label>
                     </div>
                     <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写经文原文并保留章节标记，例如：创1:1 起初，神创造天地。"></textarea></label>
