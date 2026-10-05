@@ -169,8 +169,7 @@ function openAdjacentItem(item) {
     <OriginalCoursePlayer :course-id="viewer.course.id" :lesson-id="viewer.lesson.id" :lessons="viewer.course.lessons" :title="viewer.title" :start-time="viewer.startTime" :resume-playback="viewer.resumePlayback" :show-favorites="false" :sync-parent-route="false" @close="closeViewer" />
   </div>
   <div v-if="viewer && isMediaViewer" v-dialog-focus="closeViewer" class="study-viewer-overlay" aria-label="课程播放器">
-    <UploadedCoursePlayer :lesson="currentMediaLesson" :lessons="mediaLessons" :companions="companionItems" :title="activeSection?.label || '课程学习'" :start-time="viewer.startTime || 0" :resume-playback="viewer.resumePlayback !== false" :autoplay="viewer.autoplay || false" @select="openItem($event.lesson, $event.time, $event.autoplay)" @close="closeViewer" />
-    <div class="study-resource-links"><button v-for="item in companionItems" :key="item.url" type="button" @click="openItemInNewWindow(item)">{{ item.title }}（新窗口）</button></div>
+    <UploadedCoursePlayer :lesson="currentMediaLesson" :lessons="mediaLessons" :companions="companionItems" :title="activeSection?.label || '课程学习'" :start-time="viewer.startTime || 0" :resume-playback="viewer.resumePlayback !== false" :autoplay="viewer.autoplay || false" @select="openItem($event.lesson, $event.time, $event.autoplay)" @open-resource="openItemInNewWindow" @close="closeViewer" />
   </div>
   <AppOverlay
     v-if="viewer && !isMediaViewer && viewer.type !== 'ovcm'"

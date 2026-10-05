@@ -218,7 +218,6 @@ onBeforeUnmount(releaseObjectURLs);
     <header class="pagehead">
       <div>
         <h1>建议与反馈</h1>
-        <p class="muted">提交使用问题或改进建议，并在这里查看处理进度。</p>
       </div>
     </header>
 

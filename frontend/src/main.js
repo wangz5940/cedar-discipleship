@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import { installVersionRefresh } from './runtime/appVersion';
+import { installPagePinchGuard } from '../public/page-pinch-guard.js';
 import {
   installAutomaticFeedbackReporting,
   reportAutomaticFeedback,
@@ -16,6 +17,7 @@ import './study.css';
 import './styles/cedar-room.css';
 
 installVersionRefresh();
+installPagePinchGuard();
 installAutomaticFeedbackReporting();
 
 const app = createApp(App);
