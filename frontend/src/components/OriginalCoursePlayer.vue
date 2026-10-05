@@ -4,7 +4,7 @@ import MemoryActions from './MemoryActions.vue';
 import { courseMemoryKey, mediaMemoryItem, savedPosition, studyMemoryScope, studyFrameChanged } from '../../public/study-memory.js';
 import { togglePictureInPicture } from '../../public/media-session.js';
 
-const props = defineProps({ localCourse: { type: Object, default: null }, courseId: String, lessonId: String, lessons: { type: Array, default: () => [] }, title: String, startTime: { type: Number, default: 0 }, resumePlayback: { type: Boolean, default: true }, autoplay: Boolean, showFavorites: { type: Boolean, default: true }, syncParentRoute: { type: Boolean, default: true } });
+const props = defineProps({ localCourse: { type: Object, default: null }, compact: Boolean, courseId: String, lessonId: String, lessons: { type: Array, default: () => [] }, title: String, startTime: { type: Number, default: 0 }, resumePlayback: { type: Boolean, default: true }, autoplay: Boolean, showFavorites: { type: Boolean, default: true }, syncParentRoute: { type: Boolean, default: true } });
 const emit = defineEmits(['close', 'favorites', 'lesson-change', 'time-change']);
 const frame = ref(null);
 const canPictureInPicture = ref(false);
@@ -68,8 +68,14 @@ onBeforeUnmount(() => window.removeEventListener('message', syncRoute));
 </script>
 
 <template>
-  <section class="original-course-wrapper">
-    <div class="original-memory-bar"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" class="ghost" @click="pictureInPicture">画中画</button><button v-if="showFavorites" type="button" class="ghost" @click="emit('favorites')">我的收藏</button><button type="button" class="ghost" @click="emit('close')">返回课程</button></div>
+  <section class="original-course-wrapper" :class="{ 'original-course-compact': compact }">
+    <header v-if="compact" class="local-player-toolbar">
+      <button type="button" class="ghost" @click="emit('close')">返回</button>
+      <strong :title="title">{{ title || '小组课程' }}</strong>
+      <slot name="tools" />
+    </header>
+    <div v-else class="original-memory-bar"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" class="ghost" @click="pictureInPicture">画中画</button><button v-if="showFavorites" type="button" class="ghost" @click="emit('favorites')">我的收藏</button><button type="button" class="ghost" @click="emit('close')">返回课程</button></div>
+    <div v-if="compact" class="local-player-actions"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" @click="pictureInPicture">画中画</button></div>
     <p v-if="notice" role="status">{{ notice }}</p>
     <iframe ref="frame" class="original-course-player" :src="source" title="OVCM 课程播放器" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen @load="bindFrame"></iframe>
   </section>
@@ -80,11 +86,22 @@ onBeforeUnmount(() => window.removeEventListener('message', syncRoute));
 .original-memory-bar { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .original-memory-bar > button { font-size: 12px; }
 .original-course-player { display: block; width: 100%; flex: 1; min-height: 0; border: 1px solid var(--cd-border); border-radius: 12px; background: #f9fafb; }
+.original-course-compact { height: 100%; min-height: 0; gap: 0; }
+.local-player-toolbar { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 16px; border-bottom: 1px solid var(--cd-border); background: var(--cd-surface, white); position: relative; z-index: 2; }
+.local-player-toolbar strong { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-player-toolbar button, .local-player-toolbar summary { padding: 8px 10px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.local-player-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: var(--cd-surface, white); border-bottom: 1px solid var(--cd-border); }
+.local-player-actions :deep(.memory-actions) { display: contents; }
+.local-player-actions :deep(button) { background: var(--cd-primary, #23416a); color: white; border: 1px solid var(--cd-primary, #23416a); font-weight: 600; font-size: 13px; padding: 9px 12px; border-radius: 8px; min-height: 38px; }
+.local-player-actions :deep(.memory-actions span) { order: 1; margin-left: auto; }
+.original-course-compact .original-course-player { order: 0; border: 0; border-radius: 0; }
 @media (max-width: 980px) { .original-course-wrapper { height: calc(100dvh - 104px); min-height: 0; } }
 @media (max-width: 430px) { .original-course-wrapper { height: calc(100dvh - 92px); } }
 @media (max-width: 700px) {
   .original-course-wrapper { width: 100%; height: 100dvh; gap: 0; }
   .original-course-player { border: 0; border-radius: 0; order: -1; }
   .original-memory-bar { padding: 8px 12px max(8px, env(safe-area-inset-bottom)); background: var(--cd-surface); }
+  .original-course-compact { height: 100%; }
+  .local-player-toolbar { padding: max(8px, env(safe-area-inset-top)) 10px 8px; gap: 4px; }
 }
 </style>
