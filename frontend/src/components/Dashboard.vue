@@ -62,7 +62,7 @@ const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
 const matrixSort = ref({ key: 'total', direction: 'desc' });
-const availableLegend = computed(() => availableStatisticsLegend(ranking.value, statsTaskTypes.value));
+const availableLegend = computed(() => availableStatisticsLegend(ranking.value, statsTaskTypes.value, 'rainbow'));
 const activeLegend = computed(() => availableLegend.value.find((item) => item.key === activeStatKey.value) || null);
 const effectiveStatKey = computed(() => activeLegend.value?.key || 'all');
 const visibleLegend = computed(() => (activeLegend.value ? [activeLegend.value] : availableLegend.value));
@@ -163,6 +163,7 @@ async function exportRankingChart() {
     items: rankedItems.value,
     taskTypes: statsTaskTypes.value,
     activeKey: effectiveStatKey.value,
+    colorScheme: 'rainbow',
     filename: `${monthLabel.value}-bar-chart.png`,
   });
 }
@@ -354,7 +355,7 @@ async function exportRankingChart() {
             </div>
             <div class="inline view-toggle" aria-label="统计视图">
               <button
-                class="quiet compact-control"
+                class="compact-control"
                 :class="{ primary: statsView === 'chart' }"
                 :aria-pressed="statsView === 'chart'"
                 type="button"
@@ -363,7 +364,7 @@ async function exportRankingChart() {
                 完成排行
               </button>
               <button
-                class="quiet compact-control"
+                class="compact-control"
                 :class="{ primary: statsView === 'table' }"
                 :aria-pressed="statsView === 'table'"
                 type="button"
@@ -380,7 +381,7 @@ async function exportRankingChart() {
             <strong class="chart-head__title">{{ activeScopeLabel }}完成数</strong>
             <div class="inline filter-list" aria-label="统计分类筛选">
               <button
-                class="quiet filter-chip"
+                class="filter-chip"
                 :class="{ primary: effectiveStatKey === 'all' }"
                 type="button"
                 @click="activeStatKey = 'all'"
@@ -390,7 +391,7 @@ async function exportRankingChart() {
               <button
                 v-for="item in availableLegend"
                 :key="item.key"
-                class="quiet filter-chip"
+                class="filter-chip"
                 :class="{ primary: activeStatKey === item.key }"
                 type="button"
                 @click="setActiveStat(item.key)"
@@ -429,7 +430,7 @@ async function exportRankingChart() {
               <thead>
                 <tr>
                   <th :aria-sort="matrixSortAria('name')">
-                    <button class="quiet sort-button" type="button" @click="setMatrixSort('name')">
+                    <button class="sort-button" type="button" @click="setMatrixSort('name')">
                       <span>成员</span>
                       <ChevronUp v-if="matrixSort.key === 'name' && matrixSort.direction === 'asc'" :size="14" />
                       <ChevronDown v-else-if="matrixSort.key === 'name'" :size="14" />
@@ -437,7 +438,7 @@ async function exportRankingChart() {
                     </button>
                   </th>
                   <th v-for="item in availableLegend" :key="item.key" :aria-sort="matrixSortAria(item.key)">
-                    <button class="quiet sort-button" type="button" @click="setMatrixSort(item.key)">
+                    <button class="sort-button" type="button" @click="setMatrixSort(item.key)">
                       <span>{{ item.label }}</span>
                       <ChevronUp v-if="matrixSort.key === item.key && matrixSort.direction === 'asc'" :size="14" />
                       <ChevronDown v-else-if="matrixSort.key === item.key" :size="14" />
@@ -445,7 +446,7 @@ async function exportRankingChart() {
                     </button>
                   </th>
                   <th :aria-sort="matrixSortAria('total')">
-                    <button class="quiet sort-button" type="button" @click="setMatrixSort('total')">
+                    <button class="sort-button" type="button" @click="setMatrixSort('total')">
                       <span>合计</span>
                       <ChevronUp v-if="matrixSort.key === 'total' && matrixSort.direction === 'asc'" :size="14" />
                       <ChevronDown v-else-if="matrixSort.key === 'total'" :size="14" />
@@ -499,6 +500,15 @@ async function exportRankingChart() {
 </template>
 
 <style scoped>
+.stats-center { background: #fff; border-color: var(--cd-border); }
+.stats-center button { background: #fff; color: var(--cd-primary); border-color: var(--cd-border); font-weight: 600; }
+.stats-center button:hover { background: var(--cd-primary-soft); }
+.stats-center button.primary { background: var(--cd-primary); color: #fff; border-color: var(--cd-primary); }
+.stats-center button.primary:hover { background: var(--cd-primary-hover); }
+.stats-center .stats-center__title, .stats-center .chart-head__title, .stats-center .table-heading { color: var(--cd-primary); }
+.stats-center :deep(.ranking-chart__track) { background: var(--cd-primary-soft); }
+.stats-center :deep(.ranking-chart__total) { color: var(--cd-primary); font-size: 14px; font-weight: 700; }
+.stats-center .view-toggle { background: var(--cd-primary-soft); }
 .dashboard-page { min-width: 0; }
 .page-header { margin-bottom: 24px; }
 .metric__suffix { font-size: .42em; font-weight: 600; }

@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { availableStatisticsLegend } from './statistics';
 
 describe('availableStatisticsLegend', () => {
+  it('keeps category colors stable across rainbow filtering without changing default colors', () => {
+    const types = ['daily_devotion', 'weekly_video'];
+    const rainbow = availableStatisticsLegend([], types, 'rainbow');
+    expect(rainbow.map(part => part.color)).toEqual(['#D45252', '#329BA4']);
+    expect(availableStatisticsLegend([], ['weekly_video'], 'rainbow')[0].color).toBe(rainbow[1].color);
+    expect(availableStatisticsLegend([], types).map(part => part.color)).toEqual(['#0284c7', '#38bdf8']);
+  });
   it('includes enabled tasks with no completions and retains completed historical types', () => {
     expect(availableStatisticsLegend([
       { counts: { weekly_book: 2, daily_verse: 0, weekly_video: 0 } },

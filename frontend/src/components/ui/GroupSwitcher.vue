@@ -22,7 +22,7 @@ function chooseGroup(groupID) {
 <template>
   <div v-if="groups.length > 1" class="inline topbar-group group-switcher">
     <button
-      class="quiet group-switcher__trigger"
+      class="group-switcher__trigger"
       type="button"
       aria-haspopup="dialog"
       :aria-expanded="pickerOpen"
@@ -80,9 +80,10 @@ function chooseGroup(groupID) {
 </template>
 
 <style scoped>
+.group-switcher__current { padding: 7px 12px; border: 1px solid var(--cd-border); background: var(--cd-primary-soft); color: var(--cd-primary); font-size: 16px; font-weight: 700; line-height: 1.4; }
 .group-switcher__trigger {
   display: flex;
-  width: min(170px, 30vw);
+  width: min(240px, 40vw);
   min-width: 0;
   align-items: center;
   justify-content: space-between;
@@ -91,8 +92,8 @@ function chooseGroup(groupID) {
   border-color: var(--cd-border);
   background: var(--cd-surface);
   color: var(--cd-text);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .group-switcher__trigger span {
@@ -154,6 +155,6 @@ function chooseGroup(groupID) {
 .group-switcher-dialog__check { justify-self: end; color: var(--cd-primary); }
 
 @media (max-width: 767px) {
-  .group-switcher__trigger { width: min(132px, 34vw); height: 40px; }
+  .group-switcher__trigger { width: min(200px, 42vw); height: 40px; }
 }
 </style>

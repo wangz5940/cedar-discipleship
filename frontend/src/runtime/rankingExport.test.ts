@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { rankingChartSVG } from './rankingExport';
 
 describe('rankingChartSVG', () => {
+  it('exports rainbow colors matching the statistics view and preserves the default palette', () => {
+    const options = { title: '统计', subtitle: '历史', items: [], taskTypes: ['daily_devotion', 'weekly_video'] };
+    const rainbow = rankingChartSVG({ ...options, colorScheme: 'rainbow' });
+    expect(rainbow).toContain('fill="#D45252"');
+    expect(rainbow).toContain('fill="#329BA4"');
+    expect(rankingChartSVG(options)).toContain('fill="#0284c7"');
+  });
   it('exports planned categories even when no member has completed them', () => {
     const svg = rankingChartSVG({ title: '学习', subtitle: '本周', items: [], taskTypes: ['weekly_verse'] });
     expect(svg).toContain('>背经</text>');

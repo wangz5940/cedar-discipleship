@@ -13,6 +13,7 @@ type ChartOptions = {
   items: RankingItem[];
   activeKey?: string;
   taskTypes?: string[];
+  colorScheme?: string;
 };
 
 const width = 1120;
@@ -24,13 +25,13 @@ function escapeText(value: string): string {
   })[char]!);
 }
 
-export function rankingChartSVG({ title, subtitle, items, activeKey = 'all', taskTypes = [] }: ChartOptions): string {
+export function rankingChartSVG({ title, subtitle, items, activeKey = 'all', taskTypes = [], colorScheme = 'default' }: ChartOptions): string {
   const left = 80;
   const right = 40;
   const top = 120;
   const chartWidth = width - left - right;
   const chartHeight = height - top - 120;
-  const legend = availableStatisticsLegend(items, taskTypes).filter((part) => activeKey === 'all' || part.key === activeKey);
+  const legend = availableStatisticsLegend(items, taskTypes, colorScheme).filter((part) => activeKey === 'all' || part.key === activeKey);
   const maxTotal = Math.max(1, ...items.map((item) => statisticTotal(item, activeKey)));
   const slotWidth = chartWidth / Math.max(1, items.length);
   const barWidth = Math.max(26, Math.min(42, slotWidth * 0.48));

@@ -22,8 +22,10 @@ export function statisticCount(item: RankingItem, key: string): number {
   return Number(item.counts?.[key] || 0);
 }
 
-export function availableStatisticsLegend(items: RankingItem[], taskTypes: string[] = []) {
-  return statisticsLegend.filter((part) => (
+const rainbowColors = ['#D45252', '#DC873B', '#B79A25', '#40956B', '#329BA4', '#397DCC', '#6654B8', '#A75AAB'];
+
+export function availableStatisticsLegend(items: RankingItem[], taskTypes: string[] = [], colorScheme = 'default') {
+  return statisticsLegend.map((part, index) => colorScheme === 'rainbow' ? { ...part, color: rainbowColors[index] } : part).filter((part) => (
     taskTypes.includes(part.key) || items.some((item) => statisticCount(item, part.key) > 0)
   ));
 }
