@@ -6,6 +6,15 @@
 .sidebar .nav button, .sidebar .preview-back, .sidebar .app-sidebar__action, .sidebar .sidebar-toggle { color: var(--cd-muted); background: transparent; border-color: transparent; }
 .sidebar .nav button.active { color: var(--cd-primary); background: var(--cd-primary-soft); border-color: transparent; box-shadow: none; font-weight: 600; }
 .sidebar .nav button:hover, .sidebar .preview-back:hover { background: var(--cd-bg); color: var(--cd-primary); }
+.sidebar .nav button.active:hover { background: var(--cd-primary-soft); }
+/* Touch hover must not leave a second navigation item looking selected. */
+@media (hover: none) {
+  .sidebar .nav button:not(.active):hover,
+  .app-mobile-nav button:not(.active):hover { background: transparent; color: var(--cd-muted); }
+}
+.app-mobile-nav button:focus-visible { outline-offset: -3px; }
+body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, .course-source-tabs, .admin-tabs) button { font-weight: 600; }
+body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, .course-source-tabs, .admin-tabs) button.active { font-weight: 700; }
 .sidebar .brandmark { background: var(--cd-primary-soft); color: var(--cd-primary); border-radius: 12px; }
 .sidebar .nav button > svg { flex-shrink: 0; }
 .sidebar .sidefoot, .sidebar .nav .separator { border-color: var(--cd-border); }
@@ -127,7 +136,7 @@
 .learning-fraction strong { font-weight: 600; }
 .checkin-page .actions button, .app-resource-stack-card__actions button,
 .course-source-tabs button, .library-feature button { font-size: 15px; font-weight: 600; }
-.sidebar.app-sidebar .nav button { font-weight: 500; }
+.sidebar.app-sidebar .nav button { font-weight: 600; }
 .sidebar.app-sidebar .nav button.active { font-weight: 700; }
 .checkin-page .task-status { font-size: 13px; font-weight: 600; }
 @media (max-width: 767px) {
