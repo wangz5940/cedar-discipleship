@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { linkedOvcmCourses, loadOvcmCourses, ovcmReference } from '../runtime/ovcmCourses';
 import { BookOpen, Headphones, Layers, Play, Search, Video } from '@lucide/vue';
-import { openContentTarget, toast } from '../legacy-app';
+import { buildMediaViewerSections, openContentTarget, toast } from '../legacy-app';
 import { formatMediaTime as fmt } from '../runtime/mediaStudy';
 import UploadedCoursePlayer from './UploadedCoursePlayer.vue';
 import OriginalCoursePlayer from './OriginalCoursePlayer.vue';
@@ -12,12 +12,17 @@ import { courseMemoryKey } from '../../public/study-memory.js';
 import { studyAccessStatus } from '../../public/study-access.js';
 
 const props = defineProps({ sections: { type: Array, default: () => [] }, weeks: { type: Array, default: () => [] }, preview: { type: Boolean, default: false }, openOvcm: { type: Boolean, default: false } });
+const emit = defineEmits(['search-submit']);
 const source = ref(props.openOvcm ? 'ovcm' : 'local');
 const access = ref(studyAccessStatus());
 const courses = ref([]);
 const loading = ref(true);
 const error = ref('');
 const query = ref('');
+function submitSearch() {
+  emit('search-submit', query.value.trim(), () => { query.value = ''; });
+}
+watch(() => props.openOvcm, unlocked => { source.value = unlocked ? 'ovcm' : 'local'; });
 const selectedCourse = ref(null);
 const selectedLesson = ref(null);
 const startTime = ref(0);
@@ -93,7 +98,8 @@ async function open(course, lesson, time = null, shouldPlay = false) {
     return;
   }
   if (source.value === 'local' && !props.preview) {
-    try { await openContentTarget({ ...enriched, relatedSections: undefined, startTime: time ?? 0, resumePlayback: time === null, autoplay: shouldPlay }); }
+    const companions = buildMediaViewerSections(lesson).filter(section => section.key !== 'video');
+    try { await openContentTarget({ ...enriched, relatedSections: [...enriched.relatedSections, ...companions], startTime: time ?? 0, resumePlayback: time === null, autoplay: shouldPlay }); }
     catch (failure) { toast(`打开失败：${failure.message}`); }
     return;
   }
@@ -144,17 +150,16 @@ async function openFavorite(item) {
       <div class="library-intro-copy">
 
         <h1>留一点时间，给生命的成长。</h1>
-        <label class="course-search"><Search :size="20" /><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></label>
+        <form class="course-search" @submit.prevent="submitSearch"><button class="course-search__submit" type="submit" aria-label="提交课程搜索"><Search :size="20" /></button><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></form>
         <a v-if="preview" class="library-login" href="/">登录并同步学习 <span aria-hidden="true">↗</span></a>
       </div>
       <div v-if="access.unlocked && courses[0]" class="library-feature">
         <StudySlideImage v-if="courses[0].coverImage" :src="courses[0].coverImage" alt="精选课程" />
-        <div><span class="library-kicker">本期选读</span><h2>{{ courses[0].title }}</h2><button type="button" @click="source = 'ovcm'; openCourse(courses[0])">进入课程 <Play :size="16" /></button></div>
+        <div><h2>{{ courses[0].title }}</h2><button type="button" @click="source = 'ovcm'; openCourse(courses[0])">进入课程 <Play :size="16" /></button></div>
       </div>
-      <aside v-else class="library-note" aria-label="学习寄语">
+      <aside v-else class="library-note" aria-hidden="true">
 
-        <div class="library-book-art" aria-hidden="true"><i></i><i></i><i></i><span>CEDAR</span></div>
-        <p>听见。思想。实践。</p>
+        <div class="library-book-art"><i></i><i></i><i></i></div>
       </aside>
     </div>
     <div class="library-section-label"><h2>我的学习资源</h2><select v-model="typeFilter" aria-label="课程类型"><option value="all">全部课时</option><option value="video">视频课时</option><option value="audio">音频课时</option></select></div>
@@ -164,7 +169,7 @@ async function openFavorite(item) {
     <template v-else>
       <template v-if="source === 'ovcm' && !query && typeFilter === 'all'"><h2 class="course-section-title"><Play :size="22" />最新发布</h2><div class="course-grid course-recent"><button v-for="item in recent" :key="item.lesson.id" type="button" class="course-card" @click="open(item.course, item.lesson)"><div class="course-cover"><StudySlideImage v-if="item.course.coverImage" :src="item.course.coverImage" :alt="item.lesson.title" /><span>{{ fmt(item.lesson.duration) }}</span></div><div class="course-card-copy"><small>{{ item.course.title }} · {{ item.lesson.type === 'video' ? '视频' : '音频' }}</small><h3>{{ item.lesson.title }}</h3></div></button></div></template>
       <h2 class="course-section-title"><Layers :size="23" />{{ source === 'ovcm' ? '课程' : '小组课程' }}<small>{{ filtered.length }} {{ source === 'ovcm' ? '个系列' : '项课程' }}</small></h2>
-      <div class="course-grid course-index"><button v-for="course in filtered" :key="course.id" type="button" class="course-card" @click="openCourse(course)"><div class="course-cover"><StudySlideImage v-if="course.coverImage" :src="course.coverImage" :alt="course.title" lazy /><BookOpen v-else :size="48" /><span class="course-cover-play"><Play :size="25" fill="currentColor" /></span></div><div class="course-card-copy"><h3>{{ course.title }}</h3><p>{{ course.description }}</p><div class="course-card-meta"><span v-if="course.lessons.some(item => item.type === 'audio')"><Headphones :size="14" />{{ course.lessons.filter(item => item.type === 'audio').length }} 个音频</span><span v-if="course.lessons.some(item => item.type === 'video')"><Video :size="14" />{{ course.lessons.filter(item => item.type === 'video').length }} 个视频</span></div></div></button></div>
+      <div class="course-grid course-index"><button v-for="course in filtered" :key="course.id" type="button" class="course-card" @click="openCourse(course)"><div class="course-cover"><StudySlideImage v-if="course.coverImage" :src="course.coverImage" :alt="course.title" lazy /><BookOpen v-else :size="48" /><span class="course-cover-play"><Play :size="25" fill="currentColor" /></span></div><div class="course-card-copy"><h3>{{ course.title }}</h3><div class="course-card-meta"><span v-if="course.lessons.some(item => item.type === 'audio')"><Headphones :size="14" />{{ course.lessons.filter(item => item.type === 'audio').length }} 个音频</span><span v-if="course.lessons.some(item => item.type === 'video')"><Video :size="14" />{{ course.lessons.filter(item => item.type === 'video').length }} 个视频</span></div></div></button></div>
       <div v-if="!filtered.length" class="library-empty"><BookOpen :size="32" stroke-width="1.2" /><div><h3>{{ query ? '换一个关键词，再找找看' : '书房已经准备好了' }}</h3><p>{{ source === 'local' ? '当前没有匹配的音视频资源。上传及周任务安排的课程将在这里呈现。' : '未找到课程，请尝试其他关键词。' }}</p><button v-if="preview && source === 'local' && !query" type="button" @click="uploadInput.click()">选择音视频，开始体验 <Play :size="14" /></button></div></div>
     </template>
   </section>

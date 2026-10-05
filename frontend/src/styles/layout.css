@@ -295,6 +295,7 @@
     right: 0;
     display: grid;
     grid-template-columns: repeat(var(--mobile-nav-count, 5), minmax(0, 1fr));
+    column-gap: 4px;
     height: calc(60px + env(safe-area-inset-bottom));
     padding: 3px 4px env(safe-area-inset-bottom);
     background: #ffffff;
@@ -305,6 +306,7 @@
   }
 
   .mobilebar button {
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;

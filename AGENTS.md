@@ -82,6 +82,8 @@ This skill is mandatory unless the task is provably isolated from existing behav
 
 ## 6. Upstream Before Changes
 
+修改前端界面、交互或样式时，必须先阅读并遵守根目录 `ui.md`，复用同一功能的组件与语义样式。
+
 Before changing this project, check the latest `master` commit of `wangz5940/cedar-discipleship` and compare its relevant code with the current branch. Bring over upstream functionality while preserving the optimized frontend UI and existing local features. Do not treat a local upstream file copy as proof that it is current.
 
 ## 7. Exclude Local Environment Files Before Every Commit
