@@ -60,7 +60,7 @@
 .checkin-page .summary .summary__eyebrow { color: var(--cd-gold-soft); }
 .checkin-page .summary-reflection { color: var(--cd-on-primary-muted); font-size: 13px; line-height: 1.8; margin-top: 10px; }
 .checkin-page .summary .progress { margin-top: 12px; background: #ffffff20; }
-.checkin-page .summary .progress span { background: var(--cd-gold); }
+.checkin-page .summary .progress span { background: linear-gradient(90deg, var(--cd-status-strong), var(--cd-status-accent)); }
 .learning-fraction { display: flex; align-items: baseline; gap: 8px; justify-content: center; }
 .learning-fraction strong { font-size: 46px; font-weight: 400; line-height: 1; }
 .learning-fraction span { font-size: 20px; color: var(--cd-on-primary-muted); }
@@ -72,12 +72,13 @@
   border-color: var(--cd-learning-action-border);
   color: var(--cd-button-accent-dark);
 }
-.checkin-page .task .actions > button:is(.primary, .taskdone) {
-  background: linear-gradient(180deg, var(--cd-button-accent-dark), var(--cd-button-accent-deep));
+.checkin-page .task .actions > button.primary {
+  background: var(--cd-button-accent-dark);
   border-color: rgb(142 29 19 / 0.46);
   color: var(--cd-on-primary);
   font-weight: 700;
 }
+.checkin-page .task .actions > button.taskdone { background: var(--cd-button-accent-bg); border-color: var(--cd-button-accent-border); color: var(--cd-button-accent-dark); }
 .checkin-page .task .actions > button:hover { filter: brightness(1.06); }
 @media (min-width: 1000px) { .checkin-page .tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 980px) { .study-preview > .sidebar { overflow: hidden; } .study-preview > .main-panel { overflow-y: auto; } .library-intro { gap: 24px; } }
