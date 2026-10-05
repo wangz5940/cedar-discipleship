@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { linkedOvcmCourses, loadOvcmCourses, ovcmReference } from '../runtime/ovcmCourses';
 import { BookOpen, Headphones, Layers, Play, Search, Video } from '@lucide/vue';
-import { openContentTarget, toast } from '../legacy-app';
+import { buildMediaViewerSections, openContentTarget, toast } from '../legacy-app';
 import { formatMediaTime as fmt } from '../runtime/mediaStudy';
 import UploadedCoursePlayer from './UploadedCoursePlayer.vue';
 import OriginalCoursePlayer from './OriginalCoursePlayer.vue';
@@ -12,12 +12,17 @@ import { courseMemoryKey } from '../../public/study-memory.js';
 import { studyAccessStatus } from '../../public/study-access.js';
 
 const props = defineProps({ sections: { type: Array, default: () => [] }, weeks: { type: Array, default: () => [] }, preview: { type: Boolean, default: false }, openOvcm: { type: Boolean, default: false } });
+const emit = defineEmits(['search-submit']);
 const source = ref(props.openOvcm ? 'ovcm' : 'local');
 const access = ref(studyAccessStatus());
 const courses = ref([]);
 const loading = ref(true);
 const error = ref('');
 const query = ref('');
+function submitSearch() {
+  emit('search-submit', query.value.trim(), () => { query.value = ''; });
+}
+watch(() => props.openOvcm, unlocked => { source.value = unlocked ? 'ovcm' : 'local'; });
 const selectedCourse = ref(null);
 const selectedLesson = ref(null);
 const startTime = ref(0);
@@ -93,7 +98,8 @@ async function open(course, lesson, time = null, shouldPlay = false) {
     return;
   }
   if (source.value === 'local' && !props.preview) {
-    try { await openContentTarget({ ...enriched, relatedSections: undefined, startTime: time ?? 0, resumePlayback: time === null, autoplay: shouldPlay }); }
+    const companions = buildMediaViewerSections(lesson).filter(section => section.key !== 'video');
+    try { await openContentTarget({ ...enriched, relatedSections: [...enriched.relatedSections, ...companions], startTime: time ?? 0, resumePlayback: time === null, autoplay: shouldPlay }); }
     catch (failure) { toast(`打开失败：${failure.message}`); }
     return;
   }
@@ -144,7 +150,7 @@ async function openFavorite(item) {
       <div class="library-intro-copy">
 
         <h1>留一点时间，给生命的成长。</h1>
-        <label class="course-search"><Search :size="20" /><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></label>
+        <form class="course-search" @submit.prevent="submitSearch"><button class="course-search__submit" type="submit" aria-label="提交课程搜索"><Search :size="20" /></button><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></form>
         <a v-if="preview" class="library-login" href="/">登录并同步学习 <span aria-hidden="true">↗</span></a>
       </div>
       <div v-if="access.unlocked && courses[0]" class="library-feature">

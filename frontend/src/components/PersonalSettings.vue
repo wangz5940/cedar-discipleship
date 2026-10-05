@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { Columns2, Layers3, LockKeyhole, Save, UserRound } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
@@ -11,7 +11,7 @@ import {
 import { normalizeMobileViewMode } from '../runtime/personalSettings';
 
 const app = useAppStateStore();
-const { user, groups, currentGroupID } = storeToRefs(app);
+const { user, currentGroupID } = storeToRefs(app);
 const memberName = ref('');
 const mobileViewMode = ref('masonry');
 const saving = ref(false);
@@ -19,7 +19,6 @@ const currentPassword = ref('');
 const newPassword = ref('');
 const confirmPassword = ref('');
 const changingPassword = ref(false);
-const activeGroup = computed(() => groups.value.find((group) => Number(group.id) === Number(currentGroupID.value)));
 
 watch([user, currentGroupID], () => {
   memberName.value = user.value?.member_name || user.value?.display_name || '';
@@ -86,7 +85,6 @@ async function changePassword() {
     <header class="pagehead">
       <div>
         <h1>个人设置</h1>
-        <span v-if="activeGroup" class="pill">{{ activeGroup.name }}</span>
       </div>
     </header>
 

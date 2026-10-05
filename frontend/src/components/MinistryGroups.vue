@@ -33,6 +33,7 @@ import { classifyAttachment, markdownToSafeHTML } from '../runtime/content';
 import { canManageStudyGroup } from '../runtime/studyPermissions';
 import { downloadErrorMessage } from '../runtime/downloads';
 import CountingAttendance from './CountingAttendance.vue';
+import DateField from './ui/DateField.vue';
 
 const app = useAppStateStore();
 const downloadManager = useDownloadManagerStore();
@@ -56,7 +57,17 @@ const selectedAttachmentKeys = ref(new Set());
 const shareID = ref(0);
 const shareTitle = ref('');
 const shareBody = ref('');
-const progressDate = ref(localDateTimeValue());
+const initialProgressDate = localDateTimeValue();
+const progressDay = ref(initialProgressDate.slice(0, 10));
+const progressTime = ref(initialProgressDate.slice(11, 16));
+const progressDate = computed({
+  get: () => progressDay.value && progressTime.value ? `${progressDay.value}T${progressTime.value}` : '',
+  set: (value) => {
+    const [date = '', time = ''] = value.split('T');
+    progressDay.value = date;
+    progressTime.value = time.slice(0, 5);
+  },
+});
 const progressBody = ref('');
 const progressAssets = ref([]);
 const uploading = ref(false);
@@ -1023,7 +1034,10 @@ function localDateTimeValue() {
                   </div>
                   <button class="ghost" type="button" @click="resetProgressForm">收起</button>
                 </div>
-                <input v-model="progressDate" type="datetime-local" />
+                <div class="ministry-progress-datetime">
+                  <DateField v-model="progressDay" label="进展日期" compact clearable />
+                  <input v-model="progressTime" type="time" step="60" aria-label="进展时间" />
+                </div>
                 <textarea v-model="progressBody" rows="4" placeholder="记录时间、完成内容、下一步或需要配搭的事项"></textarea>
                 <div v-if="progressAssets.length" class="ministry-attachment-list">
                   <span v-for="asset in progressAssets" :key="asset.id">
@@ -1236,6 +1250,9 @@ function localDateTimeValue() {
 </template>
 
 <style scoped>
+.ministry-progress-datetime { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: center; gap: 8px; }
+.ministry-progress-datetime input { width: 100%; min-width: 0; min-height: 44px; }
+
 .ministry-masonry-selector {
   columns: 170px 2;
   column-gap: 10px;

@@ -873,12 +873,12 @@ async function runLocalBackupImport() {
                 </LearningConfigSection>
                 <div class="grid cols-2 admin-grid">
                   <LearningConfigSection title="每日灵修配置" :storage-key="learningSectionKey('devotion')">
-                    <div class="form-stack admin-form-grid">
+                    <div class="form-stack admin-form-grid" :class="{ 'devotion-paired-grid': devotionPlanMode === 'automatic' && devotionContentType === 'markdown' }">
                       <div class="admin-checkbox-row daily-config-toggle-row">
                         <label class="admin-toggle"><input type="checkbox" :checked="daily.checkin_mode === 'separate'" @change="updateLearning(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
                         <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修</span></label>
                       </div>
-                      <div class="admin-field">
+                      <div class="admin-field devotion-plan-mode-field">
                         <span class="admin-field-label">灵修计划方式</span>
                         <div class="segmented-control daily-plan-mode" role="group" aria-label="灵修计划方式">
                           <button :class="{ active: devotionPlanMode === 'automatic' }" type="button" @click="setDevotionPlanMode('automatic')">连续计划</button>
@@ -918,7 +918,7 @@ async function runLocalBackupImport() {
                         </button>
                         <label class="admin-field">
                           <span class="admin-field-label">计划日期</span>
-                          <input type="date" :value="dailyPlanDate" @change="selectDailyPlanDate($event.target.value)" />
+                          <DateField :model-value="dailyPlanDate" label="计划日期" @change="selectDailyPlanDate" />
                         </label>
                         <label class="admin-field">
                           <span class="admin-field-label">当天标题</span>
@@ -960,8 +960,8 @@ async function runLocalBackupImport() {
                     </div>
                   </LearningConfigSection>
                   <LearningConfigSection title="每日读经配置" :storage-key="learningSectionKey('scripture')">
-                    <div class="form-stack admin-form-grid">
-                      <label class="admin-toggle"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
+                    <div class="form-stack admin-form-grid scripture-paired-grid">
+                      <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
                       <label class="admin-field">
                         <span class="admin-field-label">起始书卷</span>
                         <select :value="scripture.book_id || ''" @change="updateScriptureBook($event.target.value)">
@@ -979,14 +979,16 @@ async function runLocalBackupImport() {
                 </div>
                 <LearningConfigSection title="背经配置" :storage-key="learningSectionKey('verse')">
                   <div class="form-stack admin-form-grid">
-                    <label class="admin-toggle"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示背经任务</span></label>
+                    <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning" @change="updateLearning(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示背经任务</span></label>
                     <button class="icon-text-button daily-plan-add-button" :disabled="!canEditLearning" type="button" @click="addVersePlan">
                       <Plus :size="17" />
                       新增背经
                     </button>
-                    <label class="admin-field"><span class="admin-field-label">开始日期</span><input v-model="versePlanDate" type="date" /></label>
-                    <label class="admin-field"><span class="admin-field-label">结束日期</span><input v-model="versePlanEnd" type="date" :min="versePlanDate" /></label>
+                    <div class="verse-schedule-row">
+                    <div class="admin-field"><span class="admin-field-label">开始日期</span><DateField v-model="versePlanDate" label="背经开始日期" /></div>
+                    <div class="admin-field"><span class="admin-field-label">结束日期</span><DateField v-model="versePlanEnd" label="背经结束日期" :min="versePlanDate" /></div>
                     <label class="admin-field"><span class="admin-field-label">打卡频率</span><select v-model="verseCompletionMode" :disabled="!canEditLearning"><option value="daily">每天打卡</option><option value="weekly">每周打卡一次</option></select></label>
+                    </div>
                     <label class="admin-field"><span class="admin-field-label">默写原文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="填写经文原文并保留章节标记，例如：创1:1 起初，神创造天地。"></textarea></label>
                     <p class="muted" aria-live="polite">{{ verseRef ? `${generatedVerseTitle ? '自动标题' : '沿用原标题'}：${verseRef}` : '标题将从原文中的章节标记自动生成，例如创1:1-2，罗8:5-6。' }}</p>
                     <div class="form-actions">
@@ -1239,6 +1241,14 @@ async function runLocalBackupImport() {
 .admin-learning-stack > .week-planner-card { order: -1; }
 .admin-grid > .learning-config-section { align-self: start; }
 .week-planner-card { min-width: 0; }
+.admin-wrapper .devotion-paired-grid, .admin-wrapper .scripture-paired-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.devotion-paired-grid > .daily-config-toggle-row, .devotion-paired-grid > .devotion-plan-mode-field, .devotion-paired-grid > .form-actions,
+.scripture-paired-grid > .learning-toggle-card, .scripture-paired-grid > .admin-paired-fields, .scripture-paired-grid > .form-actions { grid-column: 1 / -1; }
+.admin-wrapper .learning-toggle-card, .admin-wrapper .daily-config-toggle-row .admin-toggle { min-height: 44px; padding: 10px 12px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-primary-soft); }
+.verse-schedule-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.devotion-paired-grid .admin-field, .scripture-paired-grid .admin-field, .verse-schedule-row .admin-field { min-width: 0; }
+.devotion-paired-grid select, .scripture-paired-grid select, .verse-schedule-row :where(input, select) { width: 100%; min-width: 0; padding-inline: 8px; }
+.verse-schedule-row select { font-size: 13px; }
 .admin-checkbox-row.daily-config-toggle-row {
   grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
 }
@@ -1260,6 +1270,8 @@ async function runLocalBackupImport() {
   white-space: nowrap;
 }
 @media (max-width: 767px) {
+  .verse-schedule-row { gap: 6px; }
+  .verse-schedule-row select { font-size: 12px; padding-inline: 4px; }
   .admin-pagehead { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
   .admin-wrapper .admin-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: 0; padding: 6px; }
   .admin-tabs button { width: 100%; white-space: normal; }
