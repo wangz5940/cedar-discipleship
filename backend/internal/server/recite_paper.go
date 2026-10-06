@@ -13,6 +13,7 @@ import (
 // recitePaper preserves the submitted text and answers, independently of later plan edits.
 // Version 1 uses the frontend's Chinese-whitespace tokenizer and continuous-blank grading.
 // Version 2 additionally keeps book names and numeric characters outside blanks.
+// Version 3 includes whole parenthesized verses in blanks.
 // Existing character counts remain the source of the saved score.
 type recitePaper struct {
 	Version      int      `json:"version"`
@@ -26,7 +27,7 @@ func validRecitePaper(paper *recitePaper) bool {
 		return true // Older clients save only counts.
 	}
 	length := utf8.RuneCountInString(paper.Text)
-	if (paper.Version != 1 && paper.Version != 2) || length == 0 || length > 30000 ||
+	if (paper.Version < 1 || paper.Version > 3) || length == 0 || length > 30000 ||
 		len(paper.BlankIndexes) == 0 || len(paper.BlankIndexes) > 10000 ||
 		len(paper.BlankIndexes) != len(paper.Answers) {
 		return false

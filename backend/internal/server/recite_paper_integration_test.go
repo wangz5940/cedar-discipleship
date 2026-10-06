@@ -17,6 +17,15 @@ import (
 )
 
 func TestRecitePaperSaveReplayAndAccess(t *testing.T) {
+	for _, version := range []int{1, 2, 3} {
+		t.Run(fmt.Sprintf("version_%d", version), func(t *testing.T) {
+			testRecitePaperSaveReplayAndAccess(t, version)
+		})
+	}
+}
+
+func testRecitePaperSaveReplayAndAccess(t *testing.T, version int) {
+	t.Helper()
 	a, db := passwordSessionFixture(t)
 	a.location = time.UTC
 	a.learning = learning.NewService(learning.NewMySQLRepository(db))
@@ -56,7 +65,22 @@ func TestRecitePaperSaveReplayAndAccess(t *testing.T) {
 		}
 		return value
 	}
-	paperJSON := `{"version":1,"text":"【弗1:16】就为你们不住地感谢　神。","blank_indexes":[1],"answers":["就为你们不住的感谢神"]}`
+	paper := recitePaper{
+		Version: version, Text: "【弗1:16】就为你们不住地感谢　神。",
+		BlankIndexes: []int{1}, Answers: []string{"就为你们不住的感谢神"},
+	}
+	total, correct, score := 10, 9, 90
+	if version == 3 {
+		paper.Text = "【约4:2】（其实不是耶稣亲自施洗，乃是他的门徒施洗），"
+		paper.BlankIndexes = []int{2, 4}
+		paper.Answers = []string{"其实不是耶稣亲自施洗", "乃是他的门徒施先"}
+		total, correct, score = 18, 17, 94
+	}
+	encoded, err := json.Marshal(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paperJSON := string(encoded)
 	var expected map[string]any
 	if err := json.Unmarshal([]byte(paperJSON), &expected); err != nil {
 		t.Fatal(err)
@@ -65,9 +89,12 @@ func TestRecitePaperSaveReplayAndAccess(t *testing.T) {
 		{`"task_id":9`, "task_id=9"},
 		{`"task_type":"daily_verse","logical_date":"2026-10-04"`, "task_type=daily_verse&logical_date=2026-10-04"},
 	} {
-		body := fmt.Sprintf(`{%s,"blank_percent":100,"blank_count":10,"correct_count":9,"paper":%s}`, identity.body, paperJSON)
+		body := fmt.Sprintf(
+			`{%s,"blank_percent":100,"blank_count":%d,"correct_count":%d,"paper":%s}`,
+			identity.body, total, correct, paperJSON,
+		)
 		saved := call(1, 1, "POST", "/api/recite-attempts", body, http.StatusCreated)
-		if saved["score"] != float64(90) || saved["has_paper"] != true {
+		if saved["score"] != float64(score) || saved["has_paper"] != true {
 			t.Fatalf("saved=%v", saved)
 		}
 		path := fmt.Sprintf("/api/recite-attempts/%.0f/paper", saved["id"])
@@ -90,7 +117,7 @@ func TestRecitePaperSaveReplayAndAccess(t *testing.T) {
 			t.Fatalf("list must return availability only: %v", item)
 		}
 		ranking := call(1, 1, "GET", "/api/recite-leaderboard?"+identity.query, "", http.StatusOK)
-		if strings.Contains(fmt.Sprint(ranking), "就为你") {
+		if strings.Contains(fmt.Sprint(ranking), paper.Answers[0]) {
 			t.Fatal("answers leaked into ranking")
 		}
 		// Old clients remain valid; NULL snapshots do not invent historical answers.
