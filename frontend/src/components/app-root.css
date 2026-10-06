@@ -239,8 +239,8 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   align-items: stretch;
-  gap: 12px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px;
   cursor: default;
 }
 
@@ -255,28 +255,33 @@
   position: relative;
   z-index: 1;
   min-height: 28px;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 8px;
 }
 
-.app-resource-card__meta .tile { width: 28px; height: 28px; min-width: 28px; flex: 0 0 28px; border-radius: 8px; }
 .app-resource-select { display: inline-flex; min-height: 44px; box-sizing: border-box; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-primary-soft); color: var(--cd-text-secondary); font-size: 12px; cursor: pointer; }
 .app-resource-select:has(input:checked) { border-color: var(--cd-primary); color: var(--cd-primary); }
 .app-resource-select:has(input:focus-visible) { outline: 2px solid var(--cd-primary); outline-offset: 2px; }
 .app-resource-select:has(input:disabled) { opacity: .6; cursor: not-allowed; }
 .app-resource-select input { width: 16px; height: 16px; accent-color: var(--cd-primary); }
 .app-resource-select-all { flex: 0 0 auto; padding-inline: 8px; }
-.app-resource-card__meta .app-resource-select { margin-left: auto; }
+.app-resource-card__meta .app-resource-select { margin-left: auto; flex: 0 0 44px; justify-content: center; }
 
-.app-resource-card__pill {
+.cd-resource-card .app-resource-card__pill {
   padding: 2px 7px;
-  font-size: 11px;
+  flex: 0 0 auto;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
-.app-resource-card__title {
-  width: 100%;
-  margin: 4px 0 0;
-  font-size: 15px;
+.cd-resource-card .app-resource-card__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .app-resource-card__title button {
@@ -290,6 +295,12 @@
   color: inherit;
   font: inherit;
   text-align: left;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .app-resource-card__title button::after {
@@ -306,12 +317,6 @@
   border-color: var(--cd-primary);
   outline: var(--cd-focus-width) solid var(--cd-focus-ring);
   outline-offset: 2px;
-}
-
-.app-resource-card__path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .app-resource-card__cta {
@@ -358,7 +363,7 @@
   margin-bottom: 0;
 }
 
-.cd-resource-card.app-resource-stack-card { container: resource-card / inline-size; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100%; padding: 16px; }
+.cd-resource-card.app-resource-stack-card { container: resource-card / inline-size; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100%; padding: 12px; }
 .app-resource-stack-card__actions { position: relative; z-index: 1; display: flex; grid-column: 1 / -1; gap: 8px; }
 .app-resource-stack-card__actions button { display: inline-flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding-inline: 8px; white-space: nowrap; }
 .app-resource-stack-card__actions svg { flex-shrink: 0; }
