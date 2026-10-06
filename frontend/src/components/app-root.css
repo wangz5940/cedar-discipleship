@@ -260,7 +260,10 @@
 }
 
 .app-resource-card__meta .tile { width: 28px; height: 28px; min-width: 28px; flex: 0 0 28px; border-radius: 8px; }
-.app-resource-select { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; color: var(--cd-muted); font-size: 12px; cursor: pointer; }
+.app-resource-select { display: inline-flex; min-height: 44px; box-sizing: border-box; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-primary-soft); color: var(--cd-text-secondary); font-size: 12px; cursor: pointer; }
+.app-resource-select:has(input:checked) { border-color: var(--cd-primary); color: var(--cd-primary); }
+.app-resource-select:has(input:focus-visible) { outline: 2px solid var(--cd-primary); outline-offset: 2px; }
+.app-resource-select:has(input:disabled) { opacity: .6; cursor: not-allowed; }
 .app-resource-select input { width: 16px; height: 16px; accent-color: var(--cd-primary); }
 .app-resource-select-all { flex: 0 0 auto; padding-inline: 8px; }
 .app-resource-card__meta .app-resource-select { margin-left: auto; }

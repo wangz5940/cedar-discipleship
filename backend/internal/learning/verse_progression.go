@@ -39,13 +39,33 @@ func splitVerseLines(text string) ([]verseSegment, bool) {
 }
 
 func resolveVerseProgression(plan map[string]any, date string) (map[string]any, bool) {
+	if sources, exists := plan["verse_sources"].([]any); exists && !WeeklyVersePlan(plan) {
+		refs, texts := []string{}, []string{}
+		for _, item := range sources {
+			source, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			part := map[string]any{"date": plan["date"], "completion_mode": "daily", "verse_ref": source["verse_ref"], "recite_text": source["recite_text"], "verses_per_day": source["verses_per_day"], "progression_start_date": source["progression_start_date"]}
+			if resolved, active := resolveVerseProgression(part, date); active {
+				refs = append(refs, asString(resolved["verse_ref"]))
+				texts = append(texts, asString(resolved["recite_text"]))
+			}
+		}
+		if len(texts) == 0 {
+			return nil, false
+		}
+		resolved := maps.Clone(plan)
+		resolved["verse_ref"], resolved["recite_text"] = strings.Join(refs, "，"), strings.Join(texts, "\n")
+		return resolved, true
+	}
 	value, exists := plan["verses_per_day"]
 	if WeeklyVersePlan(plan) || !exists {
 		return plan, true
 	}
 	count, ok := value.(float64)
 	segments, valid := splitVerseLines(asString(plan["recite_text"]))
-	start, err := time.Parse("2006-01-02", asString(plan["date"]))
+	start, err := time.Parse("2006-01-02", firstNonEmpty(asString(plan["progression_start_date"]), asString(plan["date"])))
 	day, dayErr := time.Parse("2006-01-02", date)
 	if !ok || count < 1 || count > 100 || !valid || err != nil || dayErr != nil {
 		return nil, false

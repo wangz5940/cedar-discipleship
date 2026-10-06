@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createVerseBlanks, gradeVerseAnswer, gradeVersePaper, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 describe('verse quiz', () => {
+  it('keeps book names, embedded numbers and punctuation visible in new papers', () => {
+    const text = '罗马书8:11-15\n罗8:11 神赐给12个人生命，直到２０２６年。';
+    const tokens = tokenizeVerse(text, 2);
+    expect(tokens.join('')).toBe(text);
+    expect(createVerseBlanks(tokens, 100, () => 0, 2).map(index => tokens[index])).toEqual(['神赐给', '个人生命', '直到', '年']);
+    expect(createVerseBlanks(tokenizeVerse('约3:16，神爱世人。'), 100).map(index => tokenizeVerse('约3:16，神爱世人。')[index])).toContain('约');
+  });
   it.each([' ', '　', '\t', '\u00a0'])('keeps Chinese text joined across horizontal whitespace %j', space => {
     const text = `【弗1:16】就为你们不住地感谢${space}神。`;
     const tokens = tokenizeVerse(text);

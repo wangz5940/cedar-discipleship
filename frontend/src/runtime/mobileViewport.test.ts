@@ -35,7 +35,7 @@ describe('mobile viewport safeguards', () => {
     const component = readFileSync(new URL('../components/MinistryCatalogAdmin.vue', import.meta.url), 'utf8');
 
     expect(component).toMatch(
-      /@media\s*\(max-width:\s*767px\)[\s\S]*?\.ministry-catalog-row\s*{\s*grid-template-columns:\s*18px 34px minmax\(0,\s*1fr\) auto;/,
+      /@media\s*\(max-width:\s*767px\)[\s\S]*?\.ministry-catalog-row\s*{\s*grid-template-columns:\s*44px 34px minmax\(0,\s*1fr\) auto;/,
     );
     expect(component).not.toContain('grid-column: 3');
   });

@@ -3,8 +3,8 @@ import { computed } from 'vue';
 import { gradeVersePaper, tokenizeVerse } from './verseQuiz';
 
 const props = defineProps({ paper: Object });
-const result = computed(() => props.paper?.version === 1
-  ? gradeVersePaper(tokenizeVerse(props.paper.text), props.paper.blank_indexes, props.paper.answers) : null);
+const result = computed(() => [1, 2].includes(props.paper?.version)
+  ? gradeVersePaper(tokenizeVerse(props.paper.text, props.paper.version), props.paper.blank_indexes, props.paper.answers) : null);
 const labels = { replace: '错', delete: '漏', insert: '多' };
 </script>
 

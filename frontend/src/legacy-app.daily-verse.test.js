@@ -53,7 +53,7 @@ it('shows separate daily and weekly tasks, opens date-specific original text, an
   expect(tasks[0]).toMatchObject({ taskID: 0, weekID: 0, logicalDate: plans[0].date, completed: false });
   expect(tasks[1].completed).toBe(true);
   await openTaskContent(tasks[0]);
-  expect(useContentViewerStore().viewer).toMatchObject({ title: plans[0].verse_ref });
+  expect(useContentViewerStore().viewer).toMatchObject({ title: '约3:16' });
   expect(useContentViewerStore().viewer.html).toContain('神爱世人');
   expect(useContentViewerStore().viewer.html).not.toContain('<script>');
   await toggleCheckin(tasks[0]);
@@ -63,7 +63,7 @@ it('shows separate daily and weekly tasks, opens date-specific original text, an
   expect(tasks[0].completed).toBe(true);
   await setSelectedDate('2026-09-23');
   tasks = currentTaskOptions();
-  expect(tasks[0]).toMatchObject({ title: plans[1].verse_ref, reciteText: plans[1].recite_text, completed: false });
+  expect(tasks[0]).toMatchObject({ title: '诗23:1', reciteText: plans[1].recite_text, completed: false });
   expect(tasks[1].completed).toBe(true);
   await openTaskContent(tasks[0]);
   expect(useContentViewerStore().viewer.html).toContain(plans[1].recite_text);

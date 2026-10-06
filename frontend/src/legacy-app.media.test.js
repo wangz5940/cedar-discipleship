@@ -242,6 +242,13 @@ describe('API error details', () => {
 });
 
 describe('renamed task titles', () => {
+  it.each(['daily_verse', 'weekly_verse'])('keeps verse ranges after the final hub merge: %s', type => {
+    const [task] = mergeTodayHubTasks(
+      [{ type, taskID: 0, title: '太1:5-8', detail: '太1:5，太1:6，太1:7，太1:8' }],
+      [{ type, title: '太1:5，太1:6，太1:7，太1:8，罗8:11，罗8:12' }], []);
+    expect(task.title).toBe('太1:5-8，罗8:11-12');
+    expect(task.detail).toBe('太1:5，太1:6，太1:7，太1:8');
+  });
   it('uses the latest hub title without changing task identity', () => {
     const [task] = mergeTodayHubTasks(
       [{

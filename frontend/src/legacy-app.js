@@ -6,6 +6,7 @@ import { useDashboardStore } from './stores/dashboard';
 import { useAppStateStore } from './stores/appState';
 import { confirmDialog, promptDialog } from './ui/dialog';
 import { resolvedDailyVerse } from './runtime/weekVerse';
+import { dailyVerseTitle } from './runtime/dailyVerseTitle';
 import {
   currentCalendarWeekRange,
   currentMonthString,
@@ -1798,7 +1799,9 @@ export function mergeTodayHubTasks(
   return tasks.map((task) => {
     const hubTask = findTodayHubTask(task, hubTasks);
     const ownRecord = hubTask?.record || ownRecords.find((item) => checkinMatchesTask(item, task));
-    const title = hubTask?.title || task.title;
+    const sourceTitle = hubTask?.title || task.title;
+    const title = ['daily_verse', 'weekly_verse'].includes(task.type)
+      ? dailyVerseTitle(sourceTitle || '') || sourceTitle : sourceTitle;
     return {
       ...task,
       taskID: Number(task.taskID || hubTask?.task_id || 0),

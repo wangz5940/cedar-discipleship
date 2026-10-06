@@ -16,7 +16,8 @@ func TestRecitePaperValidation(t *testing.T) {
 		valid  bool
 	}{
 		{"valid snapshot", func(*recitePaper) {}, true},
-		{"unsupported version", func(p *recitePaper) { p.Version = 2 }, false},
+		{"protected references version", func(p *recitePaper) { p.Version = 2 }, true},
+		{"unsupported version", func(p *recitePaper) { p.Version = 3 }, false},
 		{"empty text", func(p *recitePaper) { p.Text = "" }, false},
 		{"oversized text", func(p *recitePaper) { p.Text = strings.Repeat("神", 30001) }, false},
 		{"missing indexes", func(p *recitePaper) { p.BlankIndexes = nil }, false},
