@@ -1,6 +1,11 @@
-const brackets = { '(': ')', '（': '）', '[': ']', '［': '］', '【': '】', '{': '}', '｛': '｝', '〔': '〕' };
+import { bibleBookReferences } from '../runtime/content';
 
-export function tokenizeVerse(text) {
+const brackets = { '(': ')', '（': '）', '[': ']', '［': '］', '【': '】', '{': '}', '｛': '｝', '〔': '〕' };
+const bookNames = new Set(bibleBookReferences.map(book => book[0]));
+const bookAliases = new Set(bibleBookReferences.flatMap(book => book[3]));
+const protectedParts = new RegExp(`([\\p{N}]+|${[...bookNames].sort((a, b) => b.length - a.length).join('|')})`, 'u');
+
+export function tokenizeVerse(text, version = 1) {
   const tokens = [];
   const closings = [];
   let plain = '';
@@ -42,12 +47,15 @@ export function tokenizeVerse(text) {
   }
   // An unfinished annotation must not silently exclude the remaining scripture.
   appendPlain(plain + annotation);
-  return tokens;
+  if (version === 1) return tokens;
+  return tokens.flatMap(token => brackets[token[0]] ? [token] : token.split(protectedParts).filter(Boolean));
 }
 
-export function createVerseBlanks(tokens, percent, random = Math.random) {
+export function createVerseBlanks(tokens, percent, random = Math.random, version = 1) {
   const candidates = tokens.map((token, index) =>
-    brackets[token[0]] || /^(?:\d+|\d+:\d+|[\p{P}\s])$/u.test(token) ? -1 : index).filter(index => index >= 0);
+    brackets[token[0]] || /^(?:\d+|\d+:\d+|[\p{P}\s])$/u.test(token)
+      || (version === 2 && (/^[\p{N}]+$/u.test(token) || bookNames.has(token)
+        || (bookAliases.has(token) && /^\p{N}/u.test(tokens.slice(index + 1).find(item => item.trim()) || '')))) ? -1 : index).filter(index => index >= 0);
   const clamped = Math.min(100, Math.max(0, Number(percent) || 0));
   const count = clamped ? Math.max(1, Math.round(candidates.length * clamped / 100)) : 0;
   for (let index = candidates.length - 1; index > 0; index--) {

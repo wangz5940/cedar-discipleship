@@ -45,6 +45,18 @@ async function mountQuiz(task = {}) {
 }
 const posts = () => api.mock.calls.filter(([, options]) => options?.method === 'POST');
 
+it('generates and saves only scripture words while keeping references and numbers visible', async () => {
+  const state = await mountQuiz({ reciteText: '罗马书8:11 罗8:11 神赐给12个人生命。' });
+  state.generate();
+  expect(state.blankIndexes.map(index => state.tokens[index])).toEqual(['神赐给', '个人生命']);
+  state.answers = ['神赐给', '个人生命'];
+  await state.grade();
+  const body = JSON.parse(posts()[0][1].body);
+  expect(body.blank_count).toBe(7);
+  expect(body.correct_count).toBe(7);
+  expect(body.paper.version).toBe(2);
+});
+
 it.each([0, 30, 100])('uses group default %i and lets an ordinary member change it', async (defaultBlankRate) => {
   const state = await mountQuiz({ defaultBlankRate });
   expect(state.rate).toBe(defaultBlankRate);
@@ -71,7 +83,7 @@ it.each([
   await state.grade();
   expect(JSON.parse(posts()[0][1].body)).toEqual({
     task_id: 18, user_id: 7, blank_percent: 100, blank_count: 10, correct_count: correct,
-    paper: { version: 1, text: '【弗1:16】就为你们不住地感谢　神。', blank_indexes: [1], answers: [answer] },
+    paper: { version: 2, text: '【弗1:16】就为你们不住地感谢　神。', blank_indexes: [1], answers: [answer] },
   });
   expect(state.submitted).toMatchObject({ correct, total: 10, score });
   expect(state.grading.map(item => item.exact)).toEqual([false]);
@@ -100,7 +112,7 @@ it('saves daily attempts for the selected member without changing task identity'
   expect(JSON.parse(posts()[0][1].body)).toEqual({
     task_id: 18, user_id: 9, task_type: 'daily_verse', logical_date: '2026-10-04',
     blank_percent: 100, blank_count: 10, correct_count: 10,
-    paper: { version: 1, text: '【弗1:16】就为你们不住地感谢　神。', blank_indexes: [1], answers: ['就为你们不住地感谢神'] },
+    paper: { version: 2, text: '【弗1:16】就为你们不住地感谢　神。', blank_indexes: [1], answers: ['就为你们不住地感谢神'] },
   });
   expect(api).toHaveBeenCalledWith('/recite-attempts?task_type=daily_verse&logical_date=2026-10-04&user_id=9');
 });

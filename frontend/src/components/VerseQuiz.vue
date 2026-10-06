@@ -35,7 +35,7 @@ const memberOptions = computed(() => {
   if (groupMembers.some(member => Number(member.user_id) === Number(props.userId))) return groupMembers;
   return [{ user_id: Number(props.userId || 0), member_name: props.userName || '当前登录用户' }, ...groupMembers];
 });
-const tokens = computed(() => tokenizeVerse(examText.value));
+const tokens = computed(() => tokenizeVerse(examText.value, 2));
 const blanks = computed(() => new Set(blankIndexes.value));
 const paperGrading = computed(() => gradeVersePaper(tokens.value, blankIndexes.value, answers.value));
 const grading = computed(() => paperGrading.value.blanks);
@@ -172,8 +172,8 @@ function generate() {
     return;
   }
   rate.value = Math.min(100, Math.max(0, Math.round(Number(rate.value) || 0)));
-  const nextTokens = tokenizeVerse(text);
-  const nextBlanks = createVerseBlanks(nextTokens, rate.value);
+  const nextTokens = tokenizeVerse(text, 2);
+  const nextBlanks = createVerseBlanks(nextTokens, rate.value, Math.random, 2);
   if (rate.value > 0 && !nextBlanks.length) {
     message.value = '原文中没有可挖空的文字。';
     return;
@@ -212,7 +212,7 @@ async function grade() {
   }
   const { correct, total } = paperGrading.value;
   const paper = {
-    version: 1, text: examText.value, blank_indexes: [...blankIndexes.value],
+    version: 2, text: examText.value, blank_indexes: [...blankIndexes.value],
     answers: blankIndexes.value.map((_, index) => String(answers.value[index] || '')),
   };
   submittedPaper.value = paper;
@@ -263,7 +263,7 @@ async function grade() {
         <button type="button" class="recite-close" aria-label="关闭" @click="emit('close')">✕</button>
       </header>
       <div class="recite-body">
-        <p class="recite-tip">先确认默写原文，再生成挖空练习。括号内的内容、标点和章节号不挖空、不计分；批改后点击错题可切换查看答案。</p>
+        <p class="recite-tip">先确认默写原文，再生成挖空练习。书卷名、数字、标点和括号内的内容不挖空、不计分；批改后点击错题可切换查看答案。</p>
         <details class="recite-rules">
           <summary>按字计分规则</summary>
           <p>同一句内连续挖空合并比对，中文内部空格不拆空，作答空白不计分。遇到句末、换行、章节、注释或未挖空文字时分开计算，避免相邻空错位重复扣分。</p>
