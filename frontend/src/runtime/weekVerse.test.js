@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { weekVerseDraft, upsertWeekVersePlan, resolvedDailyVerse } from './weekVerse';
 
 describe('周任务背经配置', () => {
+  it('当天连续经文显示起止节数，保留不连续和跨章范围', () => {
+    const plan = { completion_mode: 'daily', verses_per_day: 3 };
+    expect(resolvedDailyVerse(plan, [{ type: 'daily_verse', title: '罗8:11，罗8:12，罗8:13', content: '罗8:11 一。\n罗8:12 二。\n罗8:13 三。' }]).verse_ref).toBe('罗8:11-13');
+    expect(resolvedDailyVerse(plan, [{ type: 'daily_verse', title: '', content: '创1:31 一。\n创2:1 二。' }]).verse_ref).toBe('创1:31，创2:1');
+  });
   it('每日递进使用后端的当日经文，背完不回退到整段', () => {
     const plan = { completion_mode: 'daily', verses_per_day: 2, verse_ref: '创1:1-4', recite_text: '整段' };
     const resolved = resolvedDailyVerse(plan, [{ type: 'daily_verse', title: '创1:3，创1:4', content: '今日两节' }]);

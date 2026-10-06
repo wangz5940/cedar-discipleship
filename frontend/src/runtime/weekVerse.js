@@ -1,3 +1,5 @@
+import { dailyVerseTitle } from './dailyVerseTitle';
+
 export function weekVerseDraft(plans, week) {
   const date = week?.start || '';
   const end = week?.end || date;
@@ -16,7 +18,7 @@ export function weekVerseDraft(plans, week) {
 export function resolvedDailyVerse(plan, hubTasks) {
   if (!plan || plan.completion_mode !== 'daily' || plan.verses_per_day === undefined) return plan;
   const task = hubTasks?.find(item => item.type === 'daily_verse');
-  return task ? { ...plan, verse_ref: task.title, recite_text: task.content } : null;
+  return task ? { ...plan, verse_ref: dailyVerseTitle(task.content || '') || task.title, recite_text: task.content } : null;
 }
 
 export function upsertWeekVersePlan(plans, plan, replaceRange = false) {
