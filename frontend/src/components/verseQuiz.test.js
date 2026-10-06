@@ -2,6 +2,54 @@ import { describe, expect, it } from 'vitest';
 import { createVerseBlanks, gradeVerseAnswer, gradeVersePaper, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 describe('verse quiz', () => {
+  it.each([
+    '【约4:1】主知道法利赛人听见他收门徒施洗比约翰还多\n【约4:2】（其实不是耶稣亲自施洗，乃是他的门徒施洗），',
+    '主知道法利赛人听见他收门徒，施洗，比约翰还多，（其实不是耶稣亲自施洗，乃是他的门徒施洗，）\n(约翰福音 4:1-2 和合本)',
+  ])('blanks and grades parenthesized scripture in version 3: %s', text => {
+    const tokens = tokenizeVerse(text, 3);
+    const blanks = createVerseBlanks(tokens, 100, () => 0, 3);
+    const answers = blanks.map(index => tokens[index]);
+    expect(tokens.join('')).toBe(text);
+    expect(answers).toEqual(expect.arrayContaining(['其实不是耶稣亲自施洗', '乃是他的门徒施洗']));
+    expect(answers.join('')).toBe('主知道法利赛人听见他收门徒施洗比约翰还多其实不是耶稣亲自施洗乃是他的门徒施洗');
+    expect(gradeVersePaper(tokens, blanks, answers)).toMatchObject({ total: 38, correct: 38 });
+    answers[answers.length - 1] = '乃是他的门徒施先';
+    expect(gradeVersePaper(tokens, blanks, answers)).toMatchObject({ total: 38, correct: 37 });
+    for (const version of [1, 2]) {
+      const oldTokens = tokenizeVerse(text, version);
+      const oldBlanks = createVerseBlanks(oldTokens, 100, () => 0, version);
+      expect(oldBlanks.map(index => oldTokens[index]).join(''))
+        .toBe('主知道法利赛人听见他收门徒施洗比约翰还多');
+      expect(gradeVersePaper(oldTokens, oldBlanks, oldBlanks.map(index => oldTokens[index])))
+        .toMatchObject({ total: 20, correct: 20 });
+    }
+  });
+
+  it.each([
+    ['【约11:35】（耶稣哭了。）', ['耶稣哭了']],
+    ['(耶稣哭了)', ['耶稣哭了']],
+    ['【约4:2】（其实不是耶稣亲自施洗（注释），乃是他的门徒施洗），', ['其实不是耶稣亲自施洗', '乃是他的门徒施洗']],
+    ['（神赐给12个人生命。）', ['神赐给', '个人生命']],
+    ['（神爱世人，赐下独生子。', ['神爱世人', '赐下独生子']],
+  ])('preserves punctuation, nested notes and number protection: %s', (text, expected) => {
+    const tokens = tokenizeVerse(text, 3);
+    expect(tokens.join('')).toBe(text);
+    expect(createVerseBlanks(tokens, 100, () => 0, 3).map(index => tokens[index])).toEqual(expected);
+  });
+
+  it.each([
+    '（约翰福音 4:1-2 和合本）', '（和合本）', '(注释)', '[注释]',
+    '（原文作门徒，另译学生。）', '（或作：神就是爱。）', '（有古卷无此节。）',
+    '（外层【内层】注释）', '【第一行\n第二行】',
+  ])('keeps notes and citations protected in version 3: %s', text => {
+    expect(createVerseBlanks(tokenizeVerse(text, 3), 100, () => 0, 3)).toEqual([]);
+  });
+
+  it('keeps inline explanatory parentheses protected', () => {
+    const tokens = tokenizeVerse('神（就是爱）爱世人。', 3);
+    expect(createVerseBlanks(tokens, 100, () => 0, 3).map(index => tokens[index])).toEqual(['神', '爱世人']);
+  });
+
   it('keeps book names, embedded numbers and punctuation visible in new papers', () => {
     const text = '罗马书8:11-15\n罗8:11 神赐给12个人生命，直到２０２６年。';
     const tokens = tokenizeVerse(text, 2);

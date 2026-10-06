@@ -4,6 +4,35 @@ const brackets = { '(': ')', '（': '）', '[': ']', '［': '］', '【': '】',
 const bookNames = new Set(bibleBookReferences.map(book => book[0]));
 const bookAliases = new Set(bibleBookReferences.flatMap(book => book[3]));
 const protectedParts = new RegExp(`([\\p{N}]+|${[...bookNames].sort((a, b) => b.length - a.length).join('|')})`, 'u');
+const verseReference = new RegExp(`^(?:${[...bookNames, ...bookAliases].join('|')})\\s*\\p{N}+\\s*[:：]\\s*\\p{N}+`, 'u');
+
+function isVerseReference(token) {
+  return verseReference.test(brackets[token?.[0]] ? token.slice(1, -1).trim() : (token || '').trim());
+}
+
+function parenthesizedVerse(tokens, index) {
+  const token = tokens[index];
+  if (!['(', '（'].includes(token[0]) || token.at(-1) !== brackets[token[0]]) return null;
+  // Reuse the old tokenizer inside the verse so nested editorial notes stay protected.
+  const inner = tokenizeVerse(token.slice(1, -1), 2);
+  const text = inner.filter(part => !brackets[part[0]]).join('').trim();
+  if (!/\p{L}/u.test(text) || isVerseReference(token)
+    || /注释|注解|原文|或作|或译|另译|有古卷|小字|译者|编者|和合本|译本|版本/u.test(text)) return null;
+  let before = index - 1;
+  while (before >= 0 && /^[^\S\r\n\u2028\u2029]+$/u.test(tokens[before])) before--;
+  const previous = tokens[before] || '';
+  const startsVerse = !previous || /^[\r\n\u2028\u2029。！？.!?；;]$/u.test(previous)
+    || isVerseReference(previous) || /^\d+:\d+$/u.test(previous);
+  // Paragraph-style copies may put an entire verse after the preceding verse's comma.
+  const followsClause = /^[，,]$/u.test(previous) && /\p{L}[，,；;。！？.!?]\s*\p{L}/u.test(text);
+  if (!startsVerse && !followsClause) return null;
+  for (let after = index + 1; after < tokens.length; after++) {
+    const next = tokens[after];
+    if (/^[\r\n\u2028\u2029。！？.!?；;]$/u.test(next) || isVerseReference(next)) break;
+    if (!/^[\p{P}\s]+$/u.test(next)) return null;
+  }
+  return [token[0], ...inner, token.at(-1)];
+}
 
 export function tokenizeVerse(text, version = 1) {
   const tokens = [];
@@ -48,13 +77,19 @@ export function tokenizeVerse(text, version = 1) {
   // An unfinished annotation must not silently exclude the remaining scripture.
   appendPlain(plain + annotation);
   if (version === 1) return tokens;
-  return tokens.flatMap(token => brackets[token[0]] ? [token] : token.split(protectedParts).filter(Boolean));
+  return tokens.flatMap((token, index) => {
+    if (version === 3) {
+      const scripture = parenthesizedVerse(tokens, index);
+      if (scripture) return scripture;
+    }
+    return brackets[token[0]] ? [token] : token.split(protectedParts).filter(Boolean);
+  });
 }
 
 export function createVerseBlanks(tokens, percent, random = Math.random, version = 1) {
   const candidates = tokens.map((token, index) =>
     brackets[token[0]] || /^(?:\d+|\d+:\d+|[\p{P}\s])$/u.test(token)
-      || (version === 2 && (/^[\p{N}]+$/u.test(token) || bookNames.has(token)
+      || (version >= 2 && (/^[\p{N}]+$/u.test(token) || bookNames.has(token)
         || (bookAliases.has(token) && /^\p{N}/u.test(tokens.slice(index + 1).find(item => item.trim()) || '')))) ? -1 : index).filter(index => index >= 0);
   const clamped = Math.min(100, Math.max(0, Number(percent) || 0));
   const count = clamped ? Math.max(1, Math.round(candidates.length * clamped / 100)) : 0;
