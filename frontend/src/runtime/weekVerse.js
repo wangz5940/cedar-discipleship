@@ -16,9 +16,12 @@ export function weekVerseDraft(plans, week) {
 
 // Daily tasks are resolved by the server so check-ins, reminders and quizzes agree.
 export function resolvedDailyVerse(plan, hubTasks) {
-  if (!plan || plan.completion_mode !== 'daily' || plan.verses_per_day === undefined) return plan;
+  if (!plan) return plan;
+  if (plan.completion_mode !== 'daily' || plan.verses_per_day === undefined) {
+    return { ...plan, verse_ref: dailyVerseTitle(plan.verse_ref || '') || dailyVerseTitle(plan.recite_text || '') || plan.verse_ref };
+  }
   const task = hubTasks?.find(item => item.type === 'daily_verse');
-  return task ? { ...plan, verse_ref: dailyVerseTitle(task.content || '') || task.title, recite_text: task.content } : null;
+  return task ? { ...plan, verse_ref: dailyVerseTitle(task.title || '') || dailyVerseTitle(task.content || '') || task.title, recite_text: task.content } : null;
 }
 
 export function upsertWeekVersePlan(plans, plan, replaceRange = false) {

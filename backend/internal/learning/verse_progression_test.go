@@ -79,3 +79,20 @@ func TestProgressionStartIndependentOfWeek(t *testing.T) {
 		t.Fatal("accepted start after end")
 	}
 }
+
+func TestDailyProgressionAcrossBooks(t *testing.T) {
+	text := "太1:5 第一节。\n太1:6 第二节。\n罗8:11 第三节。\n罗8:12 第四节。\n诗1:1 第五节。"
+	plan := map[string]any{"date": "2026-10-06", "end_date": "2026-10-12", "completion_mode": "daily", "verses_per_day": float64(4), "verse_ref": "太1:5-6，罗8:11-12，诗1:1", "recite_text": text}
+	settings := progressionSettings(plan)
+	if err := ValidateDailyVerse(settings); err != nil {
+		t.Fatal(err)
+	}
+	tasks := buildTodayTasks("2026-10-06", nil, nil, settings, nil)
+	if len(tasks) != 1 || tasks[0].Title != "太1:5，太1:6，罗8:11，罗8:12" {
+		t.Fatalf("tasks=%+v", tasks)
+	}
+	resolved, ok := DailyVersePlan(settings, "2026-10-07")
+	if !ok || resolved["verse_ref"] != "诗1:1" {
+		t.Fatalf("resolved=%v", resolved)
+	}
+}
