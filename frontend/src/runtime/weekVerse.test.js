@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { weekVerseDraft, upsertWeekVersePlan, resolvedDailyVerse } from './weekVerse';
+import { weekVerseDraft, upsertWeekVersePlan, resolvedDailyVerse, verseSourceRows } from './weekVerse';
 
 describe('周任务背经配置', () => {
+  it('编辑旧计划按书卷展示，保留原文、每天节数与开始日期', () => {
+    const plan = { date: '2026-10-05', verses_per_day: 4, recite_text: '太1:1 一。\n太1:2 二。\n民15:29 三。' };
+    expect(verseSourceRows(plan)).toEqual([
+      { verse_ref: '太1:1-2', recite_text: '太1:1 一。\n太1:2 二。', verses_per_day: 4, progression_start_date: plan.date },
+      { verse_ref: '民15:29', recite_text: '民15:29 三。', verses_per_day: 4, progression_start_date: plan.date },
+    ]);
+    expect(plan.recite_text).toContain('民15:29');
+  });
+  it('独立递进卡片仅使用服务器当天经文，背完不会显示整个计划', () => {
+    const plan = { completion_mode: 'daily', verse_sources: [{ verse_ref: '太1:1-10' }] };
+    expect(resolvedDailyVerse(plan, [{ type: 'daily_verse', title: '太1:5，太1:6，民15:29', content: '当天原文' }])).toMatchObject({ verse_ref: '太1:5-6，民15:29', recite_text: '当天原文' });
+    expect(resolvedDailyVerse(plan, [])).toBeNull();
+    const rows = verseSourceRows(plan);
+    rows[0].verse_ref = '修改';
+    expect(plan.verse_sources[0].verse_ref).toBe('太1:1-10');
+  });
   it.each(['daily', 'weekly', undefined])('旧配置和每周计划也合并显示多书卷经文范围：%s', completion_mode => {
     const plan = { completion_mode, verse_ref: '太1:5，太1:6，太1:7，太1:8，罗8:11，罗8:12', recite_text: '原文保持不变' };
     const result = resolvedDailyVerse(plan, []);

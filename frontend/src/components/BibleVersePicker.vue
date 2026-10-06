@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { bibleBookReferences } from '../runtime/content';
 import { loadBibleBook, selectedVerseText } from '../runtime/verseSource';
-const props = defineProps({ disabled: Boolean });
+const props = defineProps({ disabled: Boolean, addOnly: Boolean });
 const emit = defineEmits(['select']);
 const open = ref(false);
 const dialog = ref(null);
@@ -50,7 +50,7 @@ function useSelection(append) {
 </script>
 
 <template>
-  <button type="button" class="secondary" :disabled="props.disabled" @click="open = true; stage = 'book'">选择经文</button>
+  <button type="button" class="secondary" :disabled="props.disabled" :aria-label="props.addOnly ? '追加背诵经文' : '选择经文'" @click="open = true; stage = 'book'">{{ props.addOnly ? '＋' : '选择经文' }}</button>
   <Teleport to="body">
       <dialog ref="dialog" class="bible-picker" aria-label="选择背诵经文" @close="open = false" @cancel="open = false">
         <header><h2>选择经文</h2><button type="button" class="quiet" aria-label="关闭经文选择" @click="open = false">✕</button></header>
@@ -69,7 +69,7 @@ function useSelection(append) {
             <pre v-if="text" class="bible-preview">{{ text }}</pre>
           </template>
         </div>
-        <footer><span>和合本 · 简体</span><button type="button" class="secondary" :disabled="!text" @click="useSelection(true)">追加经文</button><button type="button" class="primary" :disabled="!text" @click="useSelection(false)">填入原文</button></footer>
+        <footer><span>和合本 · 简体</span><button v-if="!props.addOnly" type="button" class="secondary" :disabled="!text" @click="useSelection(true)">追加经文</button><button type="button" class="primary" :disabled="!text" @click="useSelection(props.addOnly)">{{ props.addOnly ? '添加经文' : '填入原文' }}</button></footer>
       </dialog>
   </Teleport>
 </template>

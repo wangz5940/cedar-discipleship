@@ -97,6 +97,32 @@ func ValidateDailyVerse(settings map[string]any) error {
 		mode := asString(plan["completion_mode"])
 		ref := strings.TrimSpace(asString(plan["verse_ref"]))
 		text := strings.TrimSpace(asString(plan["recite_text"]))
+		if value, exists := plan["verse_sources"]; exists {
+			sources, valid := value.([]any)
+			if !valid || len(sources) == 0 || len(sources) > 66 {
+				return ErrInvalidDailyVerse
+			}
+			refs, texts := []string{}, []string{}
+			for _, item := range sources {
+				source, valid := item.(map[string]any)
+				if !valid {
+					return ErrInvalidDailyVerse
+				}
+				child := map[string]any{"date": date, "end_date": to, "completion_mode": mode, "verse_ref": source["verse_ref"], "recite_text": source["recite_text"]}
+				if mode == "daily" {
+					child["verses_per_day"], child["progression_start_date"] = source["verses_per_day"], source["progression_start_date"]
+				}
+				settings := map[string]any{"task_sections": map[string]any{"daily": map[string]any{"verse": map[string]any{"plans": []any{child}}}}}
+				if ValidateDailyVerse(settings) != nil {
+					return ErrInvalidDailyVerse
+				}
+				refs = append(refs, asString(source["verse_ref"]))
+				texts = append(texts, asString(source["recite_text"]))
+			}
+			if ref != strings.Join(refs, "，") || text != strings.Join(texts, "\n") {
+				return ErrInvalidDailyVerse
+			}
+		}
 		if value, exists := plan["verses_per_day"]; exists {
 			anchor, anchorErr := time.Parse("2006-01-02", firstNonEmpty(asString(plan["progression_start_date"]), date))
 			count, numeric := value.(float64)

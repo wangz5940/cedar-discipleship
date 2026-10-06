@@ -1,5 +1,17 @@
 import { dailyVerseTitle } from './dailyVerseTitle';
 
+export function verseSourceRows(plan) {
+  if (Array.isArray(plan?.verse_sources)) return plan.verse_sources.map(item => ({ ...item }));
+  const groups = new Map();
+  let book = '';
+  for (const line of (plan?.recite_text || '').split('\n').filter(line => line.trim())) {
+    book = line.match(/^\s*(?:【|\[)?([1-3]?[\p{Script=Han}A-Za-z]+)\s*\d+\s*[:：]/u)?.[1] || book;
+    groups.set(book, [...(groups.get(book) || []), line]);
+  }
+  return [...groups.values()].map(lines => ({ recite_text: lines.join('\n'), verse_ref: dailyVerseTitle(lines.join('\n')) || plan.verse_ref,
+    verses_per_day: plan.verses_per_day ?? 2, progression_start_date: plan.progression_start_date || plan.date }));
+}
+
 export function weekVerseDraft(plans, week) {
   const date = week?.start || '';
   const end = week?.end || date;
@@ -17,7 +29,7 @@ export function weekVerseDraft(plans, week) {
 // Daily tasks are resolved by the server so check-ins, reminders and quizzes agree.
 export function resolvedDailyVerse(plan, hubTasks) {
   if (!plan) return plan;
-  if (plan.completion_mode !== 'daily' || plan.verses_per_day === undefined) {
+  if (plan.completion_mode !== 'daily' || (plan.verses_per_day === undefined && !plan.verse_sources)) {
     return { ...plan, verse_ref: dailyVerseTitle(plan.verse_ref || '') || dailyVerseTitle(plan.recite_text || '') || plan.verse_ref };
   }
   const task = hubTasks?.find(item => item.type === 'daily_verse');
@@ -32,7 +44,8 @@ export function upsertWeekVersePlan(plans, plan, replaceRange = false) {
       const parts = [];
       if (item.date < plan.date) parts.push({ ...item, end_date: shiftDate(plan.date, -1) });
       if (end > plan.end_date) parts.push({ ...item, date: shiftDate(plan.end_date, 1),
-        ...(item.verses_per_day !== undefined ? { progression_start_date: item.progression_start_date || item.date } : {}) });
+        ...(item.verses_per_day !== undefined ? { progression_start_date: item.progression_start_date || item.date } : {}),
+        ...(item.verse_sources ? { verse_sources: item.verse_sources.map(source => ({ ...source, progression_start_date: source.progression_start_date || item.date })) } : {}) });
       return parts;
     });
     return [...preserved, plan].sort((a, b) => a.date.localeCompare(b.date));
