@@ -189,6 +189,7 @@ body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, 
 .library-intro h1 { font-size: clamp(30px, 3vw, 44px); }
 
 .viewer-markdown { font-family: var(--cd-font-reading); font-weight: 400; }
+.viewer-markdown .viewer-quote { font-family: var(--cd-font-reading); font-weight: 700; }
 .viewer-markdown h1, .viewer-markdown h2, .viewer-markdown h3 { font-family: var(--cd-font-serif); }
 
 /* Clearer hierarchy for the learning interface. */

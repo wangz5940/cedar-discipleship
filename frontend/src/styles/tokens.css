@@ -65,7 +65,7 @@
   /* 字体栈 */
   --cd-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --cd-font-serif: "Source Han Serif CN VF", "Songti SC", "SimSun", serif;
-  --cd-font-reading: "LXGW WenKai Screen", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --cd-font-reading: "Source Han Serif CN VF", "Songti SC", "SimSun", serif;
   --cd-page-width: 1120px;
   --cd-page-gutter: 32px;
 

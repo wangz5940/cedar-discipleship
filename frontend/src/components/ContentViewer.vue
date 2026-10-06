@@ -90,10 +90,10 @@ function loadReaderPreferences() {
     const value = JSON.parse(localStorage.getItem(readerPreferenceKey) || '{}');
     return {
       fontSize: clampNumber(value.fontSize, 16, 24, 19),
-      lineHeight: clampNumber(value.lineHeight, 1.6, 2.2, 1.9),
+      lineHeight: clampNumber(value.lineHeight, 1.6, 2.2, 1.8),
     };
   } catch {
-    return { fontSize: 19, lineHeight: 1.9 };
+    return { fontSize: 19, lineHeight: 1.8 };
   }
 }
 
