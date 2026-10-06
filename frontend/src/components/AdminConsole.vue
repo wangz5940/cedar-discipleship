@@ -1098,8 +1098,8 @@ async function runLocalBackupImport() {
                       <label class="admin-field"><span class="admin-field-label">默写经文</span><textarea v-model="verseText" maxlength="10000" :disabled="!canEditLearning" rows="5" placeholder="选择经文或填写原文并保留章节标记，例如：创1:1 起初，神创造天地。" @change="verseText = cleanVerseSource(verseText)"></textarea></label>
                       <div class="verse-progression-row" :inert="!canEditLearning">
                         <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="verseCompletionMode === 'daily'" :disabled="!canEditLearning" @change="verseCompletionMode = $event.target.checked ? 'daily' : 'weekly'" /><span>每天打卡</span></label>
-                        <label v-if="verseCompletionMode === 'daily'" class="admin-field"><span class="admin-field-label">背诵开始日期</span><DateField v-model="verseProgressionStart" label="背诵开始日期" :max="versePlanEnd" /></label>
                         <label v-if="verseCompletionMode === 'daily'" class="admin-field"><span class="admin-field-label">每天节数</span><input v-model.number="versesPerDay" type="number" min="1" max="100" step="1" :disabled="!canEditLearning" /></label>
+                        <label v-if="verseCompletionMode === 'daily'" class="admin-field verse-start-date"><span class="admin-field-label">背诵开始日期</span><DateField v-model="verseProgressionStart" label="背诵开始日期" :max="versePlanEnd" /></label>
                       </div>
                       <p class="muted">保存将替换本周已有背经配置，历史打卡记录保留。</p>
                       <div class="form-actions">
@@ -1255,10 +1255,11 @@ async function runLocalBackupImport() {
 .devotion-paired-grid > .daily-config-toggle-row, .devotion-paired-grid > .devotion-plan-mode-field, .devotion-paired-grid > .form-actions,
 .scripture-paired-grid > .learning-toggle-card, .scripture-paired-grid > .admin-paired-fields, .scripture-paired-grid > .form-actions { grid-column: 1 / -1; }
 .admin-wrapper .learning-toggle-card, .admin-wrapper .daily-config-toggle-row .admin-toggle { min-height: 44px; padding: 10px 12px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-primary-soft); }
-.verse-progression-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 100px; gap: 12px; align-items: end; }
+.verse-progression-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(88px, 120px); gap: 12px; align-items: end; }
 .verse-progression-row .admin-field { min-width: 0; }
 .verse-progression-row .admin-toggle { white-space: nowrap; }
-@media (max-width: 430px) { .verse-progression-row { grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; } .verse-progression-row > .admin-toggle { grid-column: 1 / -1; justify-self: start; } }
+.verse-progression-row .verse-start-date { grid-column: 1 / -1; }
+@media (max-width: 430px) { .verse-progression-row { grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; } }
 .devotion-paired-grid .admin-field, .scripture-paired-grid .admin-field { min-width: 0; }
 .devotion-paired-grid select, .scripture-paired-grid select { width: 100%; min-width: 0; padding-inline: 8px; }
 .admin-checkbox-row.daily-config-toggle-row {
