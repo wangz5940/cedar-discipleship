@@ -264,12 +264,6 @@ async function grade() {
       </header>
       <div class="recite-body">
         <p class="recite-tip">先确认默写原文，再生成挖空练习。整节在圆括号内的经文正常挖空、计分；书卷名、数字、标点、出处和注释保留。批改后点击错题可切换查看答案。</p>
-        <details class="recite-rules">
-          <summary>按字计分规则</summary>
-          <p>同一句内连续挖空合并比对，中文内部空格不拆空，作答空白不计分。遇到句末、换行、章节、注释或未挖空文字时分开计算，避免相邻空错位重复扣分。</p>
-          <p>以最少的错字、漏字、多字次数扣分，每次扣一个字的分。重复字按多字处理；相邻两字颠倒通常扣两个字，简繁体或同音字仍按字形比对。未填写得零分，每组最低零分。</p>
-          <p>得分＝计分字数 ÷ 挖空原文字数 × 挖空比例，四舍五入。计分字数为原文字数减去扣分字数；例如“就为你们不住的感谢神”计 9/10 字，“就为你不住的感谢神”计 8/10 字。</p>
-        </details>
         <div class="recite-meta-grid">
           <label class="recite-meta-field"><span>测试人</span><select :value="selectedUserID" :disabled="!canSelectMember || saving" @change="changeMember"><option v-for="member in memberOptions" :key="member.user_id" :value="member.user_id">{{ member.member_name || member.display_name || member.username }}</option></select></label>
           <label class="recite-meta-field"><span>测试范围</span><input :value="dailyVerse ? task?.logicalDate : task?.weekStart && task?.weekEnd ? `${task.weekStart} ~ ${task.weekEnd}` : (task?.title || '本周背经')" readonly /></label>
@@ -342,9 +336,6 @@ async function grade() {
 .recite-close { border: 0; background: transparent; font-size: 22px; cursor: pointer; }
 .recite-body { max-height: calc(90dvh - 65px); overflow: auto; padding: 20px; }
 .recite-tip { margin: 0 0 14px; color: var(--cd-muted); font-size: 13px; line-height: 1.6; text-align: center; }
-.recite-rules { margin-bottom: 14px; color: var(--cd-muted); font-size: 13px; line-height: 1.6; }
-.recite-rules summary { cursor: pointer; }
-.recite-rules p { margin: 6px 0; }
 .recite-meta-grid { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 12px; margin-bottom: 14px; }
 .recite-meta-field { display: grid; gap: 6px; color: var(--cd-muted); font-size: 12px; font-weight: 700; }
 .recite-meta-field input, .recite-meta-field select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--cd-border); border-radius: 8px; background: #fff; color: var(--cd-text); font-size: 14px; }
