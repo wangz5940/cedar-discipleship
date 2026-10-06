@@ -89,10 +89,15 @@ async function shiftMonth(offset) {
   await loadAttendance();
 }
 
-function toggleWeekday(weekday) {
+async function toggleWeekday(weekday) {
+  if (!sheet.value?.can_manage || saving.value) return;
+  const previous = [...weekdays.value];
+  const groupID = props.groupId;
   weekdays.value = weekdays.value.includes(weekday)
     ? weekdays.value.filter((value) => value !== weekday)
     : [...weekdays.value, weekday].sort((left, right) => left - right);
+  const saved = await saveSettings({ weekdaysOnly: true });
+  if (!saved && groupID === props.groupId) weekdays.value = previous;
 }
 
 function addExtraDate() {
@@ -105,20 +110,27 @@ function removeExtraDate(date) {
   extraDates.value = extraDates.value.filter((value) => value !== date);
 }
 
-async function saveSettings() {
+async function saveSettings(options = {}) {
+  const groupID = props.groupId;
+  const pendingExtraDates = [...extraDates.value];
   saving.value = true;
   try {
     await api(`/ministry-groups/${props.groupId}/attendance/settings`, {
       method: 'PUT',
       body: JSON.stringify({
         weekdays: weekdays.value,
-        extra_dates: extraDates.value,
+        extra_dates: options.weekdaysOnly ? (sheet.value.settings?.extra_dates || []) : extraDates.value,
       }),
     });
     showToast('考勤日期设置已保存');
-    await loadAttendance();
+    if (groupID === props.groupId) {
+      await loadAttendance();
+      if (options.weekdaysOnly) extraDates.value = pendingExtraDates;
+    }
+    return true;
   } catch (error) {
     showToast(error.message);
+    return false;
   } finally {
     saving.value = false;
   }
@@ -210,6 +222,7 @@ function currentMonth() {
             <input
               type="checkbox"
               :checked="weekdays.includes(weekday.value)"
+              :disabled="saving"
               @change="toggleWeekday(weekday.value)"
             />
             <span>{{ weekday.label }}</span>

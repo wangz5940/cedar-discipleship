@@ -1,4 +1,11 @@
 import { dailyVerseTitle } from './dailyVerseTitle';
+import { cleanVerseSource } from './verseSource';
+
+export function fixedWeekVersePlan(date, end, mode, sources) {
+  const text = sources.map(item => cleanVerseSource(item.recite_text).trim()).filter(Boolean).join('\n');
+  return { date, end_date: end, completion_mode: mode,
+    verse_ref: dailyVerseTitle(text) || sources.map(item => item.verse_ref).filter(Boolean).join('，'), recite_text: text };
+}
 
 export function verseSourceRows(plan) {
   if (Array.isArray(plan?.verse_sources)) return plan.verse_sources.map(item => ({ ...item }));
@@ -52,7 +59,7 @@ export function upsertWeekVersePlan(plans, plan, replaceRange = false) {
   }
   if (plans.some((item) => item.date !== plan.date
     && item.date <= plan.end_date && (item.end_date || item.date) >= plan.date)) {
-    throw new Error('背经日期范围与现有计划重叠，请调整周任务日期');
+    throw new Error('背经日期范围与现有计划重叠，请调整背经日期');
   }
   return [...plans.filter((item) => item.date !== plan.date), plan];
 }

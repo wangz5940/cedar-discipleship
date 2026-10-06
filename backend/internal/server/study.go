@@ -58,6 +58,64 @@ func (a *app) handleAdminUpdateStudyWeek(w http.ResponseWriter, r *http.Request)
 	a.saveStudyWeek(w, r, id)
 }
 
+// Visibility changes keep task IDs, resource bindings and check-in history intact.
+func (a *app) handleAdminStudyWeekEnabled(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	groupID := requireGroupID(w, u)
+	if groupID == 0 {
+		return
+	}
+	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	var req struct {
+		Field   string `json:"field"`
+		Enabled *bool  `json:"enabled"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	kinds := map[string]string{"book_enabled": "weekly_book", "video_enabled": "weekly_video", "verse_enabled": "weekly_verse", "outline_enabled": "weekly_outline"}
+	kind, valid := kinds[req.Field]
+	if !valid || req.Enabled == nil || id == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_week_toggle")
+		return
+	}
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "week_task_save_failed")
+		return
+	}
+	defer tx.Rollback()
+	var previous bool
+	var ref, text string
+	// Field names are selected exclusively from the fixed whitelist above.
+	err = tx.QueryRowContext(r.Context(), "SELECT "+req.Field+",verse_ref,COALESCE(recite_text,'') FROM study_weeks WHERE id=? AND group_id=? FOR UPDATE", id, groupID).Scan(&previous, &ref, &text)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "week_not_found")
+		return
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), "UPDATE study_weeks SET "+req.Field+"=?,updated_at=? WHERE id=? AND group_id=?", *req.Enabled, time.Now().UTC(), id, groupID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `UPDATE study_tasks SET enabled=?,updated_at=? WHERE group_id=? AND week_id=? AND task_type=?`, *req.Enabled, time.Now().UTC(), groupID, id, kind)
+	}
+	if err == nil && kind == "weekly_verse" && *req.Enabled && (ref != "" || text != "") {
+		title := learningdomain.WeeklyVerseTaskTitle(learningdomain.WeekInput{VerseEnabled: true, VerseRef: ref, ReciteText: text}, "")
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO study_tasks(group_id,week_id,task_type,title,content,required,enabled,sort_order,created_at,updated_at)
+			SELECT ?,?,'weekly_verse',?,?,1,1,1,NOW(),NOW() WHERE NOT EXISTS (SELECT 1 FROM study_tasks WHERE group_id=? AND week_id=? AND task_type='weekly_verse')`, groupID, id, title, text, groupID, id)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "week_task_save_failed")
+		return
+	}
+	a.refreshTodayContent(groupID)
+	a.auditChanges(groupID, u.ID, "toggle_study_week", "study_weeks", id, map[string]any{req.Field: previous}, map[string]any{req.Field: *req.Enabled}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": *req.Enabled})
+}
+
 func (a *app) handleAdminDeleteStudyWeek(w http.ResponseWriter, r *http.Request) {
 	u := mustUser(r)
 	groupID := requireGroupID(w, u)

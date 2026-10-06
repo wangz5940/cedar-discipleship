@@ -2376,9 +2376,55 @@ export async function saveLearningConfig(successMessage = '学习内容配置已
     await loadAll();
     return true;
   } catch (error) {
-    toast(error.message === 'learning_config_conflict' ? '配置已被其他管理员更新。本地编辑已保留，请重新读取最新配置后保存。' : error.message === 'invalid_daily_verse' ? '请检查背经日期、频率和节数；自动递进的经文须每节单独一行并保留章节标记，不能用一个范围标记代替多节。' : error.message);
+    toast(error.message === 'learning_config_conflict' ? '配置已被其他管理员更新。本地编辑已保留，请重新读取最新配置后保存。' : error.message === 'invalid_daily_verse' ? '请检查背经日期、经文及原文；日期范围不能重叠。' : error.message);
     return false;
   }
+}
+
+export async function saveLearningToggle(path, value) {
+  if (!canEditLearning()) return false;
+  const groupID = state.user?.current_group_id;
+  const previous = path.reduce((object, key) => object?.[key], currentLearningSettings());
+  const draftRevision = Number(currentLearningSettings()._revision || 0);
+  updateLearningValue(path, value);
+  try {
+    const fresh = await api('/admin/learning-config');
+    if (groupID !== state.user?.current_group_id) return false;
+    const settings = { _revision: 0, ...deepMerge(fresh.settings || {}, {}) };
+    let target = settings;
+    for (const key of path.slice(0, -1)) {
+      if (!isPlainObject(target[key])) target[key] = {};
+      target = target[key];
+    }
+    target[path.at(-1)] = value;
+    const saved = await api('/admin/learning-config', { method: 'PUT', body: JSON.stringify(settings) });
+    if (groupID !== state.user?.current_group_id) return true;
+    // A stale content draft must retain its old revision and fail the later CAS save.
+    if (draftRevision === Number(fresh.settings?._revision || 0)) {
+      updateLearningValue(['_revision'], saved.settings?._revision || 0);
+    }
+    if (state.bootstrap) state.bootstrap.learning_config = saved.settings;
+    toast('设置已生效');
+    try {
+      const hub = await api(`/today?date=${state.selectedDate}`);
+      if (groupID === state.user?.current_group_id) { state.todayHub = hub; render(); }
+    } catch { /* The saved setting remains valid if the view refresh fails. */ }
+    return true;
+  } catch (error) {
+    if (groupID === state.user?.current_group_id) updateLearningValue(path, previous);
+    toast(error.message === 'learning_config_conflict' ? '配置已被其他管理员更新，请重试。' : error.message);
+    return false;
+  }
+}
+
+export async function refreshTaskVisibility() {
+  const groupID = state.user?.current_group_id;
+  const [bootstrap, weeks, hub] = await Promise.all([api('/app/bootstrap'), api('/study-weeks'), api(`/today?date=${state.selectedDate}`)]);
+  if (groupID !== state.user?.current_group_id) return;
+  state.bootstrap = bootstrap;
+  state.weeks = weeks.weeks || [];
+  state.todayHub = hub;
+  render();
 }
 
 function librarySections() {

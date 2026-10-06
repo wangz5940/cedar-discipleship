@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { weekVerseDraft, upsertWeekVersePlan, resolvedDailyVerse, verseSourceRows } from './weekVerse';
+import { weekVerseDraft, upsertWeekVersePlan, resolvedDailyVerse, verseSourceRows, fixedWeekVersePlan } from './weekVerse';
 
 describe('周任务背经配置', () => {
+  it.each(['daily', 'weekly'])('简化配置保存全部经文并清除递进参数：%s', mode => {
+    const sources = [{ verse_ref: '太1:1-2', recite_text: '太1:1 一。\n太1:2 二。', verses_per_day: 1, progression_start_date: '2026-10-05' },
+      { verse_ref: '民15:29', recite_text: '民15:29 三。', verses_per_day: 2 }];
+    const plan = fixedWeekVersePlan('2026-10-05', '2026-10-11', mode, sources);
+    expect(plan).toEqual({ date: '2026-10-05', end_date: '2026-10-11', completion_mode: mode, verse_ref: '太1:1-2，民15:29', recite_text: '太1:1 一。\n太1:2 二。\n民15:29 三。' });
+    expect(resolvedDailyVerse(plan, [])).toEqual(plan);
+    expect(sources[0].verses_per_day).toBe(1);
+  });
   it('编辑旧计划按书卷展示，保留原文、每天节数与开始日期', () => {
     const plan = { date: '2026-10-05', verses_per_day: 4, recite_text: '太1:1 一。\n太1:2 二。\n民15:29 三。' };
     expect(verseSourceRows(plan)).toEqual([

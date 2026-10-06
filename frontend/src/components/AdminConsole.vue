@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, provide, ref, watch } from 'vue';
 import { loadOvcmCourses, ovcmLessonURL } from '../runtime/ovcmCourses';
 import { storeToRefs } from 'pinia';
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from '@lucide/vue';
@@ -8,7 +8,7 @@ import { useAppStateStore } from '../stores/appState';
 import { lazyPage } from '../ui/lazyPage';
 import { bibleBookReferences, inferDailyDevotionContentType } from '../runtime/content';
 import { dailyVerseTitle } from '../runtime/dailyVerseTitle';
-import { weekVerseDraft, upsertWeekVersePlan, verseSourceRows } from '../runtime/weekVerse';
+import { upsertWeekVersePlan, verseSourceRows, fixedWeekVersePlan } from '../runtime/weekVerse';
 import { canManageStudyGroup, studyRoleLabel as roleLabel } from '../runtime/studyPermissions';
 import {
   dailyDevotionPlanForDate,
@@ -50,6 +50,8 @@ import {
   removeWeekBinding,
   restoreWeekDraftDefaults,
   saveLearningConfig,
+  saveLearningToggle,
+  refreshTaskVisibility,
   saveWeekDraft,
   selectWeekDraft,
   setAdminSection,
@@ -103,6 +105,7 @@ const notificationSaving = ref(false);
 const dailyPlanDate = ref(todayString());
 const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
+const verseConfigMode = ref('daily');
 
 const verseSources = ref([]);
 const verseText = computed(() => verseSources.value.map(item => item.recite_text).join('\n'));
@@ -125,6 +128,29 @@ function selectVerseSource(selection) {
 function learningSectionKey(section) {
   return `cedar:learning-sections:${user.value?.id || user.value?.username || 'user'}:${currentGroupID.value || 0}:${section}`;
 }
+
+const activeLearningSection = ref('');
+watch(() => learningSectionKey('active'), (key) => {
+  try {
+    const saved = localStorage.getItem(key);
+    // Restore one previously open card when upgrading from independent panels.
+    activeLearningSection.value = saved ?? ['notifications', 'devotion', 'scripture', 'verse', 'weekly']
+      .map(learningSectionKey).find(section => localStorage.getItem(section) === 'open') ?? '';
+  } catch {
+    activeLearningSection.value = '';
+  }
+}, { immediate: true });
+provide('learningConfigAccordion', {
+  activeKey: activeLearningSection,
+  select(key) {
+    activeLearningSection.value = key;
+    try {
+      localStorage.setItem(learningSectionKey('active'), key);
+    } catch {
+      // The accordion remains usable when storage is unavailable.
+    }
+  },
+});
 
 function navigateTabs(event) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -186,17 +212,30 @@ const versePlans = computed(() => [...(dailyVerse.value.plans || [])].sort((a, b
 const generatedVerseTitle = computed(() => dailyVerseTitle(verseText.value));
 const verseRef = computed(() => generatedVerseTitle.value
   || versePlans.value.find((item) => item.date === versePlanDate.value)?.verse_ref || '');
-watch([() => weekDraft.value?.start, () => weekDraft.value?.end, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
-  const draft = weekVerseDraft(versePlans.value, weekDraft.value);
-  versePlanDate.value = draft.date;
-  versePlanEnd.value = draft.end_date;
-  verseSources.value = verseSourceRows(versePlans.value.find(item => item.date === draft.date) || { date: draft.date });
-  verseCompletionMode.value = draft.completion_mode;
+watch(currentGroupID, () => { versePlanDate.value = todayString(); });
+watch([versePlanDate, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
+  const plan = versePlans.value.find(item => item.date === versePlanDate.value);
+  versePlanEnd.value = plan?.end_date || versePlanDate.value;
+  verseSources.value = verseSourceRows(plan || { date: versePlanDate.value });
+  verseCompletionMode.value = plan?.completion_mode || 'daily';
 }, { immediate: true });
+const weeklyVerseSources = computed(() => verseSourceRows(weekDraft.value));
+function selectWeeklyVerseSource(selection) {
+  const sources = [...weeklyVerseSources.value, ...verseSourceRows({ recite_text: cleanVerseSource(selection.text) })];
+  const lines = [...new Set(sources.flatMap(source => source.recite_text.split('\n')))];
+  const text = lines.join('\n');
+  updateWeekDraftField('recite_text', text);
+  updateWeekDraftField('verse_ref', dailyVerseTitle(text));
+}
+function removeWeeklyVerseSource(index) {
+  const text = weeklyVerseSources.value.filter((_, i) => i !== index).map(source => source.recite_text).join('\n');
+  updateWeekDraftField('recite_text', text);
+  updateWeekDraftField('verse_ref', dailyVerseTitle(text));
+}
 async function saveVersePlan() {
   if (!canEditLearning.value) return;
   if (!versePlanDate.value || !verseText.value.trim()) {
-    showToast('请填写背经日期和默写原文');
+    showToast('请选择背经日期和经文');
     return;
   }
   if (!verseRef.value.trim()) {
@@ -213,17 +252,8 @@ async function saveVersePlan() {
     return;
   }
   let plans;
-  if (verseCompletionMode.value === 'daily' && verseSources.value.some(item => !Number.isInteger(item.verses_per_day) || item.verses_per_day < 1 || item.verses_per_day > 100)) {
-    showToast('每天背诵节数须为 1–100 的整数');
-    return;
-  }
-  if (verseCompletionMode.value === 'daily' && verseSources.value.some(item => !item.progression_start_date || item.progression_start_date > end)) {
-    showToast('背诵开始日期不能为空，且不能晚于本周结束日期');
-    return;
-  }
   try {
-    const sources = verseSources.value.map(item => ({ ...item, recite_text: cleanVerseSource(item.recite_text).trim() }));
-    plans = upsertWeekVersePlan(versePlans.value, { date: versePlanDate.value, end_date: end, completion_mode: verseCompletionMode.value, verse_ref: sources.map(item => item.verse_ref).join('，'), recite_text: sources.map(item => item.recite_text).join('\n'), verse_sources: sources }, true);
+    plans = upsertWeekVersePlan(versePlans.value, fixedWeekVersePlan(versePlanDate.value, end, verseCompletionMode.value, verseSources.value), true);
   } catch (error) {
     showToast(error.message);
     return;
@@ -237,7 +267,7 @@ async function deleteVersePlan() {
   if (!canEditLearning.value) return;
   updateLearning(['task_sections', 'daily', 'verse', 'plans'],
     versePlans.value.filter((item) => item.date !== versePlanDate.value));
-  await saveLearningConfig('本周背经已删除');
+  await saveLearningConfig('所选背经计划已删除');
 }
 const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const devotionPlanMode = computed(() => dailyDevotionPlanMode(devotion.value));
@@ -493,12 +523,37 @@ function updateLearning(path, value) {
 }
 
 async function setCheckinNotification(key, enabled) {
-  const previous = checkinNotifications.value[key] !== false;
+  await setLearningToggle(['checkin_notifications', key], enabled);
+}
+async function setLearningToggle(path, value) {
+  if (!canEditLearning.value || notificationSaving.value) return;
   notificationSaving.value = true;
-  updateLearning(['checkin_notifications', key], enabled);
-  const saved = await saveLearningConfig('通知设置已保存');
-  if (!saved) updateLearning(['checkin_notifications', key], previous);
-  notificationSaving.value = false;
+  try { await saveLearningToggle(path, value); }
+  finally { notificationSaving.value = false; }
+}
+async function setWeekToggle(key, value) {
+  if (!canEditStudyWeeks.value || notificationSaving.value) return;
+  const groupID = currentGroupID.value;
+  const id = weekDraft.value?.id;
+  const previous = weekDraft.value?.[key];
+  updateWeekDraftField(key, value);
+  if (!id) {
+    showToast('新周选项已更新，保存周任务后生效');
+    return;
+  }
+  notificationSaving.value = true;
+  try {
+    if (id) {
+      await api(`/admin/study-weeks/${id}/enabled`, { method: 'PATCH', body: JSON.stringify({ field: key, enabled: value }) });
+      if (groupID === currentGroupID.value) {
+        showToast('设置已生效');
+        try { await refreshTaskVisibility(); } catch { showToast('设置已保存，请刷新查看最新任务'); }
+      }
+    }
+  } catch (error) {
+    if (groupID === currentGroupID.value && id === weekDraft.value?.id) updateWeekDraftField(key, previous);
+    showToast(error.message);
+  } finally { notificationSaving.value = false; }
 }
 
 function updateScriptureBook(bookID) {
@@ -910,8 +965,8 @@ async function runLocalBackupImport() {
                   <LearningConfigSection title="每日灵修配置" :storage-key="learningSectionKey('devotion')">
                     <div class="form-stack admin-form-grid" :class="{ 'devotion-paired-grid': devotionPlanMode === 'automatic' && devotionContentType === 'markdown' }">
                       <div class="admin-checkbox-row daily-config-toggle-row">
-                        <label class="admin-toggle"><input type="checkbox" :checked="daily.checkin_mode === 'separate'" @change="updateLearning(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
-                        <label class="admin-toggle"><input type="checkbox" :checked="devotion.enabled !== false" @change="updateLearning(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修</span></label>
+                        <label class="admin-toggle"><input type="checkbox" :disabled="!canEditLearning || notificationSaving" :checked="daily.checkin_mode === 'separate'" @change="setLearningToggle(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
+                        <label class="admin-toggle"><input type="checkbox" :disabled="!canEditLearning || notificationSaving" :checked="devotion.enabled !== false" @change="setLearningToggle(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修</span></label>
                       </div>
                       <div class="admin-field devotion-plan-mode-field">
                         <span class="admin-field-label">灵修计划方式</span>
@@ -996,7 +1051,7 @@ async function runLocalBackupImport() {
                   </LearningConfigSection>
                   <LearningConfigSection title="每日读经配置" :storage-key="learningSectionKey('scripture')">
                     <div class="form-stack admin-form-grid scripture-paired-grid">
-                      <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="scripture.enabled !== false" @change="updateLearning(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
+                      <label class="admin-toggle learning-toggle-card"><input type="checkbox" :disabled="!canEditLearning || notificationSaving" :checked="scripture.enabled !== false" @change="setLearningToggle(['task_sections','daily','scripture','enabled'], $event.target.checked)" /><span>显示每日读经</span></label>
                       <label class="admin-field">
                         <span class="admin-field-label">起始书卷</span>
                         <select :value="scripture.book_id || ''" @change="updateScriptureBook($event.target.value)">
@@ -1012,6 +1067,43 @@ async function runLocalBackupImport() {
                     </div>
                   </LearningConfigSection>
                 </div>
+                <LearningConfigSection title="背经配置" :storage-key="learningSectionKey('verse')">
+                  <div class="verse-config-switch" role="group" aria-label="背经配置类型">
+                    <button :class="verseConfigMode === 'daily' ? 'primary' : 'secondary'" :aria-pressed="verseConfigMode === 'daily'" type="button" @click="verseConfigMode = 'daily'">每日背经</button>
+                    <button :class="verseConfigMode === 'weekly' ? 'primary' : 'secondary'" :aria-pressed="verseConfigMode === 'weekly'" type="button" @click="verseConfigMode = 'weekly'">每周背经</button>
+                  </div>
+                  <div v-show="verseConfigMode === 'daily'" class="form-stack admin-form-grid">
+                    <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning || notificationSaving" @change="setLearningToggle(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
+                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /></div>
+                    <div v-if="versePlanEnd !== versePlanDate" class="admin-field"><span class="admin-field-label">已有计划结束日期</span><DateField v-model="versePlanEnd" label="已有背经结束日期" :min="versePlanDate" /></div>
+                    <p v-if="verseCompletionMode === 'weekly'" class="muted">此历史范围计划仍按整周一次完成，已有记录保留。</p>
+                    <div v-for="(source, index) in verseSources" :key="index" class="verse-source-card">
+                      <div class="verse-source-heading"><strong>{{ source.verse_ref }}</strong><button class="secondary" type="button" :disabled="!canEditLearning" :aria-label="`移除每日背经${source.verse_ref}`" @click="verseSources.splice(index, 1)"><Trash2 :size="18" /></button></div>
+                    </div>
+                    <BibleVersePicker add-only :disabled="!canEditLearning" @select="selectVerseSource" />
+                    <div class="form-actions">
+                      <button class="primary" :disabled="!canEditLearning || !verseText.trim()" type="button" @click="saveVersePlan">保存每日背经</button>
+                      <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除所选背经</button>
+                    </div>
+                    <div v-if="versePlans.length" class="daily-plan-list">
+                      <span class="admin-field-label">已配置背经</span>
+                      <button v-for="plan in versePlans" :key="plan.date" :class="{ active: plan.date === versePlanDate }" type="button" @click="versePlanDate = plan.date"><span><b>{{ plan.date }}{{ plan.end_date && plan.end_date !== plan.date ? ` 至 ${plan.end_date}` : '' }}</b><small>{{ dailyVerseTitle(plan.recite_text) || plan.verse_ref }}</small></span><ChevronRight :size="16" /></button>
+                    </div>
+                  </div>
+                  <div v-if="weekDraft" v-show="verseConfigMode === 'weekly'" class="form-stack admin-form-grid">
+                    <label class="admin-field"><span class="admin-field-label">选择周</span><select aria-label="背经所在周" :value="weekDraft.id || 0" @change="selectWeekDraft(Number($event.target.value || 0))"><option v-for="week in weeks" :key="week.id" :value="week.id">{{ weekOptionText(week) }}</option><option v-if="!weekDraft.id" value="0">新建周任务</option></select></label>
+                    <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="enabledFlag(weekDraft.verse_enabled)" :disabled="!canEditStudyWeeks || notificationSaving" @change="setWeekToggle('verse_enabled', $event.target.checked)" /><span>显示每周背经</span></label>
+                    <div v-for="(source, index) in weeklyVerseSources" :key="index" class="verse-source-card">
+                      <div class="verse-source-heading"><strong>{{ source.verse_ref }}</strong><button class="secondary" type="button" :disabled="!canEditStudyWeeks" :aria-label="`移除每周背经${source.verse_ref}`" @click="removeWeeklyVerseSource(index)"><Trash2 :size="18" /></button></div>
+                    </div>
+                    <BibleVersePicker add-only :disabled="!canEditStudyWeeks" @select="selectWeeklyVerseSource" />
+                    <div class="form-actions"><button class="primary" :disabled="!canEditStudyWeeks" type="button" @click="saveWeekDraft">保存每周背经</button></div>
+                  </div>
+                  <div class="form-stack verse-config-defaults">
+                    <label class="admin-field"><span class="admin-field-label">本组默认挖空率（%）</span><input type="number" min="0" max="100" step="1" :value="dailyVerse.default_blank_rate ?? 100" :disabled="!canEditLearning" @change="updateLearning(['task_sections', 'daily', 'verse', 'default_blank_rate'], Number($event.target.value))" /></label>
+                    <div class="form-actions"><button class="primary" type="button" :disabled="!canEditLearning" @click="saveLearningConfig('默认挖空率已保存')">保存默认挖空率</button></div>
+                  </div>
+                </LearningConfigSection>
                 <LearningConfigSection v-if="weekDraft" title="周任务" :storage-key="learningSectionKey('weekly')" class="week-planner-card">
                   <div class="section-title">
                     <div class="inline-actions">
@@ -1042,9 +1134,9 @@ async function runLocalBackupImport() {
                       />
                     </label>
                     <div class="admin-checkbox-row">
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.book_enabled)" @change="updateWeekDraftField('book_enabled', $event.target.checked)" /><span>书籍</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.video_enabled)" @change="updateWeekDraftField('video_enabled', $event.target.checked)" /><span>音视频</span></label>
-                      <label class="admin-toggle"><input type="checkbox" :checked="enabledFlag(weekDraft.outline_enabled)" @change="updateWeekDraftField('outline_enabled', $event.target.checked)" /><span>提纲</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :disabled="!canEditStudyWeeks || notificationSaving" :checked="enabledFlag(weekDraft.book_enabled)" @change="setWeekToggle('book_enabled', $event.target.checked)" /><span>书籍</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :disabled="!canEditStudyWeeks || notificationSaving" :checked="enabledFlag(weekDraft.video_enabled)" @change="setWeekToggle('video_enabled', $event.target.checked)" /><span>音视频</span></label>
+                      <label class="admin-toggle"><input type="checkbox" :disabled="!canEditStudyWeeks || notificationSaving" :checked="enabledFlag(weekDraft.outline_enabled)" @change="setWeekToggle('outline_enabled', $event.target.checked)" /><span>提纲</span></label>
                     </div>
                     <Transition name="admin-task-section">
                       <div v-if="enabledFlag(weekDraft.book_enabled)" class="admin-binding-list">
@@ -1097,26 +1189,6 @@ async function runLocalBackupImport() {
                         </div>
                       </div>
                     </Transition>
-                    <div class="admin-binding-list weekly-verse-config">
-                      <label class="admin-field"><span class="admin-field-label">本组默认挖空率（%）</span><input type="number" min="0" max="100" step="1" :value="dailyVerse.default_blank_rate ?? 100" :disabled="!canEditLearning" @change="updateLearning(['task_sections', 'daily', 'verse', 'default_blank_rate'], Number($event.target.value))" /></label>
-                      <div class="form-actions"><button class="primary" type="button" :disabled="!canEditLearning" @click="saveLearningConfig('默认挖空率已保存')">保存默认挖空率</button></div>
-                      <div class="verse-progression-row" :inert="!canEditLearning">
-                        <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="verseCompletionMode === 'daily'" :disabled="!canEditLearning" @change="verseCompletionMode = $event.target.checked ? 'daily' : 'weekly'" /><span>每天打卡</span></label>
-                      </div>
-                      <div v-for="(source, index) in verseSources" :key="index" class="verse-source-card">
-                        <div class="verse-source-heading"><strong>{{ source.verse_ref }}</strong><button class="secondary" type="button" :disabled="!canEditLearning" :aria-label="`移除${source.verse_ref}`" @click="verseSources.splice(index, 1)"><Trash2 :size="18" /></button></div>
-                        <div v-if="verseCompletionMode === 'daily'" class="verse-source-fields" :inert="!canEditLearning">
-                          <label class="admin-field"><span class="admin-field-label">每天节数</span><input v-model.number="source.verses_per_day" type="number" min="1" max="100" step="1" :disabled="!canEditLearning" /></label>
-                          <label class="admin-field"><span class="admin-field-label">背诵开始日期</span><DateField v-model="source.progression_start_date" :label="`${source.verse_ref}开始日期`" :max="versePlanEnd" /></label>
-                        </div>
-                      </div>
-                      <BibleVersePicker add-only :disabled="!canEditLearning" @select="selectVerseSource" />
-                      <p class="muted">保存将替换本周已有背经配置，历史打卡记录保留。</p>
-                      <div class="form-actions">
-                        <button class="primary" :disabled="!canEditLearning || !verseText.trim()" type="button" @click="saveVersePlan">保存背经</button>
-                        <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate && (plan.end_date || plan.date) === versePlanEnd)" type="button" @click="deleteVersePlan">删除背经</button>
-                      </div>
-                    </div>
                     <div class="form-actions">
                       <button :disabled="!canEditStudyWeeks" type="button" @click="saveWeekDraft">保存当前周</button>
                       <button class="secondary" :disabled="!canEditStudyWeeks" type="button" @click="restoreWeekDraftDefaults">恢复默认周任务</button>
@@ -1265,16 +1337,12 @@ async function runLocalBackupImport() {
 .devotion-paired-grid > .daily-config-toggle-row, .devotion-paired-grid > .devotion-plan-mode-field, .devotion-paired-grid > .form-actions,
 .scripture-paired-grid > .learning-toggle-card, .scripture-paired-grid > .admin-paired-fields, .scripture-paired-grid > .form-actions { grid-column: 1 / -1; }
 .admin-wrapper .learning-toggle-card, .admin-wrapper .daily-config-toggle-row .admin-toggle { min-height: 44px; padding: 10px 12px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-primary-soft); }
-.verse-progression-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(88px, 120px); gap: 12px; align-items: end; }
-.verse-progression-row .admin-field { min-width: 0; }
-.verse-progression-row .admin-toggle { white-space: nowrap; }
-.verse-progression-row .verse-start-date { grid-column: 1 / -1; }
 .verse-source-card { padding: 14px; border: 1px solid var(--cd-border); border-radius: 12px; background: white; }
-.verse-source-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.verse-config-switch { display: flex; gap: 8px; margin-bottom: 16px; }
+.verse-config-switch > button { flex: 1; }
+.verse-config-defaults { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--cd-border); }
+.verse-source-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .verse-source-heading strong { font-size: 18px; overflow-wrap: anywhere; }
-.verse-source-fields { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(0, 2fr); gap: 12px; }
-.verse-source-fields .admin-field { min-width: 0; }
-@media (max-width: 430px) { .verse-progression-row { grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; } }
 .devotion-paired-grid .admin-field, .scripture-paired-grid .admin-field { min-width: 0; }
 .devotion-paired-grid select, .scripture-paired-grid select { width: 100%; min-width: 0; padding-inline: 8px; }
 .admin-checkbox-row.daily-config-toggle-row {
