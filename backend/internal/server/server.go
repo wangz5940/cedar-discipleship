@@ -400,6 +400,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/study-weeks/current", a.auth(a.handleCurrentStudyWeek))
 	mux.HandleFunc("POST /api/admin/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminCreateStudyWeek)))
 	mux.HandleFunc("PUT /api/admin/study-weeks/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminUpdateStudyWeek)))
+	mux.HandleFunc("PATCH /api/admin/study-weeks/{id}/enabled", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminStudyWeekEnabled)))
 	mux.HandleFunc("DELETE /api/admin/study-weeks/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminDeleteStudyWeek)))
 
 	mux.HandleFunc("POST /api/checkins", a.auth(a.handleCreateCheckin))
