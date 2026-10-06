@@ -7,11 +7,9 @@ import {
   BookOpen,
   Download,
   Eye,
-  FileText,
   Lock,
   LogOut,
   MessageSquareText,
-  Play,
   RefreshCw,
   Search,
   User,
@@ -508,29 +506,21 @@ async function refreshResources() {
             :item-key="resourceSelectionKey"
             mode="masonry"
             aria-label="学习资料"
-            :card-height="196"
+            :card-height="172"
           >
             <template #default="{ item: asset }">
               <article class="cd-resource-card app-resource-card app-resource-stack-card">
                 <div class="app-resource-card__copy">
                   <div class="inline app-resource-card__meta">
-                    <div class="tile" :class="{ gold: asset.type === 'video' || asset.category === 'video', purple: asset.category === 'outline', blue: asset.type === 'markdown' || asset.category === 'book' }">
-                      <Play v-if="asset.type === 'video' || asset.category === 'video'" :size="16" />
-                      <Book v-else-if="asset.category === 'book'" :size="16" />
-                      <FileText v-else :size="16" />
-                    </div>
                     <span class="pill app-resource-card__pill">{{ resourceTypeLabel(asset) }}</span>
-                    <label v-if="resourceDownloadsEnabled" class="app-resource-select">
+                    <label v-if="resourceDownloadsEnabled" class="app-resource-select" :aria-label="`选择${optionText(asset)}`">
                       <input type="checkbox" :checked="resourceSelected(asset)" @change="toggleResourceSelection(asset)" />
-                      <span>选择</span>
                     </label>
                   </div>
                   <h3 class="resource-title app-resource-card__title">
-                    <button type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
-                      {{ optionText(asset) }}
-                    </button>
+                    <button type="button" :aria-label="`查看${optionText(asset)}`" :title="optionText(asset)" @click="openAsset(asset)">{{ optionText(asset) }}</button>
                   </h3>
-                  <p class="muted small app-resource-card__path"><template v-if="asset.folder">{{ asset.folder }} / </template>{{ asset.original_name }}</p>
+
                 </div>
                 <div class="app-resource-stack-card__actions">
                   <button class="primary app-resource-card__cta" type="button" :aria-label="`查看${optionText(asset)}`" @click="openAsset(asset)">
