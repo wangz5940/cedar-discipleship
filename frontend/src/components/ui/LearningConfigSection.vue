@@ -1,34 +1,50 @@
 <script setup>
-import { ref, useId, watch } from 'vue';
+import { computed, inject, nextTick, ref, useId, watch } from 'vue';
 import { ChevronDown } from '@lucide/vue';
 
 const props = defineProps({
   title: { type: String, required: true },
   storageKey: { type: String, required: true },
 });
-const open = ref(true);
+const accordion = inject('learningConfigAccordion', null);
+const localOpen = ref(false);
+const open = computed(() => accordion ? accordion.activeKey.value === props.storageKey : localOpen.value);
+const card = ref(null);
 const contentID = useId();
 
 watch(() => props.storageKey, (key) => {
+  if (accordion) return;
   try {
-    open.value = localStorage.getItem(key) !== 'closed';
+    localOpen.value = localStorage.getItem(key) === 'open';
   } catch {
-    open.value = true;
+    localOpen.value = false;
   }
 }, { immediate: true });
 
-function toggle() {
-  open.value = !open.value;
-  try {
-    localStorage.setItem(props.storageKey, open.value ? 'open' : 'closed');
-  } catch {
-    // Storage may be unavailable; the current page remains usable.
+async function toggle() {
+  const expanding = !open.value;
+  if (accordion) {
+    accordion.select(expanding ? props.storageKey : '');
+  } else {
+    localOpen.value = expanding;
+    try {
+      localStorage.setItem(props.storageKey, expanding ? 'open' : 'closed');
+    } catch {
+      // The current panel remains usable when storage is unavailable.
+    }
+  }
+  if (expanding) {
+    await nextTick();
+    card.value?.scrollIntoView({
+      block: 'center',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    });
   }
 }
 </script>
 
 <template>
-  <section class="card learning-config-section">
+  <section ref="card" class="card learning-config-section">
     <h2 class="learning-config-section__heading">
       <button type="button" :aria-expanded="open" :aria-controls="contentID" @click="toggle">
         <span>{{ title }}</span>

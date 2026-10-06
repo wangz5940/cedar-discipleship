@@ -2,6 +2,10 @@
 
 本文件是仓库内所有 Agent 的公共开发与发布规则。Codex 直接读取本文件；Claude Code 通过根目录 `CLAUDE.md` 引入；Trae 通过 `.trae/rules/project_rules.md` 加载。维护规则时以本文件为准。
 
+## 每次修改前必读
+
+每次修改、优化或修复前，必须先阅读根目录 `CHANGE-CONSTRAINTS.md`；涉及前端时还必须阅读 `ui.md`。先说明本次允许改变的范围和需要保留的行为，再修改代码。后续任务和恢复任务同样适用，不得凭旧记忆跳过阅读。用户明确提出的新要求优先，并同步更新受影响的约束。
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
