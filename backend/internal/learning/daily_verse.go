@@ -98,9 +98,10 @@ func ValidateDailyVerse(settings map[string]any) error {
 		ref := strings.TrimSpace(asString(plan["verse_ref"]))
 		text := strings.TrimSpace(asString(plan["recite_text"]))
 		if value, exists := plan["verses_per_day"]; exists {
+			anchor, anchorErr := time.Parse("2006-01-02", firstNonEmpty(asString(plan["progression_start_date"]), date))
 			count, numeric := value.(float64)
 			_, validText := splitVerseLines(text)
-			if mode != "daily" || !numeric || count < 1 || count > 100 || math.IsNaN(count) || math.IsInf(count, 0) || math.Trunc(count) != count || !validText {
+			if anchorErr != nil || anchor.After(end) || mode != "daily" || !numeric || count < 1 || count > 100 || math.IsNaN(count) || math.IsInf(count, 0) || math.Trunc(count) != count || !validText {
 				return ErrInvalidDailyVerse
 			}
 		}

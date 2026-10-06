@@ -229,7 +229,7 @@ async function mutate(action) {
           <button class="danger" type="button" :disabled="saving || !selectedGroupIDs.length" @click="deleteSelectedGroups">批量删除</button>
         </div>
         <div v-for="group in groups" :key="group.id" class="ministry-catalog-row">
-          <input type="checkbox" :checked="selectedGroupIDs.includes(Number(group.id))" :aria-label="`选择${group.name}`" :disabled="saving" @change="toggleGroupSelection(group.id, $event.target.checked)" />
+          <label class="ministry-catalog-select"><input type="checkbox" :checked="selectedGroupIDs.includes(Number(group.id))" :aria-label="`选择${group.name}`" :disabled="saving" @change="toggleGroupSelection(group.id, $event.target.checked)" /></label>
           <span class="ministry-group-symbol">{{ group.name.slice(0, 1) }}</span>
           <input v-model="drafts[group.id]" maxlength="128" :aria-label="`${group.name}名称`" />
           <div class="inline-actions">
@@ -267,7 +267,7 @@ section { min-width: 0; }
 .admin-ministry-catalog-head { gap: 16px; }
 .ministry-catalog-bulk { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 10px 0; }
 .ministry-catalog-bulk .admin-toggle { margin-right: auto; }
-.ministry-catalog-row { grid-template-columns: 18px 34px minmax(0, 1fr) auto; }
+.ministry-catalog-row { grid-template-columns: 44px 34px minmax(0, 1fr) auto; }
 .ministry-catalog-create input,
 .ministry-catalog-row input { min-width: 0; }
 .ministry-catalog-create button,
@@ -278,7 +278,7 @@ section { min-width: 0; }
   .admin-ministry-catalog-head { align-items: flex-start; flex-direction: column; }
   .admin-ministry-catalog-head .inline-actions { width: 100%; justify-content: space-between; }
   .ministry-catalog-create { grid-template-columns: 1fr; }
-  .ministry-catalog-row { grid-template-columns: 18px 34px minmax(0, 1fr) auto; gap: 6px; }
+  .ministry-catalog-row { grid-template-columns: 44px 34px minmax(0, 1fr) auto; gap: 6px; }
   .ministry-catalog-row .inline-actions { gap: 4px; }
 }
 </style>

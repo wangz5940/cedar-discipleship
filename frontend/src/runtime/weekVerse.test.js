@@ -17,7 +17,7 @@ describe('周任务背经配置', () => {
   });
   const week = { start: '2026-10-05', end: '2026-10-11' };
   it('新配置跟随周日期并默认整周一次', () => {
-    expect(weekVerseDraft([], week)).toEqual({ date: week.start, end_date: week.end, recite_text: '', completion_mode: 'weekly' });
+    expect(weekVerseDraft([], week)).toEqual({ date: week.start, end_date: week.end, recite_text: '', completion_mode: 'weekly', progression_start_date: week.start });
   });
   it('保留已有每日计划和缺省每日频率，切换周不会带入其他周内容', () => {
     const plans = [{ date: week.start, recite_text: '创1:1 起初' }];
@@ -36,5 +36,16 @@ describe('周任务背经配置', () => {
   });
   it('拒绝覆盖不同起始日的重叠历史计划', () => {
     expect(() => upsertWeekVersePlan([{ date: '2026-10-06', recite_text: '原文' }], { date: week.start, end_date: week.end })).toThrow('重叠');
+  });
+  it('显式替换本周逐日计划，同时保留其他日期和原始数据', () => {
+    const old = [{ date: '2026-10-04', recite_text: '历史' }, { date: '2026-10-06', recite_text: '旧经文' }, { date: '2026-10-08', recite_text: '旧经文' }, { date: '2026-10-12', recite_text: '下周' }];
+    const plan = { date: week.start, end_date: week.end, recite_text: '新的整周经文' };
+    expect(upsertWeekVersePlan(old, plan, true)).toEqual([old[0], plan, old[3]]);
+    expect(old).toHaveLength(4);
+  });
+  it('跨周递进计划保留前后日期，后段仍使用原开始日期递进', () => {
+    const old = { date: '2026-10-01', end_date: '2026-10-20', verses_per_day: 2, recite_text: '全部经文' };
+    const plan = { date: week.start, end_date: week.end };
+    expect(upsertWeekVersePlan([old], plan, true)).toEqual([{ ...old, end_date: '2026-10-04' }, plan, { ...old, date: '2026-10-12', progression_start_date: old.date }]);
   });
 });

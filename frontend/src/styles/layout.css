@@ -873,6 +873,39 @@ tr:last-child td {
   gap: 10px 16px;
 }
 .notification-toggle-row { gap: 8px 20px; }
+/* Checkbox hit areas share a visible frame; text fields and radio controls stay unchanged. */
+.admin-toggle,
+.resource-row-check,
+.resource-stack-card > header > label,
+.resource-group-checks > label,
+.ministry-file-selector,
+.ministry-catalog-select {
+  display: inline-flex;
+  min-height: 44px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--cd-border);
+  border-radius: var(--cd-radius-base);
+  background: var(--cd-primary-soft);
+  color: var(--cd-text-secondary);
+  cursor: pointer;
+}
+:is(.admin-toggle, .resource-row-check, .resource-stack-card > header > label, .resource-group-checks > label, .ministry-file-selector, .ministry-catalog-select):has(input:checked) {
+  border-color: var(--cd-primary);
+  color: var(--cd-primary);
+}
+:is(.admin-toggle, .resource-row-check, .resource-stack-card > header > label, .resource-group-checks > label, .ministry-file-selector, .ministry-catalog-select):has(input:focus-visible) {
+  outline: 2px solid var(--cd-primary);
+  outline-offset: 2px;
+}
+:is(.admin-toggle, .resource-row-check, .resource-stack-card > header > label, .resource-group-checks > label, .ministry-file-selector, .ministry-catalog-select):has(input:disabled) {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.ministry-file-row { grid-template-columns: 44px minmax(0, 1fr) 34px; }
+.ministry-file-selector, .ministry-catalog-select { width: 44px; justify-content: center; padding: 0; }
 .section-title h2 { font-size: 20px; letter-spacing: normal; }
 .week-task-item, .week-task-empty { border-radius: var(--cd-radius-base); background: var(--cd-surface-subtle); box-shadow: inset 0 0 0 1px var(--cd-border); }
 .week-task-item.active { background: var(--cd-primary-soft); box-shadow: inset 0 0 0 1px var(--cd-primary); }

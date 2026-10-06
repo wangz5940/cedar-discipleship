@@ -45,7 +45,7 @@ func resolveVerseProgression(plan map[string]any, date string) (map[string]any, 
 	}
 	count, ok := value.(float64)
 	segments, valid := splitVerseLines(asString(plan["recite_text"]))
-	start, err := time.Parse("2006-01-02", asString(plan["date"]))
+	start, err := time.Parse("2006-01-02", firstNonEmpty(asString(plan["progression_start_date"]), asString(plan["date"])))
 	day, dayErr := time.Parse("2006-01-02", date)
 	if !ok || count < 1 || count > 100 || !valid || err != nil || dayErr != nil {
 		return nil, false

@@ -59,3 +59,23 @@ func TestProgressionRejectsAmbiguousBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestProgressionStartIndependentOfWeek(t *testing.T) {
+	plan := map[string]any{"date": "2026-10-05", "end_date": "2026-10-11", "completion_mode": "daily", "verses_per_day": float64(2), "progression_start_date": "2026-10-04", "verse_ref": "创1:1-5", "recite_text": "创1:1 一。\n创1:2 二。\n创1:3 三。\n创1:4 四。\n创1:5 五。"}
+	settings := progressionSettings(plan)
+	if err := ValidateDailyVerse(settings); err != nil {
+		t.Fatal(err)
+	}
+	resolved, ok := DailyVersePlan(settings, "2026-10-05")
+	if !ok || resolved["verse_ref"] != "创1:3，创1:4" {
+		t.Fatalf("resolved=%v", resolved)
+	}
+	plan["progression_start_date"] = "2026-10-07"
+	if _, ok := DailyVersePlan(settings, "2026-10-06"); ok {
+		t.Fatal("task before start")
+	}
+	plan["progression_start_date"] = "2026-10-12"
+	if ValidateDailyVerse(settings) != ErrInvalidDailyVerse {
+		t.Fatal("accepted start after end")
+	}
+}
