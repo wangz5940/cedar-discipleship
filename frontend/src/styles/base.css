@@ -91,17 +91,17 @@ button:hover {
 button:active { transform: none; }
 button.secondary, button.ghost { box-shadow: none; }
 button.secondary {
-  background: var(--cd-button-accent-bg);
-  border-color: var(--cd-button-accent-border);
-  color: var(--cd-button-accent-dark);
+  background: var(--cd-primary-soft);
+  border-color: var(--cd-border-strong);
+  color: var(--cd-primary);
 }
-button.secondary:hover { background: #f5e4e2; box-shadow: none; }
+button.secondary:hover { background: var(--cd-surface-hover); box-shadow: none; }
 button.ghost {
-  background: var(--cd-button-accent-bg);
-  border-color: var(--cd-button-accent-border);
-  color: var(--cd-button-accent-dark);
+  background: var(--cd-surface);
+  border-color: var(--cd-border);
+  color: var(--cd-primary);
 }
-button.ghost:hover { background: #f8e9e7; box-shadow: none; }
+button.ghost:hover { background: var(--cd-primary-soft); box-shadow: none; }
 
 button:focus-visible,
 input:focus-visible,
@@ -112,25 +112,25 @@ textarea:focus-visible {
 }
 
 button.primary {
-  background: var(--cd-button-accent-dark);
-  border-color: rgb(142 29 19 / 0.46);
+  background: var(--cd-primary);
+  border-color: var(--cd-primary);
   color: #ffffff;
   font-weight: 500;
 }
 
 button.primary:hover {
-  background: #a0271c;
-  border-color: rgb(91 17 10 / 0.34);
+  background: var(--cd-primary-hover);
+  border-color: var(--cd-primary-hover);
 }
 
 button.quiet:not(.primary):not(.date-navigator__icon):not(.date-navigator__label):not(.date-navigator__today):not(.date-calendar__today):not(.icon-button) {
-  border-color: var(--cd-button-accent-border);
-  background: var(--cd-button-accent-bg);
-  color: var(--cd-button-accent-dark);
+  border-color: var(--cd-border);
+  background: var(--cd-surface);
+  color: var(--cd-text-ink);
 }
 
 button.quiet:not(.primary):not(.date-navigator__icon):not(.date-navigator__label):not(.date-navigator__today):not(.date-calendar__today):not(.icon-button):hover {
-  background: #f8e9e7;
+  background: var(--cd-surface-subtle);
 }
 
 button.taskdone {
@@ -141,7 +141,7 @@ button.taskdone {
 }
 
 button.taskdone:hover {
-  background: #f5e4e2;
+  background: var(--cd-button-accent-hover-soft);
 }
 
 button.danger {
@@ -157,11 +157,11 @@ button.danger:hover {
 
 button.accent, .task .actions > button.primary {
   background: var(--cd-button-accent-dark);
-  border-color: rgb(142 29 19 / 0.46);
+  border-color: var(--cd-button-accent-border-strong);
   color: white;
 }
 button.accent:hover, .task .actions > button.primary:hover {
-  background: #a0271c;
+  background: var(--cd-button-accent-deep);
 }
 
 button:disabled {

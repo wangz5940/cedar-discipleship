@@ -72,33 +72,74 @@ body :is(.sidebar .nav, .app-mobile-nav, .mobilebar, .mobile-learning-sections, 
 .library-empty h3 { color: var(--text); font-size: 18px; margin-bottom: 10px; font-weight: 500; }
 .library-empty p { color: var(--muted); line-height: 1.8; font-size: 13px; }
 .library-empty button { margin-top: 20px; background: var(--cd-primary); color: white; border: 0; font-size: 13px; }
+.checkin-page {
+  background: var(--cd-learning-page-wash);
+  --cd-button-accent-dark: var(--cd-learning-action);
+  --cd-button-accent-deep: var(--cd-learning-action-hover);
+  --cd-button-accent-bg: var(--cd-learning-action-soft);
+  --cd-button-accent-hover-soft: var(--cd-learning-action-border);
+  --cd-button-accent-border: var(--cd-learning-action-border);
+  --cd-button-accent-border-strong: var(--cd-learning-action-border);
+  --cd-status: var(--cd-learning-action-ink);
+  --cd-status-strong: var(--cd-learning-action);
+  --cd-status-accent: var(--cd-learning-action);
+  --cd-status-soft: var(--cd-learning-action-soft);
+  --cd-status-border: var(--cd-learning-action-border);
+}
 .checkin-page .workbench-kicker { color: var(--muted); margin-bottom: 10px; }
-.checkin-page .summary { grid-template-columns: minmax(0, 1fr) 170px; text-align: left; padding: 32px; background: var(--cd-primary); color: var(--cd-on-primary); border: 0; border-radius: 12px; align-items: center; }
+.checkin-page .summary { grid-template-columns: minmax(0, 1fr) 170px; text-align: left; padding: 32px; background: var(--cd-learning-summary-wash); color: var(--cd-on-primary); border: 0; border-radius: 12px; align-items: center; }
 .checkin-page .summary h2 { color: var(--cd-on-primary); font-size: 25px; }
 .checkin-page .summary .summary__eyebrow { color: var(--cd-gold-soft); }
 .checkin-page .summary-reflection { color: var(--cd-on-primary-muted); font-size: 13px; line-height: 1.8; margin-top: 10px; }
 .checkin-page .summary .progress { margin-top: 12px; background: #ffffff20; }
-.checkin-page .summary .progress span { background: linear-gradient(90deg, var(--cd-status-strong), var(--cd-status-accent)); }
+.checkin-page .summary .progress span {
+  background: var(--cd-learning-progress-gradient);
+  background-size: 200% 100%;
+  animation: learning-progress-glow 6s ease-in-out infinite;
+}
+@keyframes learning-progress-glow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .checkin-page .summary .progress span { animation: none; background-size: 100% 100%; }
+}
 .learning-fraction { display: flex; align-items: baseline; gap: 8px; justify-content: center; }
 .learning-fraction strong { font-size: 46px; font-weight: 400; line-height: 1; }
 .learning-fraction span { font-size: 20px; color: var(--cd-on-primary-muted); }
 .learning-fraction small { font-size: 11px; color: var(--cd-on-primary-muted); }
 .checkin-page .task.is-pending { background: #fff; border-inline-start: 1px solid var(--line); }
 .checkin-page .task.is-completed { background: var(--cd-status-subtle); }
-.checkin-page .task:is(.is-pending, .is-completed) { background-color: var(--cd-learning-bg, #e8eef7); background-image: var(--cd-card-blue-wash); border-color: var(--cd-border-strong); }
+.checkin-page .task:is(.is-pending, .is-completed) { background-color: var(--cd-surface); background-image: var(--cd-learning-card-wash); border-color: var(--cd-border-strong); }
+.checkin-page .task.is-completed {
+  border-inline-start-color: var(--cd-primary);
+}
 .checkin-page .task .actions > button.secondary {
-  background: linear-gradient(180deg, #ffffff, var(--cd-learning-action-soft));
-  border-color: var(--cd-learning-action-border);
-  color: var(--cd-button-accent-dark);
+  background: var(--cd-learning-secondary-wash);
+  border-color: var(--cd-border);
+  color: var(--cd-primary);
 }
 .checkin-page .task .actions > button.primary {
-  background: var(--cd-button-accent-dark);
-  border-color: rgb(142 29 19 / 0.46);
-  color: var(--cd-on-primary);
+  background: var(--cd-learning-button-wash);
+  border-color: var(--cd-button-accent-border-strong);
+  color: var(--cd-learning-action-ink);
   font-weight: 700;
 }
-.checkin-page .task .actions > button.taskdone { background: var(--cd-button-accent-bg); border-color: var(--cd-button-accent-border); color: var(--cd-button-accent-dark); }
-.checkin-page .task .actions > button:hover { filter: brightness(1.06); }
+.checkin-page .task .actions > button.taskdone { background: var(--cd-learning-done-wash); border-color: var(--cd-button-accent-border); color: var(--cd-learning-action-ink); }
+.checkin-page .task-status.completed { background: var(--cd-learning-button-wash); color: var(--cd-learning-action-ink); }
+.checkin-page .task .actions > button {
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  .checkin-page .task .actions > button.secondary:hover { background: var(--cd-surface-hover); }
+  .checkin-page .task .actions > button.taskdone:hover { background: var(--cd-button-accent-hover-soft); }
+  .checkin-page .task .actions > button.primary:hover { background: var(--cd-button-accent-deep); border-color: var(--cd-button-accent-deep); }
+  .checkin-page .task .actions > button:hover { filter: brightness(1.06); }
+}
+@media (hover: none), (pointer: coarse) {
+  .checkin-page .task .actions > button { transition: filter 60ms ease; }
+  .checkin-page .task .actions > button:active:not(:disabled) { filter: brightness(0.94); }
+}
 @media (min-width: 1000px) { .checkin-page .tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 980px) { .study-preview > .sidebar { overflow: hidden; } .study-preview > .main-panel { overflow-y: auto; } .library-intro { gap: 24px; } }
 @media (max-width: 700px) {
