@@ -122,6 +122,16 @@ type UserView struct {
 	Replies         []ReplyView      `json:"replies,omitempty"`
 }
 
+type UnreadCandidate struct {
+	ID          uint64
+	LastReplyID uint64
+}
+
+type UnreadView struct {
+	OwnIDs   []uint64 `json:"own_ids"`
+	AdminIDs []uint64 `json:"admin_ids"`
+}
+
 type AdminView struct {
 	UserView
 	GroupID       uint64            `json:"group_id,omitempty"`

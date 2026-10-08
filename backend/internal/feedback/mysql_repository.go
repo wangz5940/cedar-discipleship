@@ -15,6 +15,32 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+func (r *MySQLRepository) UnreadCandidates(ctx context.Context, userID uint64, admin bool, since time.Time) ([]UnreadCandidate, error) {
+	clause := `WHERE f.user_id=? AND EXISTS
+		(SELECT 1 FROM feedback_replies fr WHERE fr.feedback_id=f.id AND fr.created_at>=?)`
+	args := []any{userID, since}
+	if admin {
+		clause = `WHERE COALESCE(NULLIF(f.source,''),'manual')='manual' AND f.created_at>=?`
+		args = []any{since}
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT f.id,
+		(SELECT COALESCE(MAX(fr.id),0) FROM feedback_replies fr WHERE fr.feedback_id=f.id)
+		FROM feedbacks f `+clause+` ORDER BY f.id DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]UnreadCandidate, 0)
+	for rows.Next() {
+		var item UnreadCandidate
+		if err := rows.Scan(&item.ID, &item.LastReplyID); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *MySQLRepository) AutomaticSettings(ctx context.Context) (AutomaticSettings, error) {
 	settings := AutomaticSettings{Enabled: true, MutedErrorTypes: []string{}}
 	err := r.db.QueryRowContext(ctx,

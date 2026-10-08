@@ -56,3 +56,13 @@ describe('mobile navigation ministry entry', () => {
     expect(html).not.toContain('>小组</span>');
   });
 });
+
+it('shows a More reminder without clearing it when the menu is open', async () => {
+  const html = await renderToString(createSSRApp(AppMobileNav, {
+    tab: 'feedback', feedbackUnread: true, moreOpen: true,
+  }));
+  expect(html).toContain('aria-label="有未读消息"');
+  expect(html).toContain('aria-expanded="true"');
+  const read = await renderToString(createSSRApp(AppMobileNav, { tab: 'feedback', feedbackUnread: false }));
+  expect(read).not.toContain('aria-label="有未读消息"');
+});

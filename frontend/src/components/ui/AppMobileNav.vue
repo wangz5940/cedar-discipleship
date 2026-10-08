@@ -1,8 +1,9 @@
 <script setup>
 import { computed } from 'vue';
+import UnreadDot from './UnreadDot.vue';
 import { BarChart2, Book, BookOpen, MoreHorizontal, Settings, Users } from '@lucide/vue';
 
-const props = defineProps({ tab: { type: String, required: true }, moreOpen: Boolean, canAdmin: Boolean, showGroups: Boolean, entrySetting: { type: Boolean, default: undefined } });
+const props = defineProps({ tab: { type: String, required: true }, moreOpen: Boolean, feedbackUnread: Boolean, canAdmin: Boolean, showGroups: Boolean, entrySetting: { type: Boolean, default: undefined } });
 defineEmits(['navigate', 'more']);
 
 const groupsVisible = computed(() => props.showGroups && props.entrySetting === true);
@@ -35,7 +36,7 @@ const visibleItems = computed(() => items.filter(([id]) => (
     </button>
     <button type="button" aria-haspopup="dialog" :aria-expanded="moreOpen" @click="$emit('more')">
       <MoreHorizontal :size="20" stroke-width="1.8" />
-      <span>更多</span>
+      <span>更多<UnreadDot v-if="feedbackUnread" /></span>
     </button>
   </nav>
 </template>
