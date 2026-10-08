@@ -18,6 +18,8 @@ import {
 } from '@lucide/vue';
 import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
+import LearningReminderBanner from './ui/LearningReminderBanner.vue';
+import { useLearningRemindersStore } from '../stores/learningReminders';
 import { lazyPage } from '../ui/lazyPage';
 import { vDialogFocus } from '../ui/dialogFocus';
 import { useAppStateStore } from '../stores/appState';
@@ -61,6 +63,7 @@ const PersonalSettings = lazyPage(() => import('./PersonalSettings.vue'));
 const UserGuide = lazyPage(() => import('./UserGuide.vue'));
 const app = useAppStateStore();
 const feedbackUnread = useFeedbackUnreadStore();
+const learningReminders = useLearningRemindersStore();
 const workbench = useCheckinWorkbenchStore();
 const downloadManager = useDownloadManagerStore();
 const {
@@ -85,16 +88,41 @@ watch(() => authenticated.value ? user.value?.id : 0, (id) => {
   feedbackUnread.setAccount(id);
   void feedbackUnread.refresh();
 }, { immediate: true });
+watch([authenticated, () => user.value?.id, currentGroupID], () => {
+  learningReminders.setScope(authenticated.value ? user.value?.id : 0, currentGroupID.value);
+  void learningReminders.refresh();
+}, { immediate: true });
+function navigate(tab) {
+  setTab(tab);
+  if (tab === 'home') learningReminders.openLatest();
+}
+async function clearLearningReminders() {
+  try {
+    await learningReminders.clearAll();
+    showToast('学习提醒已清除');
+  } catch { showToast('清除失败，请重试'); }
+}
+function openSystemReminder(event) {
+  if (event.data?.type === 'open-learning-reminder') {
+    navigate('home');
+    void learningReminders.refresh();
+  }
+}
 let feedbackUnreadTimer;
 function refreshFeedbackReminders() {
-  if (document.visibilityState !== 'hidden') void feedbackUnread.refresh();
+  void learningReminders.refresh();
+  if (document.visibilityState !== 'hidden') {
+    void feedbackUnread.refresh();
+  }
 }
 onMounted(() => {
+  navigator.serviceWorker?.addEventListener('message', openSystemReminder);
   feedbackUnreadTimer = window.setInterval(refreshFeedbackReminders, 30000);
   window.addEventListener('focus', refreshFeedbackReminders);
   document.addEventListener('visibilitychange', refreshFeedbackReminders);
 });
 onBeforeUnmount(() => {
+  navigator.serviceWorker?.removeEventListener('message', openSystemReminder);
   window.clearInterval(feedbackUnreadTimer);
   window.removeEventListener('focus', refreshFeedbackReminders);
   document.removeEventListener('visibilitychange', refreshFeedbackReminders);
@@ -397,6 +425,7 @@ async function refreshResources() {
 
   <!-- Cedar Main Layout Shell -->
   <div v-else class="cedar-app-shell">
+    <LearningReminderBanner />
     <AppSidebar
       :nav-items="navItems"
       :tab="tab"
@@ -405,8 +434,11 @@ async function refreshResources() {
       :role="roleLabel(user || {}) || '组员'"
       :unfinished-count="downloadManager.unfinishedCount"
       :feedback-unread="feedbackUnread.hasUnread"
+      :learning-unread="learningReminders.hasUnread"
       :admin-feedback-unread="feedbackUnread.adminIDs.length > 0"
-      @navigate="setTab"
+      @navigate="navigate"
+      @learning-reminder="learningReminders.openLatest()"
+      @clear-learning="clearLearningReminders"
       @downloads="downloadManager.openPanel()"
       @logout="logout"
     />
@@ -578,9 +610,12 @@ async function refreshResources() {
         :can-admin="canAdmin"
         :more-open="showMobileMoreMenu"
         :feedback-unread="feedbackUnread.hasUnread"
+      :learning-unread="learningReminders.hasUnread"
         :show-groups="ministryGroupCount > 0"
         :entry-setting="settings.ministry?.show_entry"
-        @navigate="setTab"
+        @navigate="navigate"
+        @learning-reminder="learningReminders.openLatest()"
+        @clear-learning="clearLearningReminders"
         @more="showMobileMoreMenu = true"
       />
     </div>
