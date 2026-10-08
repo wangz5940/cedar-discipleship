@@ -220,4 +220,3 @@ it('falls back for an absent chapter and ignores a late load after closing', asy
   await openTaskContent(task);
   expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/03/1.htm' });
 });
-
