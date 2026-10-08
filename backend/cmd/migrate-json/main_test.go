@@ -390,6 +390,12 @@ func TestNormalizeTaskSectionsBuildsCurrentScriptureAndDevotionShape(t *testing.
 	if scripture["book"] != "路加福音" || scripture["book_id"] != "42" || scripture["max_chapters"].(float64) != 24 {
 		t.Fatalf("unexpected scripture start book: %+v", scripture)
 	}
+	if _, exists := scripture["type"]; exists {
+		t.Fatalf("obsolete scripture source type retained: %+v", scripture)
+	}
+	if _, exists := scripture["url_template"]; exists {
+		t.Fatalf("obsolete scripture source template retained: %+v", scripture)
+	}
 }
 
 func TestDatabaseAssetDownloadURLCanonicalizesAbsoluteAPIURL(t *testing.T) {

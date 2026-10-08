@@ -11,6 +11,8 @@ let checkinMode;
 let records;
 let devotionConfig;
 let scriptureConfig;
+let weeklyVerseRef;
+let weeklyReciteText;
 const plans = [
   { date: '2026-09-22', verse_ref: '约翰福音 3:16', recite_text: '神爱世人\n<script>alert(1)</script>' },
   { date: '2026-09-23', verse_ref: '诗篇 23:1', recite_text: '耶和华是我的牧者' },
@@ -21,6 +23,8 @@ beforeEach(async () => {
   records = [{ id: 7, user_id: 1, task_type: 'weekly_verse', week_id: 9, task_id: 10, logical_date: '2026-09-22' }];
   devotionConfig = { enabled: false };
   scriptureConfig = { enabled: false };
+  weeklyVerseRef = '周经文';
+  weeklyReciteText = '周原文';
   vi.stubGlobal('document', { cookie: '' });
   vi.stubGlobal('window', { location: { origin: 'http://localhost' }, dispatchEvent: vi.fn(), addEventListener: vi.fn() });
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
@@ -30,8 +34,12 @@ beforeEach(async () => {
     if (path === '/api/auth/login') return Response.json({ token: 'test', user: { id: 1, current_group_id: 1, roles: [] } });
     if (path === '/api/auth/me') return Response.json({ user: { id: 1, current_group_id: 1, roles: [] } });
     if (path.startsWith('/api/app/bootstrap')) return Response.json({
-      current_week: { id: 9, verse_enabled: true, verse_ref: '周经文', recite_text: '周原文' },
-      current_tasks: [{ id: 10, task_type: 'weekly_verse', title: '周经文', content: '周原文' }],
+      current_week: {
+        id: 9, verse_enabled: true, verse_ref: weeklyVerseRef, recite_text: weeklyReciteText,
+      },
+      current_tasks: [{
+        id: 10, task_type: 'weekly_verse', title: weeklyVerseRef, content: weeklyReciteText,
+      }],
       learning_config: { task_sections: { daily: {
         checkin_mode: checkinMode, devotion: devotionConfig, scripture: scriptureConfig, verse: { enabled: true, plans },
       } } },
@@ -102,6 +110,36 @@ it('ignores late calendar responses after changing members or closing the calend
   pending['/api/members/1/calendar?month=2026-09'](Response.json({ items: [] }));
   await third;
   expect(useAppStateStore().calendar).toBeNull();
+});
+
+it('opens a legacy weekly reference from the bundled Bible without changing completion', async () => {
+  await logout({ remote: false });
+  weeklyVerseRef = '希伯来书 3:19-19';
+  weeklyReciteText = '';
+  const originalFetch = fetch.getMockImplementation();
+  const hebrews = JSON.parse(readFileSync(new URL('../public/bible/cuv/58.json', import.meta.url), 'utf8'));
+  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/58.json'
+    ? Promise.resolve(Response.json(hebrews)) : originalFetch(url, options));
+  await login('test', 'test');
+  await setSelectedDate('2026-09-22');
+
+  const task = currentTaskOptions().find(item => item.type === 'weekly_verse');
+  expect(task.contentLinks[0]).toMatchObject({
+    type: 'markdown',
+    url: '/bible/cuv/58.json',
+    localBibleVerse: {
+      bookId: '58', chapter: 3, startVerse: 19, endVerse: 19,
+    },
+  });
+  const before = currentTaskOptions();
+  await openTaskContent(task);
+
+  expect(useContentViewerStore().viewer).toMatchObject({
+    type: 'markdown', title: weeklyVerseRef, externalURL: '',
+  });
+  expect(useContentViewerStore().viewer.html).toContain('来3:19');
+  expect(useContentViewerStore().viewer.html).toContain('不能进入安息是因为不信');
+  expect(currentTaskOptions()).toEqual(before);
 });
 
 it('keeps independent weekly recitation completed across dates without duplicating daily tasks', async () => {

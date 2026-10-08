@@ -7,7 +7,7 @@ import { useAppStateStore } from './stores/appState';
 import { confirmDialog, promptDialog } from './ui/dialog';
 import { resolvedDailyVerse } from './runtime/weekVerse';
 import { dailyVerseTitle } from './runtime/dailyVerseTitle';
-import { loadBibleBook } from './runtime/verseSource';
+import { loadBibleBook, selectedVerseText } from './runtime/verseSource';
 import {
   currentCalendarWeekRange,
   currentMonthString,
@@ -1322,6 +1322,31 @@ export function closeViewer() {
 }
 
 export async function openContentTarget(target) {
+  if (target.localBibleVerse) {
+    closeViewer();
+    const requestID = viewerRequestID;
+    const context = dataContextKey();
+    const reference = target.localBibleVerse;
+    const chapters = await loadBibleBook(String(reference.bookId));
+    const content = selectedVerseText(
+      String(reference.bookId),
+      Number(reference.chapter),
+      chapters[Number(reference.chapter) - 1] || [],
+      Number(reference.startVerse),
+      Number(reference.endVerse),
+    );
+    if (!content) throw new Error('bible_invalid');
+    if (requestID !== viewerRequestID || context !== dataContextKey()) return;
+    state.viewer = {
+      type: 'markdown', title: target.title || target.label || '背经原文',
+      html: markdownToHTML(content.split('\n'), { preserveLineBreaks: true }),
+      sourceURL: '', downloadURL: '', downloadSource: 'learning',
+      originalName: '', externalURL: '', relatedSections: [],
+    };
+    syncViewerStore();
+    render();
+    return;
+  }
   if (target.localBible) {
     closeViewer();
     const requestID = viewerRequestID;
