@@ -72,10 +72,6 @@ const technicalDiagnostics = computed(() => Object.fromEntries(
   Object.entries(selected.value?.diagnostics || {})
     .filter(([key]) => !semanticDiagnosticKeys.has(key)),
 ));
-const selectedDetailRow = computed(() => {
-  const index = items.value.findIndex((item) => item.id === openingID.value);
-  return Math.max(index, 0) * 2 + 2;
-});
 
 function statusLabel(status) {
   return statuses.find(([value]) => value === status)?.[1] || status;
@@ -142,7 +138,7 @@ async function loadList(preferredID = 0) {
     const data = await api(`/super-admin/feedback${queryString ? `?${queryString}` : ''}`);
     if (request !== listRequest) return;
     items.value = data.items || [];
-    const targetID = preferredID || selected.value?.id || items.value[0]?.id;
+    const targetID = preferredID || selected.value?.id;
     if (targetID && items.value.some((item) => item.id === targetID)) await openItem(targetID);
     else closeItem();
   } catch (error) {
@@ -293,7 +289,10 @@ async function reply() {
   }
 }
 
-watch([statusFilter, sourceFilter], () => loadList());
+watch([statusFilter, sourceFilter], () => {
+  closeItem();
+  void loadList();
+});
 onMounted(() => {
   loadList();
   loadAutomaticSettings();
@@ -362,116 +361,115 @@ onBeforeUnmount(closeItem);
       <aside class="feedback-admin__list" aria-label="反馈列表">
         <div v-if="loading && !items.length" class="empty">正在加载...</div>
         <div v-else-if="!items.length" class="empty">当前没有反馈</div>
-        <button
-          v-for="(item, index) in items"
-          v-else
-          :key="item.id"
-          type="button"
-          :class="{ active: openingID === item.id }"
-          :aria-expanded="openingID === item.id"
-          :style="{ gridRow: index * 2 + 1 }"
-          @click="toggleItem(item.id)"
-        >
-          <span class="feedback-admin__list-main">
-            <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>
-            <span>{{ item.message }}</span>
-            <small class="muted">
-              {{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}
-            </small>
-          </span>
-          <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
-          <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
-        </button>
-      </aside>
-
-      <section
-        v-if="openingID"
-        class="panel feedback-admin__detail"
-        :style="{ gridRow: selectedDetailRow }"
-      >
-        <div v-if="detailLoading" class="empty">正在加载详情...</div>
-        <div v-else-if="!selected || selected.id !== openingID" class="empty">详情加载失败</div>
         <template v-else>
-          <header class="feedback-admin__detail-head">
-            <div>
-              <h3>{{ selected.member_name || selected.display_name || selected.legacy_name || selected.username || '历史用户' }}</h3>
-              <p class="small muted">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(selected.created_at) }}</p>
-            </div>
-            <select aria-label="处理状态" :value="selected.status" :disabled="savingStatus" @change="updateStatus($event.target.value)">
-              <option v-for="[value, label] in statuses" :key="value" :value="value">{{ label }}</option>
-            </select>
-          </header>
-
-          <p class="feedback-admin__message">{{ selected.message }}</p>
-          <section v-if="selected.source === 'automatic'" class="feedback-admin__context" aria-label="自动反馈业务概览">
-            <h3>业务概览</h3>
-            <dl>
-              <template v-if="selectedContext.group"><dt>小组</dt><dd>{{ selectedContext.group }}</dd></template>
-              <template v-if="selectedContext.user"><dt>用户</dt><dd>{{ selectedContext.user }}</dd></template>
-              <template v-if="selectedContext.action"><dt>动作</dt><dd>{{ selectedContext.action }}</dd></template>
-              <template v-if="selectedContext.content"><dt>内容</dt><dd>{{ selectedContext.content }}</dd></template>
-              <template v-if="selectedContext.date"><dt>日期</dt><dd>{{ selectedContext.date }}</dd></template>
-            </dl>
-          </section>
-          <div v-if="selected.attachments?.length" class="feedback-admin__images">
-            <a v-for="image in selected.attachments" :key="image.id" :href="image.url" target="_blank" rel="noopener">
-              <img :src="image.url" :alt="image.original_name" />
-            </a>
-          </div>
-
-          <section class="feedback-admin__metadata">
-            <header>
-              <ShieldCheck :size="17" />
-              <h3>诊断信息</h3>
-              <button
-                v-if="selected.source === 'automatic' && selectedErrorType"
-                class="quiet feedback-admin__mute"
-                type="button"
-                :disabled="settingsSaving"
-                @click="setErrorTypeMuted(selectedErrorType, !selectedErrorMuted)"
-              >
-                <VolumeX :size="15" />
-                {{ selectedErrorMuted ? '取消静默此类错误' : '静默此类错误' }}
-              </button>
-            </header>
-            <dl>
-              <dt>Log ID</dt><dd class="feedback-admin__log-id">{{ selected.log_id || '未记录' }}</dd>
-              <dt>账号</dt><dd>{{ selected.username || '历史记录未绑定账号' }}<template v-if="selected.user_id"> (#{{ selected.user_id }})</template></dd>
-              <dt>小组</dt><dd>{{ selected.group_name || '无' }}<template v-if="selected.group_id"> (#{{ selected.group_id }})</template></dd>
-              <template v-if="Object.keys(technicalDiagnostics).length">
-                <template v-for="(value, key) in technicalDiagnostics" :key="key">
-                  <dt>{{ diagnosticLabel(key) }}</dt><dd>{{ value }}</dd>
-                </template>
-              </template>
-              <template v-else>
-                <dt>诊断信息</dt><dd>无</dd>
-              </template>
-            </dl>
-          </section>
-
-          <section class="feedback-admin__replies">
-            <header><CheckCircle2 :size="17" /><h3>处理记录</h3></header>
-            <div v-if="selected.replies?.length">
-              <article v-for="item in selected.replies" :key="item.id">
-                <div><strong>{{ item.admin_display_name || '管理员' }}</strong><small class="muted">{{ formatDate(item.created_at) }}</small></div>
-                <p>{{ item.message }}</p>
-              </article>
-            </div>
-            <p v-else class="muted">暂无回复。</p>
-          </section>
-
-          <form class="feedback-admin__reply" @submit.prevent="reply">
-            <label>
-              <span><MessageSquareReply :size="17" /> 回复用户</span>
-              <textarea v-model="replyMessage" rows="4" maxlength="2000" placeholder="输入用户可见的回复" />
-            </label>
-            <button class="primary" type="submit" :disabled="replying || !replyMessage.trim()">
-              <Send :size="16" />
-              {{ replying ? '发送中' : '发送回复' }}
+          <template v-for="item in items" :key="item.id">
+            <button
+              type="button"
+              :class="{ active: openingID === item.id }"
+              :aria-expanded="openingID === item.id"
+              @click="toggleItem(item.id)"
+            >
+              <span class="feedback-admin__list-main">
+                <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>
+                <span>{{ item.message }}</span>
+                <small class="muted">
+                  {{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}
+                </small>
+              </span>
+              <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
+              <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
             </button>
-          </form>
+
+            <section
+              v-if="openingID === item.id"
+              class="panel feedback-admin__detail"
+            >
+              <div v-if="detailLoading" class="empty">正在加载详情...</div>
+              <div v-else-if="!selected || selected.id !== openingID" class="empty">详情加载失败</div>
+              <template v-else>
+                <header class="feedback-admin__detail-head">
+                  <div>
+                    <h3>{{ selected.member_name || selected.display_name || selected.legacy_name || selected.username || '历史用户' }}</h3>
+                    <p class="small muted">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(selected.created_at) }}</p>
+                  </div>
+                  <select aria-label="处理状态" :value="selected.status" :disabled="savingStatus" @change="updateStatus($event.target.value)">
+                    <option v-for="[value, label] in statuses" :key="value" :value="value">{{ label }}</option>
+                  </select>
+                </header>
+
+                <p class="feedback-admin__message">{{ selected.message }}</p>
+                <section v-if="selected.source === 'automatic'" class="feedback-admin__context" aria-label="自动反馈业务概览">
+                  <h3>业务概览</h3>
+                  <dl>
+                    <template v-if="selectedContext.group"><dt>小组</dt><dd>{{ selectedContext.group }}</dd></template>
+                    <template v-if="selectedContext.user"><dt>用户</dt><dd>{{ selectedContext.user }}</dd></template>
+                    <template v-if="selectedContext.action"><dt>动作</dt><dd>{{ selectedContext.action }}</dd></template>
+                    <template v-if="selectedContext.content"><dt>内容</dt><dd>{{ selectedContext.content }}</dd></template>
+                    <template v-if="selectedContext.date"><dt>日期</dt><dd>{{ selectedContext.date }}</dd></template>
+                  </dl>
+                </section>
+                <div v-if="selected.attachments?.length" class="feedback-admin__images">
+                  <a v-for="image in selected.attachments" :key="image.id" :href="image.url" target="_blank" rel="noopener">
+                    <img :src="image.url" :alt="image.original_name" />
+                  </a>
+                </div>
+
+                <section class="feedback-admin__metadata">
+                  <header>
+                    <ShieldCheck :size="17" />
+                    <h3>诊断信息</h3>
+                    <button
+                      v-if="selected.source === 'automatic' && selectedErrorType"
+                      class="quiet feedback-admin__mute"
+                      type="button"
+                      :disabled="settingsSaving"
+                      @click="setErrorTypeMuted(selectedErrorType, !selectedErrorMuted)"
+                    >
+                      <VolumeX :size="15" />
+                      {{ selectedErrorMuted ? '取消静默此类错误' : '静默此类错误' }}
+                    </button>
+                  </header>
+                  <dl>
+                    <dt>Log ID</dt><dd class="feedback-admin__log-id">{{ selected.log_id || '未记录' }}</dd>
+                    <dt>账号</dt><dd>{{ selected.username || '历史记录未绑定账号' }}<template v-if="selected.user_id"> (#{{ selected.user_id }})</template></dd>
+                    <dt>小组</dt><dd>{{ selected.group_name || '无' }}<template v-if="selected.group_id"> (#{{ selected.group_id }})</template></dd>
+                    <template v-if="Object.keys(technicalDiagnostics).length">
+                      <template v-for="(value, key) in technicalDiagnostics" :key="key">
+                        <dt>{{ diagnosticLabel(key) }}</dt><dd>{{ value }}</dd>
+                      </template>
+                    </template>
+                    <template v-else>
+                      <dt>诊断信息</dt><dd>无</dd>
+                    </template>
+                  </dl>
+                </section>
+
+                <section class="feedback-admin__replies">
+                  <header><CheckCircle2 :size="17" /><h3>处理记录</h3></header>
+                  <div v-if="selected.replies?.length">
+                    <article v-for="item in selected.replies" :key="item.id">
+                      <div><strong>{{ item.admin_display_name || '管理员' }}</strong><small class="muted">{{ formatDate(item.created_at) }}</small></div>
+                      <p>{{ item.message }}</p>
+                    </article>
+                  </div>
+                  <p v-else class="muted">暂无回复。</p>
+                </section>
+
+                <form class="feedback-admin__reply" @submit.prevent="reply">
+                  <label>
+                    <span><MessageSquareReply :size="17" /> 回复用户</span>
+                    <textarea v-model="replyMessage" rows="4" maxlength="2000" placeholder="输入用户可见的回复" />
+                  </label>
+                  <button class="primary" type="submit" :disabled="replying || !replyMessage.trim()">
+                    <Send :size="16" />
+                    {{ replying ? '发送中' : '发送回复' }}
+                  </button>
+                </form>
+              </template>
+            </section>
+          </template>
         </template>
-      </section>
+      </aside>
     </div>
   </section>
 </template>
@@ -487,7 +485,7 @@ onBeforeUnmount(closeItem);
 .feedback-admin__muted-item button { width: 30px; height: 30px; min-height: 30px; padding: 0; }
 .feedback-admin__source-tabs { width: min(420px, 100%); margin-bottom: 14px; }
 .feedback-admin__workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: start; border-top: 1px solid var(--cd-border); }
-.feedback-admin__list { display: contents; }
+.feedback-admin__list { display: grid; min-width: 0; }
 .feedback-admin__list > button { display: grid; width: 100%; min-height: 82px; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--cd-border); border-radius: 0; background: transparent; color: var(--cd-text); text-align: left; box-shadow: none; }
 .feedback-admin__list > button.active { color: var(--cd-primary); }
 .feedback-admin__list > button svg { transition: transform .16s ease; }
