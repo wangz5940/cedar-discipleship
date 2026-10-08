@@ -9,7 +9,7 @@ export function loadBibleBook(id: string): Promise<string[][]> {
   if (!bibleBookReferences.some(book => book[1] === id)) return Promise.reject(new Error('invalid_book'));
   if (!books.has(id)) {
     books.set(id, fetch(`/bible/cuv/${id}.json`).then(async response => {
-      if (!response.ok) throw new Error('bible_load_failed');
+      if (!response.ok) throw Object.assign(new Error('bible_load_failed'), { status: response.status });
       const chapters = await response.json();
       if (!Array.isArray(chapters) || chapters.length !== bibleBookReferences.find(book => book[1] === id)![2]
         || chapters.some(chapter => !Array.isArray(chapter) || chapter.some(text => typeof text !== 'string'))) throw new Error('bible_invalid');

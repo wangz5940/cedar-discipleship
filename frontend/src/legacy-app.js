@@ -7,6 +7,7 @@ import { useAppStateStore } from './stores/appState';
 import { confirmDialog, promptDialog } from './ui/dialog';
 import { resolvedDailyVerse } from './runtime/weekVerse';
 import { dailyVerseTitle } from './runtime/dailyVerseTitle';
+import { loadBibleBook } from './runtime/verseSource';
 import {
   currentCalendarWeekRange,
   currentMonthString,
@@ -1315,6 +1316,25 @@ export function closeViewer() {
 }
 
 export async function openContentTarget(target) {
+  if (target.localBible) {
+    closeViewer();
+    const requestID = viewerRequestID;
+    const context = dataContextKey();
+    let verses;
+    try {
+      const chapters = await loadBibleBook(String(target.localBible.bookId));
+      verses = chapters[target.localBible.chapter - 1];
+    } catch (error) {
+      if (requestID !== viewerRequestID || context !== dataContextKey()) return;
+      if (error.status !== 404) throw error;
+    }
+    if (requestID !== viewerRequestID || context !== dataContextKey()) return;
+    const { localBible, ...fallback } = target;
+    if (verses?.length && verses.every(verse => verse.trim())) {
+      return openContentTarget({ ...fallback, content: verses.map((verse, index) => `${index + 1} ${verse}`).join('\n'), preserveLineBreaks: true });
+    }
+    return openContentTarget(fallback);
+  }
   const title = target.title || target.label || '阅读内容';
   const inlineContent = String(target.content || '').trim();
   if (inlineContent) {
@@ -2212,6 +2232,8 @@ function getDailyScripturePlans(date = state.selectedDate) {
     url: scriptureChapterURL(template, chapter.bookId, chapter.bookName, chapter.chapter),
     type: cfg.type || 'iframe',
     taskType: 'daily_scripture',
+    ...(template === 'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm'
+      ? { localBible: { bookId: chapter.bookId, chapter: chapter.chapter } } : {}),
   }));
 }
 
