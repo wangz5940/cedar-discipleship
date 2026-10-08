@@ -39,7 +39,6 @@ import {
   pdfViewerSinglePage,
   resolvePdfPageRange,
   sameOriginAPIPath,
-  scriptureChapterURL,
   shouldRenderWeeklyTask,
   weeklyTitleFromContent,
 } from './runtime/content';
@@ -2200,23 +2199,20 @@ function getDailyScripturePlans(date = state.selectedDate) {
   );
   if (cfg.enabled === false) return [];
   const chapters = scriptureChaptersForDate(cfg, date);
-  const template = cfg.url_template || 'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm';
-  const local = template === 'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm';
   return chapters.map((chapter) => ({
     ...chapter,
     label: `${chapter.bookName} ${numberToChinese(chapter.chapter)}章`,
     title: `${chapter.bookName} ${numberToChinese(chapter.chapter)}章`,
-    url: local ? `/bible/cuv/${chapter.bookId}.json` : scriptureChapterURL(template, chapter.bookId, chapter.bookName, chapter.chapter),
-    type: cfg.type || 'iframe',
+    url: `/bible/cuv/${chapter.bookId}.json`,
+    type: 'markdown',
     taskType: 'daily_scripture',
-    ...(local
-      ? { localBible: { bookId: chapter.bookId, chapter: chapter.chapter } } : {}),
+    localBible: { bookId: chapter.bookId, chapter: chapter.chapter },
   }));
 }
 
 function dailyScriptureReadingLinks() {
   const plans = getDailyScripturePlans();
-  if (plans.length < 2 || !plans[0].localBible) return plans;
+  if (plans.length < 2) return plans;
   const first = plans[0];
   const last = plans.at(-1);
   const title = first.bookId !== last.bookId

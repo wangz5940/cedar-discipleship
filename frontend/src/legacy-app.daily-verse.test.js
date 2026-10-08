@@ -184,11 +184,12 @@ it('does not replace local network errors with an external reader', async () => 
   expect(useContentViewerStore().viewer).toBeNull();
 });
 
-it('preserves a custom daily scripture source', async () => {
-  const task = await configureScripture('创世记', '1', 1, { url_template: 'https://example.com/{book_id}/{chapter}' });
+it('uses local scripture even if an old configuration contains a source template', async () => {
+  const task = await configureScripture('哥林多前书', '46', 5, { url_template: 'https://example.com/{book_id}/{chapter}' });
+  expect(task.contentLinks[0].url).toBe('/bible/cuv/46.json');
   await openTaskContent(task);
-  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://example.com/1/1' });
-  expect(fetch.mock.calls.some(([url]) => String(url).startsWith('/bible/'))).toBe(false);
+  expect(useContentViewerStore().viewer).toMatchObject({ type: 'markdown', externalURL: '' });
+  expect(useContentViewerStore().viewer.html).toContain('第一节原文');
 });
 
 it('opens local scripture through the separate reading entry', async () => {
