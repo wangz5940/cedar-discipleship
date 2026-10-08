@@ -522,9 +522,9 @@ const devotionContentType = computed(() => inferDailyDevotionContentType(
   devotionAsset.value,
 ));
 const customDevotionPath = computed(() => (
-  [...configuredDailyPlans.value].reverse().find((plan) => plan.path)?.path
-  || devotion.value.custom_path
+  devotion.value.custom_path
   || devotionPath.value
+  || [...configuredDailyPlans.value].reverse().find((plan) => plan.path)?.path
   || ''
 ));
 const selectedDailyPlanPath = computed(() => selectedDailyPlan.value.path || customDevotionPath.value);
