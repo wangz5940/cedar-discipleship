@@ -118,13 +118,6 @@
   font-size: 12px;
 }
 
-.group-switcher__current {
-  max-width: min(220px, 40vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .app-page-header__logout {
   height: 36px;
   padding: 0 12px;

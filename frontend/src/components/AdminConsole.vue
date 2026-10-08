@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, provide, ref, watch } from 'vue';
 import { loadOvcmCourses, ovcmLessonURL } from '../runtime/ovcmCourses';
 import { storeToRefs } from 'pinia';
-import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from '@lucide/vue';
+import { ChevronRight, Plus, Trash2 } from '@lucide/vue';
 import { alertDialog, confirmDialog, promptDialog } from '../ui/dialog';
 import { useAppStateStore } from '../stores/appState';
 import { lazyPage } from '../ui/lazyPage';
@@ -35,6 +35,7 @@ import AppOverlay from './ui/AppOverlay.vue';
 import BibleVersePicker from './BibleVersePicker.vue';
 import { cleanVerseSource } from '../runtime/verseSource';
 import LearningConfigSection from './ui/LearningConfigSection.vue';
+import ConfiguredPlanList from './ui/ConfiguredPlanList.vue';
 import {
   api,
   addWeekBinding,
@@ -104,7 +105,6 @@ const studyWeeksImportInput = ref(null);
 const localBackupImportInput = ref(null);
 const notificationSaving = ref(false);
 const dailyPlanDate = ref(todayString());
-const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
 const verseConfigMode = ref('daily');
 const dailyVersePicker = ref(null);
@@ -328,11 +328,6 @@ async function deleteVersePlan() {
 const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const devotionPlanMode = computed(() => dailyDevotionPlanMode(devotion.value));
 const configuredDailyPlans = computed(() => dailyDevotionPlans(devotion.value));
-const visibleConfiguredDailyPlans = computed(() => (
-  dailyPlansExpanded.value
-    ? configuredDailyPlans.value
-    : configuredDailyPlans.value.slice(-3)
-));
 const selectedDailyPlan = computed(() => {
   const existing = dailyDevotionPlanForDate(
     { ...devotion.value, plan_mode: 'custom' },
@@ -356,10 +351,6 @@ const selectedDailyPlanExists = computed(() => configuredDailyPlans.value.some(
 watch(activeGroup, (group) => {
   groupEditName.value = group?.name || '';
 }, { immediate: true });
-watch(currentGroupID, () => {
-  dailyPlansExpanded.value = false;
-
-});
 
 function groupSaveErrorMessage(message) {
   return {
@@ -1082,26 +1073,9 @@ async function runLocalBackupImport() {
                           <button :disabled="!canEditLearning" type="button" @click="saveDailyPlan">保存当天计划</button>
                           <button class="danger" :disabled="!canEditLearning || !selectedDailyPlanExists" type="button" @click="deleteDailyPlan">删除当天计划</button>
                         </div>
-                        <div v-if="configuredDailyPlans.length" class="daily-plan-list">
-                          <div class="daily-plan-list-header">
-                            <span class="admin-field-label">已配置日期</span>
-                            <button
-                              v-if="configuredDailyPlans.length > 3"
-                              class="ghost daily-plan-list-toggle"
-                              type="button"
-                              :aria-expanded="dailyPlansExpanded"
-                              @click="dailyPlansExpanded = !dailyPlansExpanded"
-                            >
-                              <ChevronUp v-if="dailyPlansExpanded" :size="15" />
-                              <ChevronDown v-else :size="15" />
-                              {{ dailyPlansExpanded ? '收起' : `展开全部（${configuredDailyPlans.length}）` }}
-                            </button>
-                          </div>
-                          <button v-for="plan in visibleConfiguredDailyPlans" :key="plan.date" :class="{ active: plan.date === dailyPlanDate }" type="button" @click="selectDailyPlanDate(plan.date)">
-                            <span><b>{{ plan.date }}</b><small>{{ plan.title || toChineseMonthDay(plan.date) }}</small></span>
-                            <ChevronRight :size="16" />
-                          </button>
-                        </div>
+                        <ConfiguredPlanList :key="currentGroupID" :plans="configuredDailyPlans" :selected-date="dailyPlanDate" title="已配置日期" @select="selectDailyPlanDate">
+                          <template #default="{ plan }">{{ plan.title || toChineseMonthDay(plan.date) }}</template>
+                        </ConfiguredPlanList>
                       </div>
                     </div>
                   </LearningConfigSection>
@@ -1141,10 +1115,9 @@ async function runLocalBackupImport() {
                       <button class="primary" :disabled="!canEditLearning || !verseText.trim() || verseSaving" type="button" @click="saveVersePlan">保存每日背经</button>
                       <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除所选背经</button>
                     </div>
-                    <div v-if="versePlans.length" class="daily-plan-list">
-                      <span class="admin-field-label">已配置背经</span>
-                      <button v-for="plan in versePlans" :key="plan.date" :class="{ active: plan.date === versePlanDate }" type="button" @click="versePlanDate = plan.date"><span><b>{{ plan.date }}{{ plan.end_date && plan.end_date !== plan.date ? ` 至 ${plan.end_date}` : '' }}</b><small>{{ dailyVerseTitle(plan.recite_text) || plan.verse_ref }}</small></span><ChevronRight :size="16" /></button>
-                    </div>
+                    <ConfiguredPlanList :key="currentGroupID" :plans="versePlans" :selected-date="versePlanDate" title="已配置背经" @select="versePlanDate = $event">
+                      <template #default="{ plan }">{{ dailyVerseTitle(plan.recite_text) || plan.verse_ref }}</template>
+                    </ConfiguredPlanList>
                   </div>
                   <div v-if="weekDraft" v-show="verseConfigMode === 'weekly'" class="form-stack admin-form-grid">
                     <label class="admin-field"><span class="admin-field-label">选择周</span><select aria-label="背经所在周" :value="weekDraft.id || 0" @change="selectWeekDraft(Number($event.target.value || 0))"><option v-for="week in weeks" :key="week.id" :value="week.id">{{ weekOptionText(week) }}</option><option v-if="!weekDraft.id" value="0">新建周任务</option></select></label>
@@ -1403,23 +1376,6 @@ async function runLocalBackupImport() {
 .devotion-paired-grid select, .scripture-paired-grid select { width: 100%; min-width: 0; padding-inline: 8px; }
 .admin-checkbox-row.daily-config-toggle-row {
   grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
-}
-.daily-plan-list-header {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 2px;
-}
-.daily-plan-list-toggle {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 8px;
-  font-size: 12px;
-  white-space: nowrap;
 }
 @media (max-width: 767px) {
   .admin-wrapper .admin-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: 0; padding: 6px; }

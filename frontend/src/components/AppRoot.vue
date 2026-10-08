@@ -391,7 +391,7 @@ async function refreshResources() {
     <div class="main">
       <!-- Content Area -->
       <main class="content">
-        <div v-if="!showGroupPicker && (pageTitle || groups.length || activeGroup)" class="app-content-toolbar">
+        <div v-if="!showGroupPicker && (pageTitle || groups.length > 1)" class="app-content-toolbar">
           <h1 v-if="pageTitle" class="app-page-title">{{ pageTitle }}</h1>
           <GroupSwitcher
             :groups="groups"
