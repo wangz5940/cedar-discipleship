@@ -57,6 +57,18 @@ describe('content runtime helpers', () => {
         bookId: '1', chapter: 1, startVerse: 1, endVerse: 1,
       },
     });
+    expect(buildWeeklyVerseContentLink('诗121:4-6', '诗121： 4-6')).toEqual({
+      label: '查看原文',
+      title: '诗121:4-6',
+      type: 'markdown',
+      url: '/bible/cuv/19.json',
+      localBibleVerse: {
+        bookId: '19', chapter: 121, startVerse: 4, endVerse: 6,
+      },
+    });
+    expect(buildWeeklyVerseContentLink('诗121:4-6', '诗121:1-3')).toMatchObject({
+      content: '诗121:1-3',
+    });
     expect(buildWeeklyVerseContentLink('未识别的经文', '')).toBeNull();
     expect(buildWeeklyVerseContentLink('彼得后书 4:1', '')).toBeNull();
     expect(buildWeeklyVerseContentLink('罗马书 8:15-11', '')).toBeNull();

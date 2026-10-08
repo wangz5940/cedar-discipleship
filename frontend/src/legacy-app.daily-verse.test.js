@@ -142,6 +142,47 @@ it('opens a legacy weekly reference from the bundled Bible without changing comp
   expect(currentTaskOptions()).toEqual(before);
 });
 
+it('resolves a reference-only daily plan from the bundled Bible for reading and recitation', async () => {
+  const originalPlans = [...plans];
+  try {
+    await logout({ remote: false });
+    plans.splice(0, plans.length, {
+      date: '2026-09-22',
+      verse_ref: '诗121:4-6',
+      recite_text: '诗121： 4-6',
+    });
+    const originalFetch = fetch.getMockImplementation();
+    const psalms = JSON.parse(readFileSync(new URL('../public/bible/cuv/19.json', import.meta.url), 'utf8'));
+    fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/19.json'
+      ? Promise.resolve(Response.json(psalms)) : originalFetch(url, options));
+    await login('test', 'test');
+    await setSelectedDate('2026-09-22');
+
+    const task = currentTaskOptions().find(item => item.type === 'daily_verse');
+    expect(task).toMatchObject({
+      title: '诗121:4-6',
+      reciteText: '诗121： 4-6',
+      localBibleVerse: {
+        bookId: '19', chapter: 121, startVerse: 4, endVerse: 6,
+      },
+    });
+    expect(task.contentLinks[0]).toMatchObject({
+      type: 'markdown',
+      url: '/bible/cuv/19.json',
+      localBibleVerse: task.localBibleVerse,
+    });
+    const before = currentTaskOptions();
+    await openTaskContent(task);
+
+    expect(useContentViewerStore().viewer.html).toContain('诗121:4');
+    expect(useContentViewerStore().viewer.html).toContain('保护以色列的，也不打盹也不睡觉');
+    expect(useContentViewerStore().viewer.html).toContain('白日，太阳必不伤你');
+    expect(currentTaskOptions()).toEqual(before);
+  } finally {
+    plans.splice(0, plans.length, ...originalPlans);
+  }
+});
+
 it('keeps independent weekly recitation completed across dates without duplicating daily tasks', async () => {
   const originalPlans = [...plans];
   try {

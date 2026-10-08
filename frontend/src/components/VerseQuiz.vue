@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { api } from '../legacy-app';
+import { loadBibleBook, selectedVerseText } from '../runtime/verseSource';
 import { createVerseBlanks, gradeVersePaper, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 import VerseGradingDetails from './VerseGradingDetails.vue';
 
@@ -13,6 +14,7 @@ const defaultRate = computed(() => {
 });
 const examRate = ref(100);
 const originalText = ref('');
+const originalLoading = ref(false);
 const examText = ref('');
 const originVisible = ref(true);
 const blankIndexes = ref([]);
@@ -75,6 +77,7 @@ const targetParams = computed(() => dailyVerse.value
 const key = computed(() => `verse-quiz:${props.scope || 'user'}:${selectedUserID.value}:${dailyVerse.value ? `daily_verse:${props.task?.periodStart || props.task?.logicalDate}:${props.task?.title}` : (props.task?.weekID || props.task?.taskID || '')}`);
 const legacyKey = computed(() => `verse-quiz:${props.scope || 'user'}:${props.task?.weekID || props.task?.taskID || ''}`);
 let reviewRequest = 0;
+let originalRequest = 0;
 watch(() => [props.open, key.value], () => {
   reviewRequest++;
   reviewedRecord.value = null;
@@ -131,12 +134,49 @@ async function loadRecords() {
   }
 }
 
-watch(() => [props.open, props.task?.taskID, props.task?.type, props.task?.logicalDate, props.scope], () => {
-  if (!props.open) return;
+async function loadOriginalText(reference, request, openedKey) {
+  originalLoading.value = true;
+  try {
+    const chapters = await loadBibleBook(String(reference.bookId));
+    const content = selectedVerseText(
+      String(reference.bookId),
+      Number(reference.chapter),
+      chapters[Number(reference.chapter) - 1] || [],
+      Number(reference.startVerse),
+      Number(reference.endVerse),
+    );
+    if (!content) throw new Error('bible_invalid');
+    if (request === originalRequest && props.open && key.value === openedKey) originalText.value = content;
+  } catch {
+    if (request === originalRequest && props.open && key.value === openedKey) {
+      message.value = '本地圣经原文加载失败，请关闭后重试。';
+    }
+  } finally {
+    if (request === originalRequest && key.value === openedKey) originalLoading.value = false;
+  }
+}
+
+watch(() => [
+  props.open,
+  props.task?.taskID,
+  props.task?.type,
+  props.task?.logicalDate,
+  props.scope,
+  props.task?.localBibleVerse?.bookId,
+  props.task?.localBibleVerse?.chapter,
+  props.task?.localBibleVerse?.startVerse,
+  props.task?.localBibleVerse?.endVerse,
+], () => {
+  const request = ++originalRequest;
+  if (!props.open) {
+    originalLoading.value = false;
+    return;
+  }
   selectedUserID.value = Number(props.userId || 0);
   rate.value = defaultRate.value;
   examRate.value = defaultRate.value;
-  originalText.value = String(props.task?.reciteText || '').trim();
+  const reference = props.task?.localBibleVerse;
+  originalText.value = reference ? '' : String(props.task?.reciteText || '').trim();
   examText.value = '';
   originVisible.value = true;
   blankIndexes.value = [];
@@ -149,6 +189,7 @@ watch(() => [props.open, props.task?.taskID, props.task?.type, props.task?.logic
   syncError.value = false;
   loadLocalHistory();
   loadRecords();
+  if (reference) loadOriginalText(reference, request, key.value);
 }, { immediate: true });
 
 function changeMember(event) {
@@ -166,6 +207,10 @@ function changeMember(event) {
 }
 
 function generate() {
+  if (originalLoading.value) {
+    message.value = '本地圣经原文正在加载，请稍候。';
+    return;
+  }
   const text = originalText.value.trim();
   if (!text) {
     message.value = '请先输入或配置要默写的原文。';
@@ -270,13 +315,13 @@ async function grade() {
         </div>
         <div v-if="originVisible" class="recite-origin-panel">
           <label for="recite-origin-text">默写原文</label>
-          <textarea id="recite-origin-text" v-model="originalText" placeholder="粘贴要默写的原文，或在管理员学习配置里填写“默写原文”。"></textarea>
+          <textarea id="recite-origin-text" v-model="originalText" :readonly="originalLoading" :placeholder="originalLoading ? '正在读取本地圣经原文…' : '粘贴要默写的原文，或在管理员学习配置里填写“默写原文”。'"></textarea>
         </div>
         <div class="recite-controls">
           <label>挖空比例 <input v-model.number="rate" type="number" min="0" max="100" step="1" />%</label>
-          <button type="button" :disabled="saving" @click="generate">生成默写卷</button>
-          <button type="button" :disabled="saving" @click="grade">批改打分</button>
-          <button type="button" class="danger" :disabled="saving" @click="reset">重置</button>
+          <button type="button" :disabled="saving || originalLoading" @click="generate">生成默写卷</button>
+          <button type="button" :disabled="saving || originalLoading" @click="grade">批改打分</button>
+          <button type="button" class="danger" :disabled="saving || originalLoading" @click="reset">重置</button>
         </div>
         <div class="recite-result">
           <template v-for="(token, index) in tokens" :key="index">

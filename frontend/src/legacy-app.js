@@ -1766,6 +1766,7 @@ export function currentTaskOptions() {
       summary: dailyVerse.completion_mode === 'weekly' ? '整周完成一次' : '每日背经',
       periodStart: dailyVerse.completion_mode === 'weekly' ? dailyVerse.date : '',
       periodEnd: dailyVerse.end_date || dailyVerse.date, reciteText: dailyVerse.recite_text || '',
+      ...(link?.localBibleVerse ? { localBibleVerse: link.localBibleVerse } : {}),
       defaultBlankRate: dailyConfig.verse?.default_blank_rate ?? 100,
       contentURL: '', contentLinks: link ? [link] : [],
     });
@@ -1817,6 +1818,8 @@ export function currentTaskOptions() {
   if (enabledFlag(week.verse_enabled) && verseTask?.id) {
     const verseTitle = week.verse_ref || verseTask?.title || '本周背经';
     const verseLink = buildWeeklyVerseContentLink(verseTitle, verseTask.content || week.recite_text);
+    const reciteText = week.recite_text || verseTask.content || '';
+    const reciteLink = buildWeeklyVerseContentLink(verseTitle, reciteText);
     tasks.push({
       type: verseTask.task_type,
       taskID: Number(verseTask?.id || 0),
@@ -1828,7 +1831,8 @@ export function currentTaskOptions() {
       part: '',
       detail: verseTitle,
       summary: '整周完成一次',
-      reciteText: week.recite_text || verseTask.content || '',
+      reciteText,
+      ...(reciteLink?.localBibleVerse ? { localBibleVerse: reciteLink.localBibleVerse } : {}),
       defaultBlankRate: dailyConfig.verse?.default_blank_rate ?? 100,
       contentURL: '',
       contentLinks: verseLink ? [verseLink] : [],
