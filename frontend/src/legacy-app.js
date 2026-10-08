@@ -1331,7 +1331,15 @@ export async function openContentTarget(target) {
     if (requestID !== viewerRequestID || context !== dataContextKey()) return;
     const { localBible, ...fallback } = target;
     if (verses?.length && verses.every(verse => verse.trim())) {
-      return openContentTarget({ ...fallback, content: verses.map((verse, index) => `${index + 1} ${verse}`).join('\n'), preserveLineBreaks: true });
+      state.viewer = {
+        type: 'markdown', title: target.title || target.label || '每日读经', scripture: true,
+        html: verses.map((verse, index) => `<p class="bible-verse" id="verse-${index + 1}"><sup class="bible-verse-number">${index + 1}</sup> ${escapeHTML(verse)}</p>`).join(''),
+        sourceURL: '', downloadURL: '', downloadSource: 'learning',
+        originalName: '', externalURL: '', relatedSections: [],
+      };
+      syncViewerStore();
+      render();
+      return;
     }
     return openContentTarget(fallback);
   }

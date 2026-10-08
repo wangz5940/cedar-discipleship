@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { closeCalendar, closeViewer, openMemberCalendar, currentTaskOptions, login, logout, openTaskContent, setSelectedDate, toggleCheckin } from './legacy-app';
@@ -167,8 +168,8 @@ it('opens local scripture through the combined daily entry without changing comp
   const before = currentTaskOptions();
   await openTaskContent(task, task.contentLinks[0]);
   expect(useContentViewerStore().viewer).toMatchObject({ type: 'markdown', title: '哥林多前书 五章', externalURL: '' });
-  expect(useContentViewerStore().viewer.html).toContain('1 第一节原文');
-  expect(useContentViewerStore().viewer.html).toContain('2 第二节原文');
+  expect(useContentViewerStore().viewer.html).toContain('>1</sup> 第一节原文');
+  expect(useContentViewerStore().viewer.html).toContain('>2</sup> 第二节原文');
   expect(currentTaskOptions()).toEqual(before);
 });
 
@@ -219,4 +220,21 @@ it('falls back for an absent chapter and ignores a late load after closing', asy
   expect(useContentViewerStore().viewer).toBeNull();
   await openTaskContent(task);
   expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/03/1.htm' });
+});
+
+
+it('keeps each Luke 22 verse separate when a quotation spans multiple verses', async () => {
+  const book = JSON.parse(readFileSync(new URL('../public/bible/cuv/42.json', import.meta.url), 'utf8'));
+  const originalFetch = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/42.json'
+    ? Promise.resolve(Response.json(book)) : originalFetch(url, options));
+  const task = await configureScripture('路加福音', '42', 22);
+  await openTaskContent(task);
+  const viewer = useContentViewerStore().viewer;
+  expect(viewer).toMatchObject({ type: 'markdown', scripture: true, title: '路加福音 二十二章' });
+  expect(viewer.html.match(/<p class="bible-verse"/g)).toHaveLength(71);
+  expect(viewer.html).toContain('id="verse-11"><sup class="bible-verse-number">11</sup> 对那家的主人说');
+  expect(viewer.html).toContain('id="verse-12"><sup class="bible-verse-number">12</sup> 他必指给你们');
+  expect(viewer.html).not.toContain('viewer-quote');
+  expect(viewer.html).not.toContain('<strong');
 });

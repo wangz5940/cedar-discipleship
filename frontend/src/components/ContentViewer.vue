@@ -135,7 +135,9 @@ function openCurrentInNewWindow() {
   const popup = window.open('about:blank', '_blank');
   if (popup) popup.opener = null;
   if (viewer.value.type === 'markdown' && viewer.value.html) {
-    const documentHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeStandaloneText(viewer.value.title)}</title><style>body{max-width:760px;margin:0 auto;padding:clamp(24px,6vw,64px) 20px 72px;color:#192029;background:#fff;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:20px;line-height:1.9;text-align:justify}h1,h2,h3,h4{line-height:1.45;text-align:left}p{margin:0 0 1.15em}blockquote{margin:1.2em 0;padding:8px 16px;border-left:4px solid #23416a;background:#e5e8ed}a{color:#23416a}@media(max-width:600px){body{font-size:19px;padding:28px 18px 64px}}</style></head><body><h1>${escapeStandaloneText(viewer.value.title)}</h1>${viewer.value.html}</body></html>`;
+    const scriptureStyle = viewer.value.scripture
+      ? `body{font-size:${readerFontSize.value}px;line-height:${readerLineHeight.value};text-align:left}p{margin:0}sup{font-size:.75em;line-height:0;vertical-align:super;color:#b3423e;font-weight:600;margin-right:.25em}` : '';
+    const documentHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeStandaloneText(viewer.value.title)}</title><style>body{max-width:760px;margin:0 auto;padding:clamp(24px,6vw,64px) 20px 72px;color:#192029;background:#fff;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:20px;line-height:1.9;text-align:justify}h1,h2,h3,h4{line-height:1.45;text-align:left}p{margin:0 0 1.15em}blockquote{margin:1.2em 0;padding:8px 16px;border-left:4px solid #23416a;background:#e5e8ed}a{color:#23416a}@media(max-width:600px){body{font-size:19px;padding:28px 18px 64px}}${scriptureStyle}</style></head><body><h1>${escapeStandaloneText(viewer.value.title)}</h1>${viewer.value.html}</body></html>`;
     const objectURL = URL.createObjectURL(new Blob([documentHTML], { type: 'text/html;charset=utf-8' }));
     if (popup) popup.location.replace(objectURL);
     else window.open(objectURL, '_blank', 'noopener,noreferrer');
@@ -316,6 +318,7 @@ function openAdjacentItem(item) {
           <div
             v-if="viewer.type === 'markdown'"
             class="viewer-markdown"
+            :class="{ 'viewer-scripture': viewer.scripture }"
             :style="readerStyle"
             v-html="viewer.html"
           ></div>
@@ -405,6 +408,9 @@ function openAdjacentItem(item) {
 .viewer-main-pager button { min-height: 44px; }
 .viewer-open-link { display: inline-flex; align-items: center; gap: 6px; }
 .viewer-markdown { max-width: 760px; margin-inline: auto; width: 100%; }
+.viewer-markdown.viewer-scripture { font-family: var(--cd-font-sans); text-align: left; }
+.viewer-scripture :deep(.bible-verse) { margin: 0; }
+.viewer-scripture :deep(.bible-verse-number) { font-size: .75em; line-height: 0; vertical-align: super; color: var(--cd-danger); font-weight: 600; margin-right: .25em; }
 .reader-progress-label { display: inline-flex; min-height: 44px; align-items: center; margin-left: auto; color: var(--cd-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 :global(.viewer-modal .app-overlay__footer) { align-items: center; }
 .reader-footer-progress { flex: 1 1 auto; height: 4px; overflow: hidden; border-radius: 999px; background: var(--cd-primary-soft); }
