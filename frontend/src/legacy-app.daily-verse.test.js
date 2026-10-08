@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { closeCalendar, closeViewer, openMemberCalendar, currentTaskOptions, login, logout, openTaskContent, setSelectedDate, toggleCheckin } from './legacy-app';
 import { useAppStateStore } from './stores/appState';
 import { useContentViewerStore } from './stores/contentViewer';
+import { bibleBookReferences } from './runtime/content';
+import * as verseSource from './runtime/verseSource';
 
 let checkinMode;
 let records;
@@ -283,4 +285,20 @@ it('keeps an absent chapter separate and merges the remaining local chapters', a
   expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/04/1.htm' });
   await openTaskContent(task, task.contentLinks[1]);
   expect(useContentViewerStore().viewer.html).toContain('第3章原文');
+});
+
+it('shows only the first and last book chapters for a cross-book local reader', async () => {
+  vi.spyOn(verseSource, 'loadBibleBook').mockImplementation(async id => JSON.parse(readFileSync(new URL(`../public/bible/cuv/${id}.json`, import.meta.url), 'utf8')));
+  const task = await configureScripture('创世记', '1', 1, {
+    chapters_per_day: 1189,
+    books: bibleBookReferences.map(([book, book_id, chapters]) => ({ book, book_id, chapters })),
+  });
+  expect(task.contentLinks).toHaveLength(1);
+  expect(task.contentLinks[0].label).toBe('创世记 一至启示录二十二章');
+  await openTaskContent(task);
+  const viewer = useContentViewerStore().viewer;
+  expect(viewer.title).toBe('创世记 一至启示录二十二章');
+  expect(viewer.html.match(/<h2>/g)).toHaveLength(1189);
+  expect(viewer.html).toContain('<h2>出埃及记 一章</h2>');
+  expect(viewer.html).toContain('<h2>启示录 二十二章</h2>');
 });

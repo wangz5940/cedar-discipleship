@@ -2275,7 +2275,11 @@ function dailyScriptureReadingLinks() {
     if (last?.bookId === plan.bookId && last.end + 1 === plan.chapter) last.end = plan.chapter;
     else labels.push({ bookId: plan.bookId, bookName: plan.bookName, start: plan.chapter, end: plan.chapter });
   }
-  const title = labels.map(item => `${item.bookName} ${numberToChinese(item.start)}${item.end !== item.start ? `至${numberToChinese(item.end)}` : ''}章`).join(' / ');
+  const first = available[0];
+  const last = available.at(-1);
+  const title = labels.length > 1 && first.bookId !== last.bookId
+    ? `${first.bookName} ${numberToChinese(first.chapter)}至${last.bookName}${numberToChinese(last.chapter)}章`
+    : labels.map(item => `${item.bookName} ${numberToChinese(item.start)}${item.end !== item.start ? `至${numberToChinese(item.end)}` : ''}章`).join(' / ');
   const combined = { ...available[0], title, label: title, localBible: { chapters: available } };
   return plans.flatMap(plan => available.includes(plan) ? (plan === available[0] ? [combined] : []) : [plan]);
 }
