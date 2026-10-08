@@ -155,8 +155,8 @@ function closeItem() {
 }
 
 function toggleItem(id) {
-  if (openingID.value === id) closeItem();
-  else void openItem(id);
+  if (openingID.value === id && !unread.ownIDs.includes(id)) closeItem();
+  else return openItem(id);
 }
 
 async function attachmentPreviews(detail, request) {
