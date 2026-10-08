@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +22,8 @@ import (
 func TestStreamRejectsAsBeforeAndAggregatesTrustedFailures(t *testing.T) {
 	for _, reason := range []string{"expired", "session", "forged"} {
 		t.Run(reason, func(t *testing.T) {
+			var output bytes.Buffer
+			useDiagnosticTestLogger(t, logctx.NewHandler(slog.NewTextHandler(&output, nil)))
 			repo := &feedbackHandlerRepository{settings: feedbackdomain.AutomaticSettings{Enabled: true}}
 			service := feedbackdomain.NewService(repo, &feedbackHandlerStorage{})
 			reporter := newAutomaticFeedbackReporter(service)
@@ -51,7 +55,21 @@ func TestStreamRejectsAsBeforeAndAggregatesTrustedFailures(t *testing.T) {
 				if len(reporter.queue) != 0 {
 					t.Fatal("forged signature created feedback")
 				}
+				if output.Len() != 0 {
+					t.Fatal("forged signature should not create trusted failure diagnostics")
+				}
 				return
+			}
+			stage := "playback_link_expired"
+			if reason == "session" {
+				stage = "playback_cookie_missing"
+			}
+			if !strings.Contains(output.String(), stage) ||
+				!strings.Contains(output.String(), "0123456789abcdef0123456789abcdef") {
+				t.Fatalf("missing correlated failure stage: %s", &output)
+			}
+			if strings.Contains(output.String(), signature) || strings.Contains(output.String(), "?") {
+				t.Fatal("playback credentials leaked into logs")
 			}
 			if len(reporter.queue) != 1 {
 				t.Fatalf("queued %d reports for one storm", len(reporter.queue))

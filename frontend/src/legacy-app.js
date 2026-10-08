@@ -62,6 +62,7 @@ import {
   reportAutomaticFeedback,
   shouldReportAPIError,
 } from './runtime/errorFeedback';
+import { startRequestDiagnostics } from './runtime/requestDiagnostics';
 import {
   isResourceFileAllowed,
   mergeResourceAssets,
@@ -372,6 +373,7 @@ export async function api(path, options = {}) {
   if (requestOptions.body && !isFormData && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   const requestPath = `/api${path}`;
   const requestMethod = String(requestOptions.method || 'GET').toUpperCase();
+  const requestDiagnostics = startRequestDiagnostics();
   let res;
   try {
     res = await fetch(requestPath, { ...requestOptions, headers, credentials: 'same-origin' });
@@ -387,6 +389,7 @@ export async function api(path, options = {}) {
       requestMethod,
       requestPath,
       logID,
+      requestDiagnostics: requestDiagnostics(),
     }));
     throw error;
   }
@@ -416,6 +419,7 @@ export async function api(path, options = {}) {
         status: res.status,
         errorCode: error.code,
         logID: error.logID,
+        requestDiagnostics: requestDiagnostics(res),
       }));
     }
     throw error;
@@ -467,6 +471,7 @@ export async function fetchWithAuth(url, options = {}) {
   const logID = requestLogID(explicitLogID);
   const requestPath = String(url);
   const requestMethod = String(requestOptions.method || 'GET').toUpperCase();
+  const requestDiagnostics = startRequestDiagnostics();
   let res;
   try {
     res = await fetch(url, {
@@ -486,6 +491,7 @@ export async function fetchWithAuth(url, options = {}) {
       requestMethod,
       requestPath,
       logID,
+      requestDiagnostics: requestDiagnostics(),
     }));
     throw error;
   }
@@ -511,6 +517,7 @@ export async function fetchWithAuth(url, options = {}) {
       requestPath,
       status: res.status,
       logID: error.logID,
+      requestDiagnostics: requestDiagnostics(res),
     }));
   }
   return res;

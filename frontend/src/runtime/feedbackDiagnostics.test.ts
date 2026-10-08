@@ -21,7 +21,15 @@ describe('feedback diagnostics', () => {
       innerHeight: 844,
       screen: { width: 430, height: 932 },
     });
-    vi.stubGlobal('document', { visibilityState: 'visible' });
+    vi.stubGlobal('document', {
+      visibilityState: 'visible',
+      querySelector: () => ({ textContent: '  打卡  ' }),
+      querySelectorAll: () => [
+        { src: 'https://user:secret@cdn.example.test/player.js?token=private#secret' },
+        { src: 'https://cedar.example.test/assets/index.js' },
+        { src: 'data:text/javascript,private' },
+      ],
+    });
     vi.stubGlobal('navigator', {
       userAgent: 'Example Browser',
       language: 'zh-CN',
@@ -43,6 +51,20 @@ describe('feedback diagnostics', () => {
       screen: '430x932',
       client_time: expect.stringMatching(/Z$/),
       network_online: 'true',
+      visibility_state: 'visible',
+      page_title: '打卡',
+      script_sources: 'https://cdn.example.test/player.js\nhttps://cedar.example.test/assets/index.js',
+    });
+
+    vi.stubGlobal('document', {
+      visibilityState: 'visible',
+      querySelector: () => { throw new Error('DOM unavailable'); },
+      querySelectorAll: () => { throw new Error('DOM unavailable'); },
+    });
+    expect(collectFeedbackDiagnostics('feedback')).toMatchObject({
+      page_title: '',
+      script_sources: '',
+      action_context: 'feedback',
       visibility_state: 'visible',
     });
   });

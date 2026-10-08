@@ -2,6 +2,7 @@ import {
   authHeaders, authSessionGeneration, csrfToken, getAccessToken, refreshAccessSession,
 } from './authSession';
 import { collectFeedbackDiagnostics, isLoopbackHostname } from './feedbackDiagnostics';
+import type { RequestDiagnostics } from './requestDiagnostics';
 import {
   createLogID,
   latestLogID,
@@ -24,6 +25,7 @@ type ErrorContext = {
   line?: number;
   column?: number;
   eventTarget?: string;
+  requestDiagnostics?: RequestDiagnostics;
 };
 
 type ReportableError = Error & {
@@ -270,9 +272,16 @@ export async function reportAutomaticFeedback(
       recent_log_id: errorLogID,
       error_name: errorName,
       error_message: errorMessage,
-      error_stack: limited(error.stack, 4096),
+      error_stack: rawError instanceof Error ? limited(rawError.stack, 4096) : '',
+      error_stack_source: rawError instanceof Error && rawError.stack ? 'original' : 'unavailable',
       request_method: requestMethod,
       request_path: requestPath,
+      request_started_at: limited(context.requestDiagnostics?.request_started_at, 64),
+      request_duration_ms: limited(context.requestDiagnostics?.request_duration_ms, 32),
+      request_visibility: limited(context.requestDiagnostics?.request_visibility, 32),
+      response_received: limited(context.requestDiagnostics?.response_received, 8),
+      response_log_id: limited(context.requestDiagnostics?.response_log_id, 32),
+      response_content_type: limited(context.requestDiagnostics?.response_content_type, 128),
       http_status: String(context.status || error.status || ''),
       error_code: errorCode,
       business_action: actionLabel,

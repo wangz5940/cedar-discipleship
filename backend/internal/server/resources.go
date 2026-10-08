@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -51,6 +52,7 @@ func (a *app) handleDownloadAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	settings, err := a.groupLearningConfig(r.Context(), groupID)
 	if err != nil {
+		logBusinessDiagnostic(r, "download_learning_config", err)
 		writeError(w, http.StatusInternalServerError, "learning_config_failed")
 		return
 	}
@@ -131,6 +133,7 @@ func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	if id == 0 || groupID == 0 || expiresAt < time.Now().Unix() || !validSignature {
 		if validSignature && id != 0 && groupID != 0 {
+			logBusinessDiagnostic(r, "playback_link_expired", nil)
 			a.reportPlaybackRejection(r.Context(), groupID, id, "playback_link_expired")
 		}
 		writeError(w, http.StatusForbidden, "invalid_playback_url")
@@ -156,6 +159,7 @@ func (a *app) handleStreamAsset(w http.ResponseWriter, r *http.Request) {
 func (a *app) playbackSessionAllowed(r *http.Request, groupID uint64) bool {
 	cookie, err := r.Cookie(refreshCookieName)
 	if err != nil || cookie.Value == "" {
+		logBusinessDiagnostic(r, "playback_cookie_missing", nil)
 		return false
 	}
 	var userID uint64
@@ -163,10 +167,23 @@ func (a *app) playbackSessionAllowed(r *http.Request, groupID uint64) bool {
 		WHERE token_hash=? AND current_group_id=? AND revoked_at IS NULL AND expires_at>?`,
 		tokenHash(cookie.Value), groupID, time.Now().UTC()).Scan(&userID)
 	if err != nil {
+		stage := "playback_session_lookup"
+		if errors.Is(err, sql.ErrNoRows) {
+			stage = "playback_session_inactive"
+		}
+		logBusinessDiagnostic(r, stage, err)
 		return false
 	}
 	u, err := a.users.CurrentUser(r.Context(), userID, groupID)
-	return err == nil && u.CurrentGroupID == groupID
+	if err != nil {
+		logBusinessDiagnostic(r, "playback_user_lookup", err)
+		return false
+	}
+	if u.CurrentGroupID != groupID {
+		logBusinessDiagnostic(r, "playback_group_unavailable", nil)
+		return false
+	}
+	return true
 }
 
 func serveAssetFile(w http.ResponseWriter, r *http.Request, file *assetdomain.DownloadFile) {
