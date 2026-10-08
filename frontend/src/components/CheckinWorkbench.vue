@@ -106,7 +106,7 @@ const progressPercent = computed(() => {
 
 function taskTypeLabel(task) {
   switch (task.type) {
-    case 'daily_devotion': return '每日灵修';
+    case 'daily_devotion': return singleScriptureLink(task) ? '每日读经' : '每日灵修';
     case 'daily_scripture': return '每日读经';
     case 'weekly_book': return '本周书籍';
     case 'weekly_video': return '本周任务';
@@ -128,6 +128,16 @@ function taskActionText(task, link = null) {
 function visibleTaskContentLinks(task) {
   const links = Array.isArray(task?.contentLinks) ? task.contentLinks : [];
   return task?.type === 'weekly_video' ? links.slice(0, 1) : links;
+}
+
+function singleScriptureLink(task) {
+  const links = visibleTaskContentLinks(task);
+  return links.length === 1 && links[0].localBible ? links[0] : null;
+}
+
+function taskDisplayTitle(task) {
+  const scripture = singleScriptureLink(task);
+  return scripture?.title || scripture?.label || task.title;
 }
 
 function taskMaterialTitle(link) {
@@ -209,8 +219,8 @@ async function exportStatsChart() {
                   <Book v-else :size="20" />
                 </div>
                 <div class="task__heading">
-                  <p v-if="task.title !== taskTypeLabel(task)" class="tasktype">{{ taskTypeLabel(task) }}</p>
-                  <h3 class="task-name" :title="task.title">{{ task.title }}</h3>
+                  <p v-if="taskDisplayTitle(task) !== taskTypeLabel(task)" class="tasktype">{{ taskTypeLabel(task) }}</p>
+                  <h3 class="task-name" :title="taskDisplayTitle(task)">{{ taskDisplayTitle(task) }}</h3>
                 </div>
                 <span class="task-status" :class="taskIsCompleted(task) ? 'completed' : 'pending'">
                   <Check v-if="taskIsCompleted(task)" :size="13" />{{ taskIsCompleted(task) ? '已打卡' : '未打卡' }}
@@ -235,10 +245,6 @@ async function exportStatsChart() {
                     <span class="task-material-action">{{ taskActionText(task, link) }}<ChevronRight :size="16" /></span>
                   </button>
                 </div>
-              </div>
-
-              <div v-else-if="visibleTaskContentLinks(task)[0]?.localBible" class="task__body">
-                <span class="task-material-copy">{{ visibleTaskContentLinks(task)[0].label || visibleTaskContentLinks(task)[0].title }}</span>
               </div>
 
               <footer class="actions">
