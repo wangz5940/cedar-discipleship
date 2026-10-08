@@ -86,6 +86,6 @@ it.each(['potato_3023', 'http_400'])('通知失败%s只为确认的禁言显示�
     return state;
   } };
   const html = await renderToString(createSSRApp(component).use(createPinia()));
-  expect(html.includes('群内禁止机器人发言，请解除禁言后再发送通知。')).toBe(code === 'potato_3023');
+  expect(html.includes('群内禁止机器人发言。需要恢复通知时，请解除禁言并重新绑定学习小组。')).toBe(code === 'potato_3023');
   expect(html).toContain(code);
 });

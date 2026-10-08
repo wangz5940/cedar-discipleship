@@ -32,12 +32,13 @@ type FailureReporter interface {
 }
 
 type Queue struct {
-	dir     string
-	targets map[uint64][]Target
-	source  SnapshotSource
-	sender  TextSender
-	sent    *sentStateStore
-	mu      sync.Mutex
+	dir         string
+	targets     map[uint64][]Target
+	source      SnapshotSource
+	sender      TextSender
+	sent        *sentStateStore
+	unbindMuted func(Target, uint64, uint64) error
+	mu          sync.Mutex
 
 	// Target leases serialize binding publication with only that target's external send.
 	targetUpdates  sync.Mutex
@@ -495,6 +496,12 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 		var failure *deliveryError
 		if errors.As(err, &failure) {
 			item.ErrorCode = failure.code
+			if failure.code == "potato_3023" && q.unbindMuted != nil {
+				if err := q.unbindMuted(item.Target, item.Event.GroupID, targetVersion); err != nil {
+					slog.ErrorContext(ctx, "muted notification binding removal failed",
+						"group_id", item.Event.GroupID, "chat_id", item.Target.ChatID, "error", err)
+				}
+			}
 			if failure.retry && item.Attempts < 5 {
 				item.Status = "pending"
 				delay := 10 * time.Second * time.Duration(1<<(item.Attempts-1))
