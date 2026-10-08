@@ -1,3 +1,4 @@
+import { bibleBookReferences } from './content';
 import {
   dayOffsetFrom,
   formatLocalDate,
@@ -215,29 +216,19 @@ export function scriptureChaptersForDate(
 
   const daysSinceStart = dayOffsetFrom(startDate, date);
   if (daysSinceStart < 0) return [];
-  let offset = daysSinceStart * chaptersPerDay;
-  let firstChapter = Math.max(1, Number(effective.start_chapter || 1));
-  for (let index = 0; index < books.length; index += 1) {
-    const book = books[index];
-    const startChapter = index === 0 ? firstChapter : 1;
-    const available = Math.max(0, book.chapters - startChapter + 1);
-    if (offset >= available) {
-      offset -= available;
-      continue;
-    }
-    const result: ScriptureChapter[] = [];
-    let chapter = startChapter + offset;
-    for (let currentIndex = index; currentIndex < books.length && result.length < chaptersPerDay; currentIndex += 1) {
-      const current = books[currentIndex];
-      const currentStart = currentIndex === index ? chapter : 1;
-      for (let value = currentStart; value <= current.chapters && result.length < chaptersPerDay; value += 1) {
-        result.push({ bookName: current.bookName, bookId: current.bookId, chapter: value });
-      }
-      chapter = 1;
-    }
-    return result;
-  }
-  return [];
+  const initial = books.flatMap((book, index) => {
+    const first = index === 0 ? Math.max(1, Number(effective.start_chapter || 1)) : 1;
+    return Array.from({ length: Math.max(0, book.chapters - first + 1) }, (_, offset) => ({
+      bookName: book.bookName, bookId: book.bookId, chapter: first + offset,
+    }));
+  });
+  const cycle = bibleBookReferences.flatMap(([bookName, bookId, chapters]) =>
+    Array.from({ length: chapters }, (_, index) => ({ bookName, bookId, chapter: index + 1 })));
+  const offset = daysSinceStart * chaptersPerDay;
+  return Array.from({ length: chaptersPerDay }, (_, index) => {
+    const position = offset + index;
+    return position < initial.length ? initial[position] : cycle[(position - initial.length) % cycle.length];
+  });
 }
 
 function normalizeScriptureBooks(config: DailyScheduleConfig) {
