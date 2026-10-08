@@ -272,6 +272,14 @@ describe('automatic error feedback', () => {
   it('reports server failures and missing GET resources only', () => {
     expect(shouldReportAPIError('GET', 404, '/api/assets/7/download')).toBe(true);
     expect(shouldReportAPIError('POST', 500, '/api/checkins')).toBe(true);
+    expect(shouldReportAPIError('POST', 502, '/api/checkins', new Response('<h1>Bad Gateway</h1>', {
+      status: 502,
+      headers: { 'Content-Type': 'text/html' },
+    }))).toBe(false);
+    expect(shouldReportAPIError('POST', 502, '/api/checkins', Response.json(
+      { error: 'upstream_failed' },
+      { status: 502, headers: { 'X-Log-ID': errorLogID } },
+    ))).toBe(true);
     expect(shouldReportAPIError('POST', 409, '/api/checkins')).toBe(false);
     expect(shouldReportAPIError('POST', 500, '/api/feedback/automatic')).toBe(false);
     expect(shouldReportAPIError('GET', 500, '/api/feedback/automatic-settings')).toBe(false);
