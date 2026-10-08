@@ -6,6 +6,11 @@ type TaskLike = {
   ownRecord?: unknown;
 };
 
+export function taskShortLabel(task: { type?: unknown; icon?: unknown; title?: unknown }): string {
+  if (task.type === 'weekly_book') return '书籍';
+  return Array.from(String(task.icon || task.title || '')).slice(0, 2).join('');
+}
+
 type CompletionLike = {
   user_id?: unknown;
   task_id?: unknown;

@@ -8,6 +8,7 @@ const props = defineProps({
   mode: { type: String, default: 'masonry' },
   ariaLabel: { type: String, default: '卡片列表' },
   cardHeight: { type: Number, default: 210 },
+  controlsAtBottom: Boolean,
 });
 
 defineEmits(['change']);
@@ -21,6 +22,7 @@ defineEmits(['change']);
       :item-key="itemKey"
       :aria-label="ariaLabel"
       :card-height="cardHeight"
+      :controls-at-bottom="controlsAtBottom"
       @change="(item, index) => $emit('change', item, index)"
     >
       <template #default="slotProps">

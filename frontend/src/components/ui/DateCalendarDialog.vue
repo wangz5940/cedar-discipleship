@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { CalendarDays, ChevronLeft, ChevronRight } from '@lucide/vue';
 import AppOverlay from './AppOverlay.vue';
 
@@ -16,13 +16,30 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'select', 'month-change', 'today']);
+const choosingYear = ref(false);
+const yearPage = ref(0);
+watch(() => props.open, () => { choosingYear.value = false; });
+const firstYear = computed(() => yearPage.value * 12 + 1);
+const lastYear = computed(() => Math.min(firstYear.value + 11, 9999));
+const yearOptions = computed(() => Array.from({ length: lastYear.value - firstYear.value + 1 }, (_, index) => {
+  const year = firstYear.value + index;
+  return { year, disabled: Boolean((props.minDate && year < Number(props.minDate.slice(0, 4))) || (props.maxDate && year > Number(props.maxDate.slice(0, 4)))) };
+}));
+function toggleYears() {
+  if (!choosingYear.value) yearPage.value = Math.floor(((Number(props.month.slice(0, 4)) || new Date().getFullYear()) - 1) / 12);
+  choosingYear.value = !choosingYear.value;
+}
+function selectYear(year) {
+  emit('month-change', `${String(year).padStart(4, '0')}-${props.month.slice(5, 7) || '01'}`);
+  choosingYear.value = false;
+}
 const monthTitle = computed(() => {
   const [year, month] = props.month.split('-');
   if (!year) return '选择日期';
   return props.mode === 'month' ? `${year} 年` : `${year} 年 ${Number(month)} 月`;
 });
-const canRetreat = computed(() => !props.minDate || (props.mode === 'month' ? props.month.slice(0, 4) > props.minDate.slice(0, 4) : props.month > props.minDate.slice(0, 7)));
-const canAdvance = computed(() => !props.maxDate || (props.mode === 'month' ? props.month.slice(0, 4) < props.maxDate.slice(0, 4) : props.month < props.maxDate.slice(0, 7)));
+const canRetreat = computed(() => choosingYear.value ? firstYear.value > Number(props.minDate.slice(0, 4) || 1) : !props.minDate || (props.mode === 'month' ? props.month.slice(0, 4) > props.minDate.slice(0, 4) : props.month > props.minDate.slice(0, 7)));
+const canAdvance = computed(() => choosingYear.value ? lastYear.value < Number(props.maxDate.slice(0, 4) || 9999) : !props.maxDate || (props.mode === 'month' ? props.month.slice(0, 4) < props.maxDate.slice(0, 4) : props.month < props.maxDate.slice(0, 7)));
 const months = computed(() => {
   const year = Number(props.month.slice(0, 4));
   if (!year) return [];
@@ -64,6 +81,7 @@ function formatDate(date) {
 }
 
 function shiftMonth(offset) {
+  if (choosingYear.value) { yearPage.value += offset; return; }
   const [year, month] = props.month.split('-').map(Number);
   if (props.mode === 'month') {
     emit('month-change', `${year + offset}-${String(month || 1).padStart(2, '0')}`);
@@ -75,13 +93,17 @@ function shiftMonth(offset) {
 </script>
 
 <template>
-  <AppOverlay :open="open" variant="modal" :title="title" panel-class="date-calendar" @close="emit('close')">
+  <AppOverlay :open="open" variant="modal" :title="choosingYear ? '选择年份' : title" panel-class="date-calendar" @close="emit('close')">
     <div class="date-calendar__month">
-      <button class="quiet icon-button" type="button" :aria-label="mode === 'month' ? '上一年' : '上个月'" :disabled="!canRetreat" @click="shiftMonth(-1)"><ChevronLeft :size="18" /></button>
-      <strong>{{ monthTitle }}</strong>
-      <button class="quiet icon-button" type="button" :aria-label="mode === 'month' ? '下一年' : '下个月'" :disabled="!canAdvance" @click="shiftMonth(1)"><ChevronRight :size="18" /></button>
+      <button class="quiet icon-button" type="button" :aria-label="choosingYear ? '上一组年份' : mode === 'month' ? '上一年' : '上个月'" :disabled="!canRetreat" @click="shiftMonth(-1)"><ChevronLeft :size="18" /></button>
+      <button v-if="mode === 'month'" class="quiet date-calendar__year-trigger" type="button" :aria-label="choosingYear ? '返回月份选择' : `选择年份，当前${monthTitle}`" @click="toggleYears">{{ choosingYear ? `${firstYear}—${lastYear} 年` : monthTitle }}</button>
+      <strong v-else>{{ monthTitle }}</strong>
+      <button class="quiet icon-button" type="button" :aria-label="choosingYear ? '下一组年份' : mode === 'month' ? '下一年' : '下个月'" :disabled="!canAdvance" @click="shiftMonth(1)"><ChevronRight :size="18" /></button>
     </div>
-    <div v-if="mode === 'month'" class="date-calendar__months" role="group" :aria-label="monthTitle">
+    <div v-if="choosingYear" class="date-calendar__months" role="group" aria-label="选择年份">
+      <button v-for="item in yearOptions" :key="item.year" class="date-calendar__month-option" :class="{ selected: item.year === Number(month.slice(0, 4)) }" type="button" :disabled="item.disabled" :aria-pressed="item.year === Number(month.slice(0, 4))" @click="selectYear(item.year)">{{ item.year }} 年</button>
+    </div>
+    <div v-else-if="mode === 'month'" class="date-calendar__months" role="group" :aria-label="monthTitle">
       <button
         v-for="item in months"
         :key="item.value"
@@ -123,6 +145,7 @@ function shiftMonth(offset) {
 <style scoped>
 :global(.date-calendar) { width: min(420px, 100%); }
 .date-calendar__month { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin-bottom: 16px; text-align: center; }
+.date-calendar__year-trigger { min-height: 44px; font-weight: 700; background: transparent; border-color: transparent; }
 .date-calendar__weekdays, .date-calendar__days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .date-calendar__months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .date-calendar__month-option { min-height: 52px; border-color: transparent; background: var(--cd-surface-subtle); }

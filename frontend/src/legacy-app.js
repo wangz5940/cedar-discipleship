@@ -72,6 +72,7 @@ import {
 } from './runtime/resources';
 import {
   buildTaskCompletionMatrix,
+  taskShortLabel,
 } from './runtime/checkins';
 import { normalizeMobileViewMode } from './runtime/personalSettings';
 import { bindStudyAccount } from '../public/study-memory.js';
@@ -261,7 +262,7 @@ function dashboardSnapshot() {
       task,
       icon: task.icon,
       title: task.title,
-      shortLabel: Array.from(String(task.icon || task.title || '')).slice(0, 2).join(''),
+      shortLabel: taskShortLabel(task),
       count,
       total: state.members.length,
       percent: Math.round((count / Math.max(1, state.members.length)) * 100),
@@ -281,7 +282,7 @@ function dashboardSnapshot() {
         return {
           task,
           icon: task.icon,
-          shortLabel: Array.from(String(task.icon || task.title || '')).slice(0, 2).join(''),
+          shortLabel: taskShortLabel(task),
           title: task.title,
           done,
           taskForMember: isSelf
