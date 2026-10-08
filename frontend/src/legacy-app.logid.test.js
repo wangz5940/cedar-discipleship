@@ -172,6 +172,22 @@ describe('API log ID propagation', () => {
       expect(read).toHaveBeenCalledOnce();
     });
 
+    it('classifies an online fetch failure separately from runtime TypeErrors', async () => {
+      const error = new TypeError('Failed to fetch');
+      const fetch = vi.fn()
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce(response({ settings: { enabled: true } }))
+        .mockResolvedValueOnce(new Response(null, { status: 201 }));
+      vi.stubGlobal('fetch', fetch);
+      await expect(request({})).rejects.toBe(error);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+      const diagnostics = JSON.parse(fetch.mock.calls[2][1].body.get('diagnostics'));
+      expect(diagnostics).toMatchObject({
+        error_name: 'TypeError',
+        error_code: 'network_request_failed',
+      });
+    });
+
     it('reports callback context without changing the request result', async () => {
       const res = response({ error: 'save_failed' }, 500);
       vi.stubGlobal('fetch', vi.fn()

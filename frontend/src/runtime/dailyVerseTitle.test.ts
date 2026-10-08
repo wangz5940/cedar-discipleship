@@ -26,4 +26,14 @@ describe('dailyVerseTitle', () => {
   ])('%s', (_name, input, expected) => {
     expect(dailyVerseTitle(input)).toBe(expected);
   });
+
+  it('works in Safari versions without Array.at', () => {
+    const original = Object.getOwnPropertyDescriptor(Array.prototype, 'at')!;
+    try {
+      Object.defineProperty(Array.prototype, 'at', { value: undefined, configurable: true });
+      expect(dailyVerseTitle('创1:1 原文\n创1:2 原文')).toBe('创1:1-2');
+    } finally {
+      Object.defineProperty(Array.prototype, 'at', original);
+    }
+  });
 });

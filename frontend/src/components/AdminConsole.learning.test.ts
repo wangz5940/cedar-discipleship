@@ -17,4 +17,13 @@ describe('AdminConsole daily learning controls', () => {
     expect(component).toContain(':aria-expanded="dailyPlansExpanded"');
     expect(component).toContain("dailyPlansExpanded ? '收起' : `展开全部（${configuredDailyPlans.length}）`");
   });
+
+  it('updates the selected date resource without clearing other dates', () => {
+    expect(component).toContain('当天灵修文件');
+    expect(component).toContain('@change="updateDailyPlanFile($event.target.value)"');
+    expect(component).toContain('updateDailyPlan({');
+    expect(component).toContain('path,');
+    expect(component).toContain('const inheritedPath = lastPlan?.path || customDevotionPath.value');
+    expect(component).not.toContain('plans: configuredDailyPlans.value.map');
+  });
 });

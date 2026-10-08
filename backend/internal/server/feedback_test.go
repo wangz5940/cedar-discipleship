@@ -24,6 +24,7 @@ type feedbackHandlerRepository struct {
 	feedbackdomain.Repository
 	item     feedbackdomain.Feedback
 	settings feedbackdomain.AutomaticSettings
+	source   feedbackdomain.Source
 }
 
 func (r *feedbackHandlerRepository) Create(
@@ -56,7 +57,13 @@ func (r *feedbackHandlerRepository) SaveAutomaticSettings(
 	return nil
 }
 
-func (r *feedbackHandlerRepository) ListByUser(_ context.Context, userID uint64, _ int) ([]feedbackdomain.Feedback, error) {
+func (r *feedbackHandlerRepository) ListByUser(
+	_ context.Context,
+	userID uint64,
+	source feedbackdomain.Source,
+	_ int,
+) ([]feedbackdomain.Feedback, error) {
+	r.source = source
 	if r.item.UserID != userID {
 		return nil, nil
 	}
@@ -71,7 +78,13 @@ func (r *feedbackHandlerRepository) FindByUser(_ context.Context, userID, feedba
 	return &item, nil
 }
 
-func (r *feedbackHandlerRepository) ListAll(context.Context, feedbackdomain.Status, int) ([]feedbackdomain.Feedback, error) {
+func (r *feedbackHandlerRepository) ListAll(
+	_ context.Context,
+	_ feedbackdomain.Status,
+	source feedbackdomain.Source,
+	_ int,
+) ([]feedbackdomain.Feedback, error) {
+	r.source = source
 	return []feedbackdomain.Feedback{r.item}, nil
 }
 
@@ -367,5 +380,47 @@ func TestFeedbackAdminHandlerRequiresSuperAdmin(t *testing.T) {
 
 	if recorder.Code != http.StatusForbidden || called {
 		t.Fatalf("status = %d, called = %t", recorder.Code, called)
+	}
+}
+
+func TestFeedbackListHandlersForwardAndValidateSource(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		admin  bool
+		source string
+		status int
+		want   feedbackdomain.Source
+	}{
+		{name: "own manual", source: "manual", status: http.StatusOK, want: feedbackdomain.SourceManual},
+		{name: "admin automatic", admin: true, source: "automatic", status: http.StatusOK, want: feedbackdomain.SourceAutomatic},
+		{name: "own all", status: http.StatusOK},
+		{name: "invalid", source: "unknown", status: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &feedbackHandlerRepository{item: feedbackdomain.Feedback{
+				ID: 73, UserID: 11, Source: test.want, Message: "反馈",
+				Status: feedbackdomain.StatusPending, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}}
+			application := &app{feedbacks: feedbackdomain.NewService(repo, &feedbackHandlerStorage{})}
+			path := "/api/feedback?source=" + test.source
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request = request.WithContext(context.WithValue(
+				request.Context(), currentUserKey, currentUser{ID: 11, IsSuperAdmin: test.admin},
+			))
+			recorder := httptest.NewRecorder()
+			if test.admin {
+				application.handleSuperListFeedback(recorder, request)
+			} else {
+				application.handleListOwnFeedback(recorder, request)
+			}
+			if recorder.Code != test.status {
+				t.Fatalf("status=%d want=%d body=%s", recorder.Code, test.status, recorder.Body)
+			}
+			if test.status == http.StatusOK && repo.source != test.want {
+				t.Fatalf("source=%q want=%q", repo.source, test.want)
+			}
+		})
 	}
 }

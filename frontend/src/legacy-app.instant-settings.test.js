@@ -49,6 +49,17 @@ it('开关立即持久化，只修改所选字段，保留尚未保存的文字�
   expect(useAppStateStore().learningConfig._revision).toBe(4);
 });
 
+it('旧版 Safari 不支持 Array.at 时仍可保存开关', async () => {
+  const original = Object.getOwnPropertyDescriptor(Array.prototype, 'at');
+  try {
+    Object.defineProperty(Array.prototype, 'at', { value: undefined, configurable: true });
+    expect(await saveLearningToggle(['task_sections', 'daily', 'devotion', 'enabled'], false)).toBe(true);
+    expect(settings.task_sections.daily.devotion.enabled).toBe(false);
+  } finally {
+    Object.defineProperty(Array.prototype, 'at', original);
+  }
+});
+
 it('保存冲突时恢复勾选状态且保留其他草稿', async () => {
   rejectSave = true;
   updateLearningValue(['title'], '未保存标题');

@@ -37,7 +37,7 @@ func TestSystemFeedbackStoresNullAuthorAndRemainsAdminOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	items, err := service.ListOwn(t.Context(), 11, 100)
+	items, err := service.ListOwn(t.Context(), 11, "", 100)
 	if err != nil || len(items) != 1 || items[0].ID != manual.ID {
 		t.Fatalf("user items=%+v err=%v", items, err)
 	}
@@ -103,11 +103,27 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 		t.Fatalf("Reply() error = %v", err)
 	}
 
-	ownerItems, err := service.ListOwn(t.Context(), 11, 100)
-	if err != nil || len(ownerItems) != 1 {
+	automaticCreated, err := service.CreateAutomatic(t.Context(), CreateInput{
+		UserID: 11, GroupID: 1, Message: "自动反馈",
+		Diagnostics: map[string]string{"error_code": "network_request_failed"},
+	}, time.Now())
+	if err != nil || automaticCreated.Feedback == nil {
+		t.Fatalf("automatic create=%+v err=%v", automaticCreated, err)
+	}
+
+	ownerItems, err := service.ListOwn(t.Context(), 11, "", 100)
+	if err != nil || len(ownerItems) != 2 {
 		t.Fatalf("owner items = %#v, err = %v", ownerItems, err)
 	}
-	otherItems, err := service.ListOwn(t.Context(), 12, 100)
+	manualItems, err := service.ListOwn(t.Context(), 11, SourceManual, 100)
+	if err != nil || len(manualItems) != 1 || manualItems[0].ID != created.ID {
+		t.Fatalf("manual items = %#v, err = %v", manualItems, err)
+	}
+	automaticItems, err := service.ListOwn(t.Context(), 11, SourceAutomatic, 100)
+	if err != nil || len(automaticItems) != 1 || automaticItems[0].ID != automaticCreated.Feedback.ID {
+		t.Fatalf("automatic items = %#v, err = %v", automaticItems, err)
+	}
+	otherItems, err := service.ListOwn(t.Context(), 12, "", 100)
 	if err != nil || len(otherItems) != 0 {
 		t.Fatalf("other user items = %#v, err = %v", otherItems, err)
 	}
@@ -116,18 +132,22 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 		t.Fatalf("owner detail = %#v, err = %v", detail, err)
 	}
 
-	adminItems, err := service.AdminList(t.Context(), "", 100)
-	if err != nil || len(adminItems) != 2 {
+	adminItems, err := service.AdminList(t.Context(), "", "", 100)
+	if err != nil || len(adminItems) != 3 {
 		t.Fatalf("admin items = %#v, err = %v", adminItems, err)
 	}
-	if adminItems[0].LogID != "0123456789abcdef0123456789abcdef" {
-		t.Fatalf("new feedback log ID = %q", adminItems[0].LogID)
+	adminManual, err := service.AdminList(t.Context(), "", SourceManual, 100)
+	if err != nil || len(adminManual) != 2 {
+		t.Fatalf("admin manual items = %#v, err = %v", adminManual, err)
 	}
-	if adminItems[0].GroupName != "反馈组" || adminItems[0].MemberName != "组内成员甲" {
-		t.Fatalf("new feedback identity = %#v", adminItems[0])
+	if adminManual[0].LogID != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("new feedback log ID = %q", adminManual[0].LogID)
 	}
-	if adminItems[1].UserID != 0 || adminItems[1].LegacyName != "历史用户" {
-		t.Fatalf("legacy feedback = %#v", adminItems[1])
+	if adminManual[0].GroupName != "反馈组" || adminManual[0].MemberName != "组内成员甲" {
+		t.Fatalf("new feedback identity = %#v", adminManual[0])
+	}
+	if adminManual[1].UserID != 0 || adminManual[1].LegacyName != "历史用户" {
+		t.Fatalf("legacy feedback = %#v", adminManual[1])
 	}
 
 	if err := service.UpdateStatus(t.Context(), created.ID, StatusClosed, time.Now()); err != nil {

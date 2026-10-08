@@ -12,7 +12,7 @@ function isVerseReference(token) {
 
 function parenthesizedVerse(tokens, index) {
   const token = tokens[index];
-  if (!['(', '（'].includes(token[0]) || token.at(-1) !== brackets[token[0]]) return null;
+  if (!['(', '（'].includes(token[0]) || token[token.length - 1] !== brackets[token[0]]) return null;
   // Reuse the old tokenizer inside the verse so nested editorial notes stay protected.
   const inner = tokenizeVerse(token.slice(1, -1), 2);
   const text = inner.filter(part => !brackets[part[0]]).join('').trim();
@@ -31,7 +31,7 @@ function parenthesizedVerse(tokens, index) {
     if (/^[\r\n\u2028\u2029。！？.!?；;]$/u.test(next) || isVerseReference(next)) break;
     if (!/^[\p{P}\s]+$/u.test(next)) return null;
   }
-  return [token[0], ...inner, token.at(-1)];
+  return [token[0], ...inner, token[token.length - 1]];
 }
 
 export function tokenizeVerse(text, version = 1) {
@@ -44,7 +44,7 @@ export function tokenizeVerse(text, version = 1) {
     for (let index = 0; index < parts.length; index++) {
       const part = parts[index];
       if (/^[^\S\r\n\u2028\u2029]+$/u.test(part)
-        && /\p{Script=Han}$/u.test(tokens.at(-1) || '')
+        && /\p{Script=Han}$/u.test(tokens[tokens.length - 1] || '')
         && /^\p{Script=Han}/u.test(parts[index + 1] || '')) {
         tokens[tokens.length - 1] += part + parts[++index];
       } else {
@@ -63,7 +63,7 @@ export function tokenizeVerse(text, version = 1) {
       annotation += char;
     } else if (closings.length) {
       annotation += char;
-      if (char === closings.at(-1)) {
+      if (char === closings[closings.length - 1]) {
         closings.pop();
         if (!closings.length) {
           tokens.push(annotation);
@@ -160,7 +160,7 @@ export function gradeVersePaper(tokens, blankIndexes, answers) {
     const continuous = previous !== undefined && /^[^\p{L}\p{N}\r\n\u2028\u2029。！？.!?；;]*$/u.test(gap)
       && !Array.from(gap).some(char => brackets[char]);
     if (!continuous) groups.push({ indexes: [], expected: '', answer: '', originalOwners: [], answerOwners: [] });
-    const group = groups.at(-1);
+    const group = groups[groups.length - 1];
     const expected = String(tokens[tokenIndex] || '').replace(/\s/gu, '');
     const answer = String(answers[answerIndex] || '').replace(/\s/gu, '');
     group.indexes.push(answerIndex);

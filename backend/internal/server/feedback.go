@@ -214,7 +214,8 @@ func (a *app) handleFeedbackCreate(w http.ResponseWriter, r *http.Request, sourc
 }
 
 func (a *app) handleListOwnFeedback(w http.ResponseWriter, r *http.Request) {
-	items, err := a.feedbacks.ListOwn(r.Context(), mustUser(r).ID, 100)
+	source := feedbackdomain.Source(strings.TrimSpace(r.URL.Query().Get("source")))
+	items, err := a.feedbacks.ListOwn(r.Context(), mustUser(r).ID, source, 100)
 	if err != nil {
 		writeFeedbackError(w, r, err)
 		return
@@ -253,7 +254,8 @@ func (a *app) handleOwnFeedbackAttachment(w http.ResponseWriter, r *http.Request
 
 func (a *app) handleSuperListFeedback(w http.ResponseWriter, r *http.Request) {
 	status := feedbackdomain.Status(strings.TrimSpace(r.URL.Query().Get("status")))
-	items, err := a.feedbacks.AdminList(r.Context(), status, 200)
+	source := feedbackdomain.Source(strings.TrimSpace(r.URL.Query().Get("source")))
+	items, err := a.feedbacks.AdminList(r.Context(), status, source, 200)
 	if err != nil {
 		writeFeedbackError(w, r, err)
 		return

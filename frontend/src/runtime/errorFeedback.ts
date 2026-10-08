@@ -239,6 +239,9 @@ export async function reportAutomaticFeedback(
     const errorCode = limited(context.errorCode || error.code, 128);
     const errorName = limited(error.name || 'Error', 128);
     const errorType = normalizeErrorType(errorCode || errorName);
+    if (errorType === 'network_request_failed' && navigator.onLine === false) return false;
+    if (errorType === 'network_request_failed'
+      && /^\/api\/study-memory(?:\/(?:progress|favorites))?$/.test(requestPath)) return false;
     const errorMessage = limited(error.message || errorCode || 'unknown_error', 512);
     const actionContext = limited(context.actionContext || 'application', 128);
     const actionLabel = limited(context.actionLabel, 64);

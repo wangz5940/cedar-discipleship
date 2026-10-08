@@ -25,7 +25,7 @@ export function dailyVerseTitle(text: string): string {
   return [...groups].flatMap(([key, ranges]) => {
     const merged: Array<[number, number]> = [];
     for (const [start, end] of ranges.sort((a, b) => a[0] - b[0])) {
-      const last = merged.at(-1);
+      const last = merged[merged.length - 1];
       if (last && start <= last[1] + 1) last[1] = Math.max(last[1], end);
       else merged.push([start, end]);
     }

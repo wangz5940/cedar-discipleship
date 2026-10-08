@@ -13,7 +13,7 @@ describe('automatic error feedback', () => {
   beforeEach(() => {
     resetAutomaticFeedbackStateForTest();
     setAccessToken('access-token');
-    vi.stubGlobal('document', { cookie: 'agp_csrf=csrf-value' });
+    vi.stubGlobal('document', { cookie: 'agp_csrf=csrf-value', visibilityState: 'visible' });
     vi.stubGlobal('window', {
       location: {
         origin: 'https://cedar.example.test',
@@ -28,6 +28,7 @@ describe('automatic error feedback', () => {
     vi.stubGlobal('navigator', {
       userAgent: 'Example Browser',
       language: 'zh-CN',
+      onLine: true,
       userAgentData: { platform: 'Example OS' },
     });
   });
@@ -77,6 +78,9 @@ describe('automatic error feedback', () => {
       request_path: '/api/assets/7/download',
       http_status: '404',
       error_code: 'asset_not_found',
+      network_online: 'true',
+      visibility_state: 'visible',
+      client_time: expect.stringMatching(/Z$/),
     });
   });
 
@@ -175,6 +179,40 @@ describe('automatic error feedback', () => {
     await expect(reportAutomaticFeedback(new Error('other'))).resolves.toBe(false);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('does not enqueue expected request failures while the browser is offline', async () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Example Browser',
+      language: 'zh-CN',
+      onLine: false,
+    });
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const error = Object.assign(new TypeError('Load failed'), { code: 'network_request_failed' });
+
+    await expect(reportAutomaticFeedback(error, {
+      requestMethod: 'GET',
+      requestPath: '/api/study-memory',
+    })).resolves.toBe(false);
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['/api/study-memory', '/api/study-memory/progress', '/api/study-memory/favorites'])(
+    'does not report retryable background study sync transport failures for %s',
+    async (requestPath) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      const error = Object.assign(new TypeError('Failed to fetch'), { code: 'network_request_failed' });
+
+      await expect(reportAutomaticFeedback(error, {
+        requestMethod: requestPath.endsWith('study-memory') ? 'GET' : 'PUT',
+        requestPath,
+      })).resolves.toBe(false);
+
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['localhost', 'dev.localhost', '127.0.0.1', '0.0.0.0', '::1'])(
     'does not report errors from loopback host %s',

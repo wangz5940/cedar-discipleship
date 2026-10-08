@@ -17,6 +17,7 @@ type memoryRepository struct {
 	status      Status
 	reply       Reply
 	settings    AutomaticSettings
+	listSource  Source
 }
 
 func (r *memoryRepository) Create(_ context.Context, item Feedback, attachments []Attachment) (uint64, error) {
@@ -46,8 +47,9 @@ func (r *memoryRepository) SaveAutomaticSettings(
 	return nil
 }
 
-func (r *memoryRepository) ListByUser(_ context.Context, userID uint64, _ int) ([]Feedback, error) {
-	if r.item.UserID != userID {
+func (r *memoryRepository) ListByUser(_ context.Context, userID uint64, source Source, _ int) ([]Feedback, error) {
+	r.listSource = source
+	if r.item.UserID != userID || source != "" && r.item.Source != source {
 		return nil, nil
 	}
 	return []Feedback{r.item}, nil
@@ -61,7 +63,11 @@ func (r *memoryRepository) FindByUser(_ context.Context, userID, feedbackID uint
 	return &item, nil
 }
 
-func (r *memoryRepository) ListAll(context.Context, Status, int) ([]Feedback, error) {
+func (r *memoryRepository) ListAll(_ context.Context, _ Status, source Source, _ int) ([]Feedback, error) {
+	r.listSource = source
+	if source != "" && r.item.Source != source {
+		return nil, nil
+	}
 	return []Feedback{r.item}, nil
 }
 
@@ -166,6 +172,8 @@ func TestBrowserDiagnosticsContract(t *testing.T) {
 			"environment": "production", "action_context": "reading", "recent_log_id": "",
 			"user_agent": "Safari", "language": "zh-CN", "platform": "iOS",
 			"viewport": "390x844", "screen": "390x844",
+			"client_time":    "2026-10-08T02:10:09.151Z",
+			"network_online": "true", "visibility_state": "visible",
 		}}
 		var err error
 		if automatic {
@@ -178,7 +186,8 @@ func TestBrowserDiagnosticsContract(t *testing.T) {
 		}
 		view, err := service.AdminDetail(t.Context(), repo.item.ID)
 		if err != nil || view.Diagnostics["page_origin"] != input.Diagnostics["page_origin"] ||
-			view.Diagnostics["environment"] != "production" {
+			view.Diagnostics["environment"] != "production" ||
+			view.Diagnostics["network_online"] != "true" {
 			t.Fatalf("diagnostics not preserved: view=%+v err=%v", view, err)
 		}
 	}
@@ -275,6 +284,33 @@ func TestAutomaticFeedbackHonorsSettings(t *testing.T) {
 	}
 	if repo.item.Source != SourceAutomatic {
 		t.Fatalf("source = %q", repo.item.Source)
+	}
+}
+
+func TestFeedbackListsValidateAndForwardSource(t *testing.T) {
+	t.Parallel()
+
+	repo := &memoryRepository{item: Feedback{
+		ID: 41, UserID: 9, Source: SourceAutomatic, Message: "自动错误",
+	}}
+	service := NewService(repo, &memoryStorage{})
+	items, err := service.ListOwn(t.Context(), 9, SourceAutomatic, 100)
+	if err != nil || len(items) != 1 || repo.listSource != SourceAutomatic {
+		t.Fatalf("own automatic items=%+v source=%q err=%v", items, repo.listSource, err)
+	}
+	items, err = service.ListOwn(t.Context(), 9, SourceManual, 100)
+	if err != nil || len(items) != 0 || repo.listSource != SourceManual {
+		t.Fatalf("own manual items=%+v source=%q err=%v", items, repo.listSource, err)
+	}
+	adminItems, err := service.AdminList(t.Context(), "", SourceAutomatic, 100)
+	if err != nil || len(adminItems) != 1 || repo.listSource != SourceAutomatic {
+		t.Fatalf("admin automatic items=%+v source=%q err=%v", adminItems, repo.listSource, err)
+	}
+	if _, err := service.ListOwn(t.Context(), 9, Source("unknown"), 100); !errors.Is(err, ErrInvalidSource) {
+		t.Fatalf("ListOwn() error=%v, want %v", err, ErrInvalidSource)
+	}
+	if _, err := service.AdminList(t.Context(), "", Source("unknown"), 100); !errors.Is(err, ErrInvalidSource) {
+		t.Fatalf("AdminList() error=%v, want %v", err, ErrInvalidSource)
 	}
 }
 

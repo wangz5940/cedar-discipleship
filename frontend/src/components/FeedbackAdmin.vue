@@ -20,10 +20,17 @@ const statuses = [
   ['resolved', '已解决'],
   ['closed', '已关闭'],
 ];
+const sources = [
+  ['', '全部'],
+  ['manual', '用户上报'],
+  ['automatic', '自动上报'],
+];
 const statusFilter = ref('');
+const sourceFilter = ref('');
 const items = ref([]);
 const selected = ref(null);
 const openingID = ref(0);
+let listRequest = 0;
 let detailRequest = 0;
 const loading = ref(false);
 const detailLoading = ref(false);
@@ -85,6 +92,9 @@ function diagnosticLabel(key) {
     platform: '设备平台',
     viewport: '页面尺寸',
     screen: '屏幕尺寸',
+    client_time: '发生时间',
+    network_online: '浏览器联网状态',
+    visibility_state: '页面可见状态',
     error_name: '错误名称',
     error_message: '错误摘要',
     error_stack: '错误堆栈',
@@ -122,18 +132,23 @@ function clearDetailURLs() {
 }
 
 async function loadList(preferredID = 0) {
+  const request = ++listRequest;
   loading.value = true;
   try {
-    const query = statusFilter.value ? `?status=${encodeURIComponent(statusFilter.value)}` : '';
-    const data = await api(`/super-admin/feedback${query}`);
+    const query = new URLSearchParams();
+    if (statusFilter.value) query.set('status', statusFilter.value);
+    if (sourceFilter.value) query.set('source', sourceFilter.value);
+    const queryString = query.toString();
+    const data = await api(`/super-admin/feedback${queryString ? `?${queryString}` : ''}`);
+    if (request !== listRequest) return;
     items.value = data.items || [];
     const targetID = preferredID || selected.value?.id || items.value[0]?.id;
     if (targetID && items.value.some((item) => item.id === targetID)) await openItem(targetID);
     else closeItem();
   } catch (error) {
-    toast(error.message);
+    if (request === listRequest) toast(error.message);
   } finally {
-    loading.value = false;
+    if (request === listRequest) loading.value = false;
   }
 }
 
@@ -278,7 +293,7 @@ async function reply() {
   }
 }
 
-watch(statusFilter, () => loadList());
+watch([statusFilter, sourceFilter], () => loadList());
 onMounted(() => {
   loadList();
   loadAutomaticSettings();
@@ -332,6 +347,18 @@ onBeforeUnmount(closeItem);
       </div>
     </section>
 
+    <div class="segmented-control feedback-admin__source-tabs" role="tablist" aria-label="反馈来源">
+      <button
+        v-for="[value, label] in sources"
+        :key="value"
+        type="button"
+        role="tab"
+        :aria-selected="sourceFilter === value"
+        :class="{ active: sourceFilter === value }"
+        @click="sourceFilter = value"
+      >{{ label }}</button>
+    </div>
+
     <div class="feedback-admin__workspace">
       <aside class="feedback-admin__list" aria-label="反馈列表">
         <div v-if="loading && !items.length" class="empty">正在加载...</div>
@@ -350,7 +377,7 @@ onBeforeUnmount(closeItem);
             <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>
             <span>{{ item.message }}</span>
             <small class="muted">
-              {{ item.source === 'automatic' ? '自动上报 · ' : '' }}{{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}
+              {{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}
             </small>
           </span>
           <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
@@ -369,7 +396,7 @@ onBeforeUnmount(closeItem);
           <header class="feedback-admin__detail-head">
             <div>
               <h3>{{ selected.member_name || selected.display_name || selected.legacy_name || selected.username || '历史用户' }}</h3>
-              <p class="small muted">{{ selected.source === 'automatic' ? '自动上报 · ' : '' }}{{ formatDate(selected.created_at) }}</p>
+              <p class="small muted">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(selected.created_at) }}</p>
             </div>
             <select aria-label="处理状态" :value="selected.status" :disabled="savingStatus" @change="updateStatus($event.target.value)">
               <option v-for="[value, label] in statuses" :key="value" :value="value">{{ label }}</option>
@@ -459,6 +486,7 @@ onBeforeUnmount(closeItem);
 .feedback-admin__muted-item { display: inline-flex; align-items: center; gap: 2px; padding-left: 8px; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); }
 .feedback-admin__muted-item code { overflow-wrap: anywhere; }
 .feedback-admin__muted-item button { width: 30px; height: 30px; min-height: 30px; padding: 0; }
+.feedback-admin__source-tabs { width: min(420px, 100%); margin-bottom: 14px; }
 .feedback-admin__workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: start; border-top: 1px solid var(--cd-border); }
 .feedback-admin__list { display: contents; }
 .feedback-admin__list > button { display: grid; width: 100%; min-height: 82px; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--cd-border); border-radius: 0; background: transparent; color: var(--cd-text); text-align: left; box-shadow: none; }

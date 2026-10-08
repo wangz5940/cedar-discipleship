@@ -5,6 +5,8 @@ import { useAppStateStore } from './stores/appState';
 import { useContentViewerStore } from './stores/contentViewer';
 
 let records;
+let devotionConfig;
+let scriptureConfig;
 const plans = [
   { date: '2026-09-22', verse_ref: '约翰福音 3:16', recite_text: '神爱世人\n<script>alert(1)</script>' },
   { date: '2026-09-23', verse_ref: '诗篇 23:1', recite_text: '耶和华是我的牧者' },
@@ -12,6 +14,8 @@ const plans = [
 beforeEach(async () => {
   setActivePinia(createPinia());
   records = [{ id: 7, user_id: 1, task_type: 'weekly_verse', week_id: 9, task_id: 10, logical_date: '2026-09-22' }];
+  devotionConfig = { enabled: false };
+  scriptureConfig = { enabled: false };
   vi.stubGlobal('document', { cookie: '' });
   vi.stubGlobal('window', { location: { origin: 'http://localhost' }, dispatchEvent: vi.fn(), addEventListener: vi.fn() });
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
@@ -24,7 +28,7 @@ beforeEach(async () => {
       current_week: { id: 9, verse_enabled: true, verse_ref: '周经文', recite_text: '周原文' },
       current_tasks: [{ id: 10, task_type: 'weekly_verse', title: '周经文', content: '周原文' }],
       learning_config: { task_sections: { daily: {
-        devotion: { enabled: false }, scripture: { enabled: false }, verse: { enabled: true, plans },
+        devotion: devotionConfig, scripture: scriptureConfig, verse: { enabled: true, plans },
       } } },
     });
     if (path === '/api/checkins' && options.method === 'POST') {
@@ -107,4 +111,40 @@ it('keeps independent weekly recitation completed across dates without duplicati
     await setSelectedDate('2026-09-29');
     expect(currentTaskOptions().filter(task => task.type === 'daily_verse')).toEqual([]);
   } finally { plans.splice(0, plans.length, ...originalPlans); }
+});
+
+it('uses each custom devotion date resource independently', async () => {
+  await logout({ remote: false });
+  devotionConfig = {
+    enabled: true,
+    plan_mode: 'custom',
+    custom_path: '/api/assets/99/download',
+    plans: [
+      { date: '2026-09-22', title: '书一', path: '/api/assets/101/download', type: 'pdf', page_start: 2, page_end: 3 },
+      { date: '2026-09-23', title: '书二', path: '/api/assets/202/download', type: 'pdf', page_start: 4, page_end: 5 },
+    ],
+  };
+  await login('test', 'test');
+  await setSelectedDate('2026-09-22');
+  expect(currentTaskOptions().find(task => task.type === 'daily_devotion')?.contentLinks[0])
+    .toMatchObject({ url: '/api/assets/101/download', pageRange: '2-3' });
+  await setSelectedDate('2026-09-23');
+  expect(currentTaskOptions().find(task => task.type === 'daily_devotion')?.contentLinks[0])
+    .toMatchObject({ url: '/api/assets/202/download', pageRange: '4-5' });
+});
+
+it('uses the zero-padded WordProject URL for early Bible books', async () => {
+  await logout({ remote: false });
+  scriptureConfig = {
+    enabled: true,
+    start_date: '2026-09-22',
+    book: '创世记',
+    book_id: '1',
+    max_chapters: 50,
+    start_chapter: 1,
+  };
+  await login('test', 'test');
+  await setSelectedDate('2026-09-22');
+  expect(currentTaskOptions().flatMap(task => task.contentLinks || []).find(link => link.taskType === 'daily_scripture')?.url)
+    .toBe('https://www.wordproject.org/bibles/gb/01/1.htm');
 });

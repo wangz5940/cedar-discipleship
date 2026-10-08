@@ -55,6 +55,9 @@ var diagnosticLimits = map[string]int{
 	"platform":          128,
 	"viewport":          64,
 	"screen":            64,
+	"client_time":       64,
+	"network_online":    8,
+	"visibility_state":  32,
 	"error_name":        128,
 	"error_message":     512,
 	"error_stack":       4096,
@@ -280,8 +283,11 @@ func normalizeErrorType(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func (s *Service) ListOwn(ctx context.Context, userID uint64, limit int) ([]UserView, error) {
-	items, err := s.repo.ListByUser(ctx, userID, normalizedLimit(limit))
+func (s *Service) ListOwn(ctx context.Context, userID uint64, source Source, limit int) ([]UserView, error) {
+	if !validSourceFilter(source) {
+		return nil, ErrInvalidSource
+	}
+	items, err := s.repo.ListByUser(ctx, userID, source, normalizedLimit(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -301,11 +307,14 @@ func (s *Service) OwnDetail(ctx context.Context, userID, feedbackID uint64) (*Us
 	return &view, nil
 }
 
-func (s *Service) AdminList(ctx context.Context, status Status, limit int) ([]AdminView, error) {
+func (s *Service) AdminList(ctx context.Context, status Status, source Source, limit int) ([]AdminView, error) {
 	if status != "" && !validStatus(status) {
 		return nil, ErrInvalidStatus
 	}
-	items, err := s.repo.ListAll(ctx, status, normalizedLimit(limit))
+	if !validSourceFilter(source) {
+		return nil, ErrInvalidSource
+	}
+	items, err := s.repo.ListAll(ctx, status, source, normalizedLimit(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -397,6 +406,10 @@ func validStatus(status Status) bool {
 	default:
 		return false
 	}
+}
+
+func validSourceFilter(source Source) bool {
+	return source == "" || source == SourceManual || source == SourceAutomatic
 }
 
 func normalizedLimit(limit int) int {

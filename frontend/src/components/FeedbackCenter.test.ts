@@ -19,7 +19,10 @@ describe('feedback UI boundaries', () => {
   });
 
   it('provides personal history and private attachment loading', () => {
-    expect(userComponent).toContain("api('/feedback')");
+    expect(userComponent).toContain('const sourceFilter = ref');
+    expect(userComponent).toContain("['manual', '用户上报']");
+    expect(userComponent).toContain("['automatic', '自动上报']");
+    expect(userComponent).toContain('api(`/feedback${query}`)');
     expect(userComponent).toContain('fetchWithAuth(`/api/feedback/');
     expect(appRoot).toContain("tab === 'feedback'");
     expect(appRoot).toContain("setTab('feedback')");
@@ -29,6 +32,8 @@ describe('feedback UI boundaries', () => {
     expect(adminConsole).toContain('v-if="user?.is_super_admin"');
     expect(adminConsole).toContain("adminSection === 'feedback' && user?.is_super_admin");
     expect(adminComponent).toContain("api(`/super-admin/feedback");
+    expect(adminComponent).toContain("query.set('source', sourceFilter.value)");
+    expect(adminComponent).toContain('aria-label="反馈来源"');
     expect(adminComponent).toContain('selectedContext');
     expect(adminComponent).toContain('technicalDiagnostics');
     expect(adminComponent).toContain('业务概览');

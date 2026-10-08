@@ -21,9 +21,11 @@ describe('feedback diagnostics', () => {
       innerHeight: 844,
       screen: { width: 430, height: 932 },
     });
+    vi.stubGlobal('document', { visibilityState: 'visible' });
     vi.stubGlobal('navigator', {
       userAgent: 'Example Browser',
       language: 'zh-CN',
+      onLine: true,
       userAgentData: { platform: 'Example OS' },
     });
 
@@ -39,6 +41,9 @@ describe('feedback diagnostics', () => {
       platform: 'Example OS',
       viewport: '390x844',
       screen: '430x932',
+      client_time: expect.stringMatching(/Z$/),
+      network_online: 'true',
+      visibility_state: 'visible',
     });
   });
 });

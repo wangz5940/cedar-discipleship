@@ -177,6 +177,23 @@ describe('daily devotion custom plans', () => {
     expect(removed.plans[0].date).toBe('2026-09-23');
   });
 
+  it('keeps an independent resource for each configured date', () => {
+    const config = {
+      plan_mode: 'custom',
+      plans: [
+        { date: '2026-10-05', title: '书一', path: '/api/assets/101/download', type: 'pdf' },
+        { date: '2026-10-06', title: '书二', path: '/api/assets/202/download', type: 'pdf' },
+      ],
+    };
+    const updated = upsertDailyDevotionPlan(config, {
+      ...dailyDevotionPlanForDate(config, '2026-10-06')!,
+      path: '/api/assets/303/download',
+    });
+
+    expect(dailyDevotionPlanForDate(updated, '2026-10-05')?.path).toBe('/api/assets/101/download');
+    expect(dailyDevotionPlanForDate(updated, '2026-10-06')?.path).toBe('/api/assets/303/download');
+  });
+
   it('creates the next day with a date title and advances markdown content', () => {
     const plan = nextDailyDevotionPlan({
       numbered_start_date: '2026-09-20',
@@ -200,13 +217,18 @@ describe('daily devotion custom plans', () => {
   it('creates the next PDF day after the previous page range', () => {
     const plan = nextDailyDevotionPlan({
       plans: [
-        { date: '2026-09-22', title: '第一天', page_start: 20, page_end: 22 },
+        {
+          date: '2026-09-22', title: '第一天', path: '/api/assets/9/download',
+          type: 'pdf', page_start: 20, page_end: 22,
+        },
       ],
     }, 'pdf', '2026-09-22');
 
     expect(plan).toMatchObject({
       date: '2026-09-23',
       title: '九月二十三号',
+      path: '/api/assets/9/download',
+      type: 'pdf',
       page_start: '22',
       page_end: '',
     });

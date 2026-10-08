@@ -480,14 +480,15 @@ const customDevotionPath = computed(() => (
   || devotionPath.value
   || ''
 ));
+const selectedDailyPlanPath = computed(() => selectedDailyPlan.value.path || customDevotionPath.value);
 const selectedDailyPlanAsset = computed(() => resourceForURL(
-  selectedDailyPlan.value.path || customDevotionPath.value,
+  selectedDailyPlanPath.value,
 ));
 const selectedDailyPlanContentType = computed(() => (
-  selectedDailyPlan.value.path || customDevotionPath.value
+  selectedDailyPlanPath.value
     ? inferDailyDevotionContentType({
       ...selectedDailyPlan.value,
-      path: selectedDailyPlan.value.path || customDevotionPath.value,
+      path: selectedDailyPlanPath.value,
     }, selectedDailyPlanAsset.value)
     : selectedDailyPlan.value.type
 ));
@@ -647,32 +648,29 @@ function updateDailyPlan(patch) {
   });
 }
 
-function updateCustomDevotionFile(value) {
+function updateDailyPlanFile(value) {
   const path = String(value || '').trim();
   const selected = resourceForURL(path);
   const type = path ? inferDailyDevotionContentType({ ...devotion.value, path }, selected) : '';
-  updateLearning(['task_sections', 'daily', 'devotion'], {
-    ...devotion.value,
-    custom_path: path,
-    custom_type: type,
-    plan_mode: 'custom',
-    plans: configuredDailyPlans.value.map((plan) => ({
-      ...plan,
-      path: '',
-      type,
-      section: type === 'markdown' ? plan.section : '',
-      page_start: type === 'pdf' ? plan.page_start : '',
-      page_end: type === 'pdf' ? plan.page_end : '',
-    })),
+  updateDailyPlan({
+    path,
+    type,
+    section: type === 'markdown' ? selectedDailyPlan.value.section : '',
+    page_start: type === 'pdf' ? selectedDailyPlan.value.page_start : '',
+    page_end: type === 'pdf' ? selectedDailyPlan.value.page_end : '',
   });
 }
 
 function addDailyPlan() {
   const lastPlan = configuredDailyPlans.value.slice(-1)[0] || null;
   const baseDate = lastPlan?.date || shiftDailyPlanDate(dailyPlanDate.value, -1);
+  const inheritedPath = lastPlan?.path || customDevotionPath.value;
+  const inheritedType = inheritedPath
+    ? inferDailyDevotionContentType({ ...(lastPlan || {}), path: inheritedPath }, resourceForURL(inheritedPath))
+    : (lastPlan?.type || selectedDailyPlanContentType.value || devotionContentType.value || 'markdown');
   const plan = nextDailyDevotionPlan(
     devotion.value,
-    selectedDailyPlanContentType.value || devotionContentType.value || 'markdown',
+    inheritedType,
     baseDate,
   );
   const next = upsertDailyDevotionPlan(devotion.value, plan);
@@ -995,13 +993,6 @@ async function runLocalBackupImport() {
                         <div class="form-actions"><button :class="canEditLearning ? '' : 'secondary'" :disabled="!canEditLearning" type="button" @click="saveLearningConfig">保存学习配置</button></div>
                       </template>
                       <div v-else class="daily-plan-editor">
-                        <label class="admin-field">
-                          <span class="admin-field-label">固定灵修文件</span>
-                          <select :value="customDevotionPath" @change="updateCustomDevotionFile($event.target.value)">
-                            <option value="">未绑定资源</option>
-                            <option v-for="option in devotionOptionsWithCurrent(customDevotionPath)" :key="option.url" :value="option.url">{{ devotionFileOptionText(option) }}</option>
-                          </select>
-                        </label>
                         <button class="icon-text-button daily-plan-add-button" :disabled="!canEditLearning" type="button" @click="addDailyPlan">
                           <Plus :size="17" />
                           新增一天
@@ -1009,6 +1000,13 @@ async function runLocalBackupImport() {
                         <label class="admin-field">
                           <span class="admin-field-label">计划日期</span>
                           <DateField :model-value="dailyPlanDate" label="计划日期" @change="selectDailyPlanDate" />
+                        </label>
+                        <label class="admin-field">
+                          <span class="admin-field-label">当天灵修文件</span>
+                          <select :value="selectedDailyPlanPath" @change="updateDailyPlanFile($event.target.value)">
+                            <option value="">未绑定资源</option>
+                            <option v-for="option in devotionOptionsWithCurrent(selectedDailyPlanPath)" :key="option.url" :value="option.url">{{ devotionFileOptionText(option) }}</option>
+                          </select>
                         </label>
                         <label class="admin-field">
                           <span class="admin-field-label">当天标题</span>
