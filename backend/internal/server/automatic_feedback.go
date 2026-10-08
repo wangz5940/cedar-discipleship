@@ -144,12 +144,16 @@ type feedbackNotificationSource struct {
 }
 
 func (s feedbackNotificationSource) ReportNotificationFailure(event notificationdomain.Event, code string) {
+	message := "系统自动上报：学习进度通知最终发送失败"
+	if code == "potato_3023" {
+		message = "系统自动上报：群内禁止机器人发送学习进度通知，请解除禁言"
+	}
 	s.reporter.observe(feedbackObservation{
 		key: fmt.Sprintf("notification:%d:%s", event.GroupID, code),
 		input: feedbackdomain.CreateInput{
 			GroupID: event.GroupID,
 			LogID:   event.LogID,
-			Message: "系统自动上报：学习进度通知最终发送失败",
+			Message: message,
 			Diagnostics: map[string]string{
 				"environment": "server", "action_context": "notification_delivery",
 				"error_code": "notification_delivery_failed", "error_message": code,

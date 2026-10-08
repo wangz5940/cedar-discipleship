@@ -409,6 +409,7 @@ onBeforeUnmount(closeItem);
                     <template v-if="selectedContext.group"><dt>小组</dt><dd>{{ selectedContext.group }}</dd></template>
                     <template v-if="selectedContext.user"><dt>用户</dt><dd>{{ selectedContext.user }}</dd></template>
                     <template v-if="selectedContext.action"><dt>动作</dt><dd>{{ selectedContext.action }}</dd></template>
+                    <template v-if="selected.diagnostics?.error_code === 'notification_delivery_failed' && selected.diagnostics?.error_message === 'potato_3023'"><dt>原因</dt><dd>群内禁止机器人发言，请解除禁言后再发送通知。</dd></template>
                     <template v-if="selectedContext.content"><dt>内容</dt><dd>{{ selectedContext.content }}</dd></template>
                     <template v-if="selectedContext.date"><dt>日期</dt><dd>{{ selectedContext.date }}</dd></template>
                   </dl>

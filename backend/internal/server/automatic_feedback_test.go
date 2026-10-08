@@ -157,3 +157,23 @@ func TestBackendFeedbackThresholdWindowAndCooldown(t *testing.T) {
 		t.Fatal("cooldown never expired")
 	}
 }
+
+func TestNotificationMutedFeedbackShowsReasonAndPreservesErrorCode(t *testing.T) {
+	for _, code := range []string{"potato_3023", "http_400"} {
+		t.Run(code, func(t *testing.T) {
+			reporter := newAutomaticFeedbackReporter(nil)
+			source := feedbackNotificationSource{reporter: reporter}
+			source.ReportNotificationFailure(notificationdomain.Event{GroupID: 7, LogicalDate: "2026-10-08"}, code)
+			if len(reporter.queue) != 1 {
+				t.Fatal("notification failure was not reported")
+			}
+			input := (<-reporter.queue).input
+			if input.Diagnostics["error_message"] != code || input.Diagnostics["error_code"] != "notification_delivery_failed" {
+				t.Fatalf("original error changed: %+v", input)
+			}
+			if strings.Contains(input.Message, "解除禁言") != (code == "potato_3023") {
+				t.Fatalf("failure reason=%s", input.Message)
+			}
+		})
+	}
+}
