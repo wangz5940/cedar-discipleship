@@ -1693,12 +1693,6 @@ func normalizeTaskSections(raw json.RawMessage) (json.RawMessage, error) {
 	if _, ok := scripture["start_chapter"]; !ok {
 		scripture["start_chapter"] = 1
 	}
-	if _, ok := scripture["type"]; !ok {
-		scripture["type"] = "iframe"
-	}
-	if _, ok := scripture["url_template"]; !ok {
-		scripture["url_template"] = "https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm"
-	}
 
 	return json.Marshal(sections)
 }

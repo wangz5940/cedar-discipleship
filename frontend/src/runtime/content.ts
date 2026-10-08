@@ -37,7 +37,13 @@ export function buildWeeklyVerseContentLink(verseRef: unknown, reciteText: unkno
     };
   }
   const target = bibleReferenceTarget(verseRef);
-  return target ? { label: '查看原文', title, type: 'iframe' as const, url: target } : null;
+  return target ? {
+    label: '查看原文',
+    title,
+    type: 'markdown' as const,
+    url: `/bible/cuv/${target.bookId}.json`,
+    localBibleVerse: target,
+  } : null;
 }
 
 export const bibleBookReferences: ReadonlyArray<readonly [string, string, number, readonly string[]]> = [
@@ -66,42 +72,40 @@ export const bibleBookReferences: ReadonlyArray<readonly [string, string, number
   ['犹大书', '65', 1, ['犹']], ['启示录', '66', 22, ['启']],
 ];
 
-function bibleReferenceTarget(value: unknown): string {
+type LocalBibleVerseReference = {
+  bookId: string;
+  chapter: number;
+  startVerse: number;
+  endVerse: number;
+};
+
+function bibleReferenceTarget(value: unknown): LocalBibleVerseReference | null {
   const source = String(value || '').trim().replaceAll('：', ':').replace(/\s+/g, '');
   for (const [name, id, chapters, aliases] of bibleBookReferences) {
     for (const label of [name, ...aliases].sort((left, right) => right.length - left.length)) {
       if (!source.startsWith(label)) continue;
-      const match = source.slice(label.length).match(/^(\d{1,3}):(\d{1,3})/);
+      const match = source.slice(label.length).match(
+        /^(\d{1,3}):(\d{1,3})(?:[-–—－](\d{1,3}))?/,
+      );
       if (!match) continue;
       const chapter = Number(match[1]);
-      const verse = Number(match[2]);
-      if (chapter < 1 || chapter > chapters || verse < 1) return '';
-      return `${scriptureChapterURL(
-        'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm',
-        id,
-        name,
+      const startVerse = Number(match[2]);
+      const endVerse = Number(match[3] || startVerse);
+      if (
+        chapter < 1
+        || chapter > chapters
+        || startVerse < 1
+        || endVerse < startVerse
+      ) return null;
+      return {
+        bookId: id,
         chapter,
-      )}#${verse}`;
+        startVerse,
+        endVerse,
+      };
     }
   }
-  return '';
-}
-
-export function scriptureChapterURL(
-  template: unknown,
-  bookID: unknown,
-  bookName: unknown,
-  chapter: unknown,
-): string {
-  const source = String(template || '');
-  const rawBookID = String(bookID || '');
-  const formattedBookID = source.includes('wordproject.org/bibles/gb/{book_id}/')
-    ? rawBookID.padStart(2, '0')
-    : rawBookID;
-  return source
-    .replaceAll('{book_id}', encodeURIComponent(formattedBookID))
-    .replaceAll('{book}', encodeURIComponent(String(bookName || '')))
-    .replaceAll('{chapter}', encodeURIComponent(String(chapter || '')));
+  return null;
 }
 
 export function sameOriginAPIPath(value: unknown, origin = ''): string {
