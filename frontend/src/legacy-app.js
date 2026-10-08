@@ -410,7 +410,7 @@ export async function api(path, options = {}) {
     error.logID = responseLogID || logID;
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
-    if (shouldReportAPIError(requestMethod, res.status, requestPath)) {
+    if (shouldReportAPIError(requestMethod, res.status, requestPath, res)) {
       void reportAutomaticFeedback(error, () => ({
         ...(typeof feedbackContext === 'function' ? feedbackContext() : feedbackContext),
         actionContext: `${requestMethod} ${requestPath}`,
@@ -504,7 +504,7 @@ export async function fetchWithAuth(url, options = {}) {
       });
     }
   }
-  if (!res.ok && shouldReportAPIError(requestMethod, res.status, requestPath)) {
+  if (!res.ok && shouldReportAPIError(requestMethod, res.status, requestPath, res)) {
     const error = new Error(`HTTP ${res.status}`);
     error.status = res.status;
     error.logID = res.headers?.get?.(LOG_ID_HEADER) || logID;

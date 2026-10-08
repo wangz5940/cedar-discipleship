@@ -67,12 +67,22 @@ function pathOnly(value: string): string {
   }
 }
 
-export function shouldReportAPIError(method: string, status: number, path: string): boolean {
+export function shouldReportAPIError(
+  method: string,
+  status: number,
+  path: string,
+  response?: Response,
+): boolean {
   const requestPath = pathOnly(path);
   if (
     requestPath === '/api/feedback/automatic'
     || requestPath === '/api/feedback/automatic-settings'
   ) return false;
+  try {
+    const contentType = (response?.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+    const responseLogID = response?.headers.get(LOG_ID_HEADER) || '';
+    if (status === 502 && contentType === 'text/html' && !validLogID(responseLogID)) return false;
+  } catch { /* If classification fails, preserve automatic reporting. */ }
   return status >= 500 || (String(method).toUpperCase() === 'GET' && status === 404);
 }
 

@@ -284,7 +284,7 @@ export const useDownloadManagerStore = defineStore('downloadManager', {
               requestMethod: 'GET',
               requestPath: task.resource.url,
             });
-            if (logID && shouldReportAPIError('GET', response.status, task.resource.url)) {
+            if (logID && shouldReportAPIError('GET', response.status, task.resource.url, response)) {
               void reportAutomaticFeedback(error, () => ({
                 actionContext: 'resource_download',
                 actionLabel: '下载',

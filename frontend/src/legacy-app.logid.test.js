@@ -193,13 +193,19 @@ describe('API log ID propagation', () => {
       });
     });
 
-    it.each(['text/html', 'application/json'])('records response evidence for %s without changing the outcome', async (contentType) => {
+    it.each([
+      ['text/html', false],
+      ['application/json', true],
+    ])('preserves a 502 %s response and reports it: %s', async (contentType, reported) => {
       let now = Date.parse('2026-10-08T08:00:00Z');
       vi.spyOn(Date, 'now').mockImplementation(() => now);
       document.visibilityState = 'visible';
       const res = new Response(contentType === 'text/html' ? '<h1>Bad Gateway</h1>' : '{"error":"save_failed"}', {
         status: 502,
-        headers: { 'Content-Type': contentType, 'X-Log-ID': logID },
+        headers: {
+          'Content-Type': contentType,
+          ...(contentType === 'application/json' ? { 'X-Log-ID': logID } : {}),
+        },
       });
       vi.stubGlobal('fetch', vi.fn()
         .mockImplementationOnce(async () => {
@@ -212,7 +218,8 @@ describe('API log ID propagation', () => {
       const result = request({});
       if (name === 'api') await expect(result).rejects.toMatchObject({ status: 502 });
       else await expect(result).resolves.toBe(res);
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(reported ? 3 : 1));
+      if (!reported) return;
       expect(JSON.parse(fetch.mock.calls[2][1].body.get('diagnostics'))).toMatchObject({
         request_started_at: '2026-10-08T08:00:00.000Z',
         request_duration_ms: '1250',

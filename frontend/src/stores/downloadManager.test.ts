@@ -112,6 +112,36 @@ describe('download lifecycle', () => {
     expect(store.history).toEqual([]);
   });
 
+  it('keeps a deployment gateway failure without creating automatic feedback', async () => {
+    resetAutomaticFeedbackStateForTest();
+    setAccessToken('active');
+    vi.stubGlobal('window', { location: {
+      hostname: 'cedar.example.test', origin: 'https://cedar.example.test',
+    } });
+    vi.stubGlobal('navigator', { userAgent: 'Test Browser' });
+    const store = useDownloadManagerStore();
+    await store.initialize('user:group-a');
+    store.tasks.push({
+      id: 'gateway-failure', resource: {
+        key: 'gateway-failure', url: '/api/assets/7/download', name: 'book.pdf',
+        title: '书籍', kind: 'pdf', source: 'learning', size: 3, mimeType: 'application/pdf',
+      },
+      status: 'downloading', receivedBytes: 0, totalBytes: 3,
+      resumable: false, error: '', createdAt: '',
+    });
+    const fetch = vi.fn().mockResolvedValue(new Response('<h1>Bad Gateway</h1>', {
+      status: 502,
+      headers: { 'Content-Type': 'text/html' },
+    }));
+    vi.stubGlobal('fetch', fetch);
+
+    await store.runTask('gateway-failure');
+
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(store.tasks[0]).toMatchObject({ status: 'failed', error: 'download_http_502' });
+    expect(store.history).toEqual([]);
+  });
+
   it('keeps the failed task when the feedback service is offline', async () => {
     resetAutomaticFeedbackStateForTest();
     setAccessToken('active');
