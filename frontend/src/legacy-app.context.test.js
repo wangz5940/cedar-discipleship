@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, resetStatsRangeToHistory, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI } from './legacy-app';
+import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, setStatsMonth, resetStatsRangeToHistory, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI } from './legacy-app';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useAppStateStore } from './stores/appState';
 import { useDashboardStore } from './stores/dashboard';
@@ -161,6 +161,28 @@ describe('main data context', () => {
     expect(dashboard.monthLabel).not.toBe('全部历史');
     await resetStatsRangeToHistory();
     expect(dashboard.monthLabel).toBe('全部历史');
+  });
+
+  it('queries complete calendar months, caps the current month at today, and preserves history', async () => {
+    await login('member', 'password');
+    setTab('dashboard');
+    await setStatsMonth('2024-02');
+    const dashboard = useDashboardStore();
+    expect(dashboard.rankingFrom).toBe('2024-02-01');
+    expect(dashboard.rankingTo).toBe('2024-02-29');
+    expect(fetch).toHaveBeenCalledWith('/api/dashboard/monthly-ranking?from=2024-02-01&to=2024-02-29', expect.anything());
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const today = `${month}-${String(now.getDate()).padStart(2, '0')}`;
+    await setStatsMonth(month);
+    expect(dashboard.rankingFrom).toBe(`${month}-01`);
+    expect(dashboard.rankingTo).toBe(today);
+    await resetStatsRangeToHistory();
+    expect(dashboard.monthLabel).toBe('全部历史');
+    expect(fetch).toHaveBeenCalledWith(`/api/dashboard/monthly-ranking?from=all&to=${today}`, expect.anything());
+    await setStatsMonth('2024-12');
+    expect(dashboard.rankingTo).toBe('2024-12-31');
+    expect(dashboard.monthLabel).not.toBe('全部历史');
   });
 
   it('keeps draft edits separate from saved weeks and reuses unchanged admin data across toast updates', async () => {

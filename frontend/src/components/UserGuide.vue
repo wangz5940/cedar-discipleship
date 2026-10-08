@@ -44,10 +44,10 @@ const chapters = [
     ],
   },
   {
-    id: 'statistics', title: '查看学习统计', audience: '所有用户', image: '/assets/guide/statistics-current.png', imageAlt: '当前版本统计中心页面，展示日期、完成率和成员任务状态', imageCaption: '统计中心：上方查看所选日期的完成率，下方查看成员打卡明细。截图取自当前本地预览的测试小组。',
+    id: 'statistics', title: '查看学习统计', audience: '所有用户', image: '/assets/guide/statistics-current.png', imageAlt: '统计中心历史示意图，展示日期和成员任务状态', imageCaption: '统计中心保留成员当日打卡明细，排行与分类明细按月统计并可查看全部历史。配图为旧版示意，当前版本已移除四张汇总卡。',
     topics: [
       { title: '小组统计', steps: [
-        '进入“统计”页，选择日期或统计范围，查看任务完成率、成员完成情况、分项统计和排行。',
+        '进入“统计”页，选择统计月份或“全部历史”，查看成员完成情况、分项统计和排行。',
         '可在成员矩阵中查看任务状态；只能操作自己的打卡。需要留存图表时使用页面提供的 PNG 导出。',
       ] },
       { title: '门训数点组的首页统计', steps: [
@@ -155,10 +155,6 @@ const chapters = [
 
 <template>
   <article class="user-guide">
-    <header class="pagehead user-guide__header">
-      <h1>使用文档</h1>
-    </header>
-
     <div class="user-guide__layout">
       <nav class="card user-guide__toc" aria-label="文档目录">
         <h2>目录</h2>
@@ -191,8 +187,6 @@ const chapters = [
 
 <style scoped>
 .user-guide { min-width: 0; }
-.user-guide__header { display: block; }
-.user-guide__header p { margin-top: 8px; }
 .user-guide__layout { display: grid; grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); align-items: start; gap: 20px; }
 .user-guide__toc { position: sticky; top: 20px; display: grid; gap: 4px; padding: 16px; }
 .user-guide__toc h2 { margin-bottom: 6px; font-size: 16px; }

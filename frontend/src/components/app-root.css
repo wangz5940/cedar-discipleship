@@ -94,25 +94,21 @@
   display: flex;
   width: 100%;
   align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 20px;
-}
-
-.app-content-toolbar--learning {
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 12px;
 }
 
-.app-learning-title {
+.app-page-title {
   margin: 0;
-  flex-shrink: 0;
+  min-width: 0;
   font-size: 26px;
   line-height: 1.4;
 }
 
 @media (max-width: 767px) {
-  .app-learning-title { font-size: 22px; }
-  .app-content-toolbar--learning { margin-bottom: 12px; }
+  .app-page-title { font-size: 22px; }
+  .app-content-toolbar { flex-wrap: wrap; }
 }
 
 .group-switcher__default {

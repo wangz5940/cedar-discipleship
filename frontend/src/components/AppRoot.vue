@@ -131,6 +131,11 @@ watch([authenticated, currentGroupID], async ([isAuthenticated, groupID]) => {
     // Leave the entry hidden until the current group's catalog can be loaded.
   }
 }, { immediate: true });
+const pageTitle = computed(() => ({
+  home: workbench.isToday ? '今日学习' : '学习任务',
+  dashboard: '小组统计', groups: '小组与服事进展', feedback: '建议与反馈',
+  admin: '管理工作台', guide: '使用文档', settings: '个人设置',
+}[tab.value] || ''));
 const settings = computed(() => learningConfig.value || {});
 const resourceTypeOptions = computed(() => [...new Set(resources.value
   .map((item) => normalizeResourceCategory(item.category))
@@ -386,8 +391,8 @@ async function refreshResources() {
     <div class="main">
       <!-- Content Area -->
       <main class="content">
-        <div v-if="!showGroupPicker && (tab === 'home' || groups.length || activeGroup)" class="app-content-toolbar" :class="{ 'app-content-toolbar--learning': tab === 'home' }">
-          <h1 v-if="tab === 'home'" class="app-learning-title">{{ workbench.isToday ? '今日学习' : '学习任务' }}</h1>
+        <div v-if="!showGroupPicker && (pageTitle || groups.length || activeGroup)" class="app-content-toolbar">
+          <h1 v-if="pageTitle" class="app-page-title">{{ pageTitle }}</h1>
           <GroupSwitcher
             :groups="groups"
             :current-group-i-d="currentGroupID"
@@ -446,11 +451,7 @@ async function refreshResources() {
 
         <!-- Cedar Public Library (tab === 'resources') -->
         <section v-if="!showGroupPicker && tab === 'resources'">
-          <div class="pagehead spread">
-            <div>
-              <h1>小组资料库</h1>
-              <p class="muted">共 {{ filteredResources.length }} 项资料</p>
-            </div>
+          <div v-if="resourceDownloadsEnabled && selectedResourceKeys.size" class="pagehead spread">
             <div class="inline app-resource-page-actions">
               <div v-if="resourceDownloadsEnabled && selectedResourceKeys.size" class="inline app-resource-selection">
                 <span class="pill">已选 {{ selectedResourceKeys.size }} 项</span>

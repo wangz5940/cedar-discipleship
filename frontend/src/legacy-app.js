@@ -109,7 +109,7 @@ const state = shallowReactive({
   homeStatsLoading: false,
   homeStatsCheckedGroupID: 0,
   homeStatsCheckedAt: 0,
-  statsFrom: '',
+  statsFrom: monthStartString(),
   statsTo: todayString(),
   checkins: [],
   members: [],
@@ -923,6 +923,18 @@ export function shiftSelectedDate(delta) {
   const d = parseLocalDate(state.selectedDate);
   d.setDate(d.getDate() + delta);
   setSelectedDate(formatLocalDate(d));
+}
+
+export async function setStatsMonth(month) {
+  if (!/^\d{4}-\d{2}$/.test(month) || month > todayString().slice(0, 7)) return;
+  const start = parseLocalDate(`${month}-01`);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  state.statsFrom = formatLocalDate(start);
+  state.statsTo = formatLocalDate(end) > todayString() ? todayString() : formatLocalDate(end);
+  try {
+    await loadMonthlyRanking();
+    render();
+  } catch (error) { toast(error.message); }
 }
 
 export async function setStatsDateRange(part, value) {

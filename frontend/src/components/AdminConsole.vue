@@ -106,6 +106,12 @@ const dailyPlanDate = ref(todayString());
 const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
 const verseConfigMode = ref('daily');
+const dailyVersePicker = ref(null);
+function addVerseDay() {
+  if (!canEditLearning.value || !versePlanDate.value) return;
+  void dailyVersePicker.value?.remember(verseText.value);
+  versePlanDate.value = shiftDailyPlanDate(versePlanDate.value, 1);
+}
 
 const verseSources = ref([]);
 const verseText = computed(() => verseSources.value.map(item => item.recite_text).join('\n'));
@@ -734,12 +740,6 @@ async function runLocalBackupImport() {
 
 <template>
   <div class="admin-wrapper">
-    <div class="pagehead spread admin-pagehead">
-      <div>
-        <h1>管理工作台</h1>
-      </div>
-    </div>
-
     <!-- Secondary Nav Toolbar -->
     <div class="toolbar admin-tabs" role="tablist" aria-label="管理工作台功能" @keydown="navigateTabs">
       <button
@@ -1072,13 +1072,13 @@ async function runLocalBackupImport() {
                   </div>
                   <div v-show="verseConfigMode === 'daily'" class="form-stack admin-form-grid">
                     <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning || notificationSaving" @change="setLearningToggle(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
-                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /></div>
+                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /><button class="secondary" type="button" :disabled="!canEditLearning || !versePlanDate" @click="addVerseDay">新增一天</button></div>
                     <div v-if="versePlanEnd !== versePlanDate" class="admin-field"><span class="admin-field-label">已有计划结束日期</span><DateField v-model="versePlanEnd" label="已有背经结束日期" :min="versePlanDate" /></div>
                     <p v-if="verseCompletionMode === 'weekly'" class="muted">此历史范围计划仍按整周一次完成，已有记录保留。</p>
                     <div v-for="(source, index) in verseSources" :key="index" class="verse-source-card">
                       <div class="verse-source-heading"><strong>{{ source.verse_ref }}</strong><button class="secondary" type="button" :disabled="!canEditLearning" :aria-label="`移除每日背经${source.verse_ref}`" @click="verseSources.splice(index, 1)"><Trash2 :size="18" /></button></div>
                     </div>
-                    <BibleVersePicker add-only :disabled="!canEditLearning" @select="selectVerseSource" />
+                    <BibleVersePicker ref="dailyVersePicker" add-only remember-position :disabled="!canEditLearning" @select="selectVerseSource" />
                     <div class="form-actions">
                       <button class="primary" :disabled="!canEditLearning || !verseText.trim()" type="button" @click="saveVersePlan">保存每日背经</button>
                       <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除所选背经</button>
@@ -1284,7 +1284,7 @@ async function runLocalBackupImport() {
 
 <style scoped>
 .admin-wrapper { min-width: 0; }
-.admin-pagehead, .admin-tabs { margin-bottom: 24px; }
+.admin-tabs { margin-bottom: 24px; }
 .admin-wrapper .admin-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -1364,7 +1364,6 @@ async function runLocalBackupImport() {
   white-space: nowrap;
 }
 @media (max-width: 767px) {
-  .admin-pagehead { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
   .admin-wrapper .admin-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: 0; padding: 6px; }
   .admin-tabs button { width: 100%; white-space: normal; }
   .admin-wrapper :where(button, select, input[type="file"]) { min-height: 44px; }

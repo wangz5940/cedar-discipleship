@@ -306,7 +306,6 @@ onBeforeUnmount(closeItem);
     <div class="section-title feedback-admin__title">
       <div>
         <h2>反馈处理</h2>
-        <p class="muted">仅超级管理员可查看提交内容与自动附带的诊断信息。</p>
       </div>
       <div class="inline">
         <select v-model="statusFilter" aria-label="按状态筛选反馈">

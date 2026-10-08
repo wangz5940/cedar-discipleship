@@ -725,9 +725,6 @@ function localDateTimeValue() {
   <Teleport v-if="visible" defer to="#vue-ministry-groups">
     <div class="ministry-page">
       <header class="ministry-header">
-        <div>
-          <h2>小组与服事进展</h2>
-        </div>
         <div class="ministry-header-actions">
           <span class="ministry-count"><Users :size="17" /> 已加入 {{ joinedGroups.length }} 组</span>
           <button class="secondary icon-text-button" type="button" @click="showNotifications = !showNotifications">
