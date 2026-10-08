@@ -138,7 +138,7 @@ it('uses each custom devotion date resource independently', async () => {
     .toMatchObject({ url: '/api/assets/202/download', pageRange: '4-5' });
 });
 
-it('uses the zero-padded WordProject URL for early Bible books', async () => {
+it('uses the local Bible file URL for the default source', async () => {
   await logout({ remote: false });
   scriptureConfig = {
     enabled: true,
@@ -151,12 +151,12 @@ it('uses the zero-padded WordProject URL for early Bible books', async () => {
   await login('test', 'test');
   await setSelectedDate('2026-09-22');
   expect(currentTaskOptions().flatMap(task => task.contentLinks || []).find(link => link.taskType === 'daily_scripture')?.url)
-    .toBe('https://www.wordproject.org/bibles/gb/01/1.htm');
+    .toBe('/bible/cuv/1.json');
 });
 
 async function configureScripture(book = '哥林多前书', book_id = '46', start_chapter = 5, extra = {}) {
   await logout({ remote: false });
-  scriptureConfig = { enabled: true, start_date: '2026-09-22', book, book_id, start_chapter, max_chapters: 50, ...extra };
+  scriptureConfig = { enabled: true, start_date: '2026-09-22', book, book_id, start_chapter, max_chapters: bibleBookReferences.find(item => item[1] === book_id)[2], ...extra };
   await login('test', 'test');
   await setSelectedDate('2026-09-22');
   return currentTaskOptions().find(task => task.contentLinks?.some(link => link.taskType === 'daily_scripture'));
@@ -173,15 +173,6 @@ it('opens local scripture through the combined daily entry without changing comp
   expect(useContentViewerStore().viewer.html).toContain('>1</sup> 第一节原文');
   expect(useContentViewerStore().viewer.html).toContain('>2</sup> 第二节原文');
   expect(currentTaskOptions()).toEqual(before);
-});
-
-it('falls back to WordProject only when the local book is missing', async () => {
-  const originalFetch = fetch.getMockImplementation();
-  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/1.json'
-    ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options));
-  const task = await configureScripture('创世记', '1', 1);
-  await openTaskContent(task);
-  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/01/1.htm' });
 });
 
 it('does not replace local network errors with an external reader', async () => {
@@ -209,7 +200,7 @@ it('opens local scripture through the separate reading entry', async () => {
   expect(task.type).toBe('daily_scripture');
 });
 
-it('falls back for an absent chapter and ignores a late load after closing', async () => {
+it('ignores a late local load after closing', async () => {
   const originalFetch = fetch.getMockImplementation();
   let resolveBook;
   fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/3.json'
@@ -217,11 +208,11 @@ it('falls back for an absent chapter and ignores a late load after closing', asy
   const task = await configureScripture('利未记', '3', 1);
   const opening = openTaskContent(task);
   closeViewer();
-  resolveBook(Response.json(Array.from({ length: 27 }, () => [])));
+  resolveBook(Response.json(Array.from({ length: 27 }, () => ['原文'])));
   await opening;
   expect(useContentViewerStore().viewer).toBeNull();
   await openTaskContent(task);
-  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/03/1.htm' });
+  expect(useContentViewerStore().viewer.html).toContain('原文');
 });
 
 
@@ -264,29 +255,6 @@ it('merges locally available chapters into one reader while preserving devotion 
   expect(useContentViewerStore().viewer.html).toBe(html);
 });
 
-it('keeps individual external chapter links when the local book is absent', async () => {
-  const originalFetch = fetch.getMockImplementation();
-  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/1.json'
-    ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options));
-  const task = await configureScripture('创世记', '1', 1, { chapters_per_day: 3 });
-  expect(task.contentLinks).toHaveLength(3);
-  await openTaskContent(task, task.contentLinks[2]);
-  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/01/3.htm' });
-});
-
-it('keeps an absent chapter separate and merges the remaining local chapters', async () => {
-  const originalFetch = fetch.getMockImplementation();
-  const chapters = Array.from({ length: 36 }, (_, index) => index === 0 ? [] : [`第${index + 1}章原文`]);
-  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/4.json'
-    ? Promise.resolve(Response.json(chapters)) : originalFetch(url, options));
-  const task = await configureScripture('民数记', '4', 1, { chapters_per_day: 3 });
-  expect(task.contentLinks.map(link => link.label)).toEqual(['民数记 一章', '民数记 二至三章']);
-  await openTaskContent(task, task.contentLinks[0]);
-  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/04/1.htm' });
-  await openTaskContent(task, task.contentLinks[1]);
-  expect(useContentViewerStore().viewer.html).toContain('第3章原文');
-});
-
 it('shows only the first and last book chapters for a cross-book local reader', async () => {
   vi.spyOn(verseSource, 'loadBibleBook').mockImplementation(async id => JSON.parse(readFileSync(new URL(`../public/bible/cuv/${id}.json`, import.meta.url), 'utf8')));
   const task = await configureScripture('创世记', '1', 1, {
@@ -294,11 +262,25 @@ it('shows only the first and last book chapters for a cross-book local reader', 
     books: bibleBookReferences.map(([book, book_id, chapters]) => ({ book, book_id, chapters })),
   });
   expect(task.contentLinks).toHaveLength(1);
-  expect(task.contentLinks[0].label).toBe('创世记 一至启示录二十二章');
+  expect(task.contentLinks[0].label).toBe('创世记一章 至 启示录二十二章');
   await openTaskContent(task);
   const viewer = useContentViewerStore().viewer;
-  expect(viewer.title).toBe('创世记 一至启示录二十二章');
+  expect(viewer.title).toBe('创世记一章 至 启示录二十二章');
   expect(viewer.html.match(/<h2>/g)).toHaveLength(1189);
   expect(viewer.html).toContain('<h2>出埃及记 一章</h2>');
   expect(viewer.html).toContain('<h2>启示录 二十二章</h2>');
+});
+
+it('opens the next cycle from Genesis and never opens an external fallback for a missing local file', async () => {
+  vi.spyOn(verseSource, 'loadBibleBook').mockImplementation(async id => JSON.parse(readFileSync(new URL(`../public/bible/cuv/${id}.json`, import.meta.url), 'utf8')));
+  await configureScripture('启示录', '66', 22);
+  await setSelectedDate('2026-09-23');
+  const task = currentTaskOptions().find(item => item.contentLinks?.some(link => link.taskType === 'daily_scripture'));
+  expect(task.contentLinks[0].label).toBe('创世记 一章');
+  await openTaskContent(task);
+  expect(useContentViewerStore().viewer.html).toContain('起初，');
+  closeViewer();
+  verseSource.loadBibleBook.mockRejectedValue(Object.assign(new Error('bible_load_failed'), { status: 404 }));
+  await openTaskContent(task);
+  expect(useContentViewerStore().viewer).toBeNull();
 });

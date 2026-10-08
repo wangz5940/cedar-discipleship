@@ -76,7 +76,7 @@ describe('resolveEffectiveSchedule', () => {
     expect(resolveEffectiveSchedule(scripture, '2026-09-07', ['start_date']).book).toBe('约翰福音');
   });
 
-  it('returns multiple chapters across books and stops after the sequence', () => {
+  it('returns multiple chapters across books and continues from Genesis after the sequence', () => {
     const scripture = {
       start_date: '2026-05-11',
       start_chapter: 2,
@@ -95,7 +95,10 @@ describe('resolveEffectiveSchedule', () => {
       { bookName: '乙', bookId: '2', chapter: 1 },
       { bookName: '乙', bookId: '2', chapter: 2 },
     ]);
-    expect(scriptureChaptersForDate(scripture, '2026-05-13')).toEqual([]);
+    expect(scriptureChaptersForDate(scripture, '2026-05-13')).toEqual([
+      { bookName: '创世记', bookId: '1', chapter: 1 },
+      { bookName: '创世记', bookId: '1', chapter: 2 },
+    ]);
     expect(scriptureChaptersForDate({ ...scripture, type: 'checkin' }, '2026-05-11')).toEqual([]);
   });
 
@@ -248,4 +251,19 @@ describe('daily devotion custom plans', () => {
     expect(plan).toMatchObject({ date: '2026-09-23', page_start: '22' });
   });
 
+});
+
+it('continues through Revelation into Genesis within a day and across repeated full cycles', () => {
+  const config = { start_date: '2026-09-22', book: '启示录', book_id: '66', max_chapters: 22, start_chapter: 22, chapters_per_day: 2 };
+  expect(scriptureChaptersForDate(config, '2026-09-22')).toEqual([
+    { bookName: '启示录', bookId: '66', chapter: 22 },
+    { bookName: '创世记', bookId: '1', chapter: 1 },
+  ]);
+  expect(scriptureChaptersForDate(config, '2026-09-23')).toEqual([
+    { bookName: '创世记', bookId: '1', chapter: 2 },
+    { bookName: '创世记', bookId: '1', chapter: 3 },
+  ]);
+  const onePerDay = { ...config, chapters_per_day: 1 };
+  const nextCycleDate = new Date(Date.UTC(2026, 8, 22 + 1 + 1189 * 2)).toISOString().slice(0, 10);
+  expect(scriptureChaptersForDate(onePerDay, nextCycleDate)).toEqual([{ bookName: '创世记', bookId: '1', chapter: 1 }]);
 });
