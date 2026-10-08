@@ -27,7 +27,17 @@ export function hasPDFSignature(data: Uint8Array): boolean {
 export function buildWeeklyVerseContentLink(verseRef: unknown, reciteText: unknown) {
   const content = String(reciteText || '').trim();
   const title = String(verseRef || '').trim() || '本周背经';
-  if (content) {
+  const target = bibleReferenceTarget(verseRef);
+  const contentTarget = content ? bibleReferenceTarget(content, true) : null;
+  const referenceOnly = Boolean(
+    target
+    && contentTarget
+    && target.bookId === contentTarget.bookId
+    && target.chapter === contentTarget.chapter
+    && target.startVerse === contentTarget.startVerse
+    && target.endVerse === contentTarget.endVerse,
+  );
+  if (content && !referenceOnly) {
     return {
       label: '查看原文',
       title,
@@ -36,7 +46,6 @@ export function buildWeeklyVerseContentLink(verseRef: unknown, reciteText: unkno
       preserveLineBreaks: true,
     };
   }
-  const target = bibleReferenceTarget(verseRef);
   return target ? {
     label: '查看原文',
     title,
@@ -79,13 +88,15 @@ type LocalBibleVerseReference = {
   endVerse: number;
 };
 
-function bibleReferenceTarget(value: unknown): LocalBibleVerseReference | null {
+function bibleReferenceTarget(value: unknown, exact = false): LocalBibleVerseReference | null {
   const source = String(value || '').trim().replaceAll('：', ':').replace(/\s+/g, '');
   for (const [name, id, chapters, aliases] of bibleBookReferences) {
     for (const label of [name, ...aliases].sort((left, right) => right.length - left.length)) {
       if (!source.startsWith(label)) continue;
       const match = source.slice(label.length).match(
-        /^(\d{1,3}):(\d{1,3})(?:[-–—－](\d{1,3}))?/,
+        exact
+          ? /^(\d{1,3}):(\d{1,3})(?:[-–—－](\d{1,3}))?$/
+          : /^(\d{1,3}):(\d{1,3})(?:[-–—－](\d{1,3}))?/,
       );
       if (!match) continue;
       const chapter = Number(match[1]);

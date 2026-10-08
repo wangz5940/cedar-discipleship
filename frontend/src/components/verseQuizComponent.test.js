@@ -3,14 +3,16 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import * as vue from 'vue';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import * as quiz from './verseQuiz';
+import * as verseSource from '../runtime/verseSource';
 
 const { descriptor } = parse(readFileSync(new URL('./VerseQuiz.vue', import.meta.url), 'utf8'));
 const script = compileScript(descriptor, { id: 'verse-quiz-test' }).content
   .replace(/^import .*;\r?$/gm, '').replace('export default', 'return');
 const api = vi.fn();
 const Quiz = new Function('bindings', `const { computed, ref, watch, api,
-  createVerseBlanks, gradeVersePaper, tokenizeVerse, verseBlankWidth } = bindings;
-  const VerseGradingDetails = {};\n${script}`)({ ...vue, ...quiz, api });
+  createVerseBlanks, gradeVersePaper, tokenizeVerse, verseBlankWidth,
+  loadBibleBook, selectedVerseText } = bindings;
+  const VerseGradingDetails = {};\n${script}`)({ ...vue, ...quiz, ...verseSource, api });
 Quiz.render = () => null;
 const renderer = vue.createRenderer({
   insert() {}, remove() {}, patchProp() {}, setText() {}, setElementText() {},
@@ -55,6 +57,25 @@ it('generates and saves only scripture words while keeping references and number
   expect(body.blank_count).toBe(7);
   expect(body.correct_count).toBe(7);
   expect(body.paper.version).toBe(3);
+});
+
+it('fills a reference-only recitation from the bundled Bible', async () => {
+  const psalms = JSON.parse(readFileSync(new URL('../../public/bible/cuv/19.json', import.meta.url), 'utf8'));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(psalms)));
+  const state = await mountQuiz({
+    type: 'daily_verse',
+    logicalDate: '2026-10-08',
+    title: '诗121:4-6',
+    reciteText: '诗121：4-6',
+    localBibleVerse: {
+      bookId: '19', chapter: 121, startVerse: 4, endVerse: 6,
+    },
+  });
+
+  await vi.waitFor(() => expect(state.originalText).toContain('诗121:4'));
+  expect(fetch).toHaveBeenCalledWith('/bible/cuv/19.json');
+  expect(state.originalText).toContain('保护以色列的，也不打盹也不睡觉');
+  expect(state.originalText).toContain('白日，太阳必不伤你');
 });
 
 it.each([
