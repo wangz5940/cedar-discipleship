@@ -76,11 +76,10 @@ function chooseGroup(groupID) {
       </div>
     </AppOverlay>
   </div>
-  <span v-else-if="activeGroup" class="pill group-switcher__current">{{ activeGroup.name }}</span>
 </template>
 
 <style scoped>
-.group-switcher__current { padding: 7px 12px; border: 1px solid var(--cd-border); background: var(--cd-primary-soft); color: var(--cd-primary); font-size: 16px; font-weight: 700; line-height: 1.4; }
+
 .group-switcher__trigger {
   display: flex;
   width: min(240px, 40vw);

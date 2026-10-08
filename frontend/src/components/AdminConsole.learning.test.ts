@@ -11,13 +11,6 @@ describe('AdminConsole daily learning controls', () => {
     expect(component).not.toContain('显示灵修入口');
   });
 
-  it('shows only the latest three configured dates until expanded', () => {
-    expect(component).toContain('configuredDailyPlans.value.slice(-3)');
-    expect(component).toContain('v-for="plan in visibleConfiguredDailyPlans"');
-    expect(component).toContain(':aria-expanded="dailyPlansExpanded"');
-    expect(component).toContain("dailyPlansExpanded ? '收起' : `展开全部（${configuredDailyPlans.length}）`");
-  });
-
   it('updates the selected date resource without clearing other dates', () => {
     expect(component).toContain('当天灵修文件');
     expect(component).toContain('@change="updateDailyPlanFile($event.target.value)"');

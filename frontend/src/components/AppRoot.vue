@@ -32,7 +32,7 @@ import {
 import AppMobileNav from './ui/AppMobileNav.vue';
 import AppSidebar from './ui/AppSidebar.vue';
 import DateCalendarDialog from './ui/DateCalendarDialog.vue';
-import GroupSwitcher from './ui/GroupSwitcher.vue';
+import AppPageHeader from './ui/AppPageHeader.vue';
 import MobileCardCollection from './ui/MobileCardCollection.vue';
 import './app-root.css';
 import {
@@ -133,7 +133,7 @@ watch([authenticated, currentGroupID], async ([isAuthenticated, groupID]) => {
 }, { immediate: true });
 const pageTitle = computed(() => ({
   home: workbench.isToday ? '今日学习' : '学习任务',
-  dashboard: '小组统计', groups: '小组与服事进展', feedback: '建议与反馈',
+  courses: '课程', dashboard: '小组统计', groups: '小组与服事进展', feedback: '建议与反馈',
   admin: '管理工作台', guide: '使用文档', settings: '个人设置',
 }[tab.value] || ''));
 const settings = computed(() => learningConfig.value || {});
@@ -391,17 +391,16 @@ async function refreshResources() {
     <div class="main">
       <!-- Content Area -->
       <main class="content">
-        <div v-if="!showGroupPicker && (pageTitle || groups.length || activeGroup)" class="app-content-toolbar">
-          <h1 v-if="pageTitle" class="app-page-title">{{ pageTitle }}</h1>
-          <GroupSwitcher
-            :groups="groups"
-            :current-group-i-d="currentGroupID"
-            :default-group-i-d="defaultGroupID"
-            :active-group="activeGroup"
-            @switch="switchGroup"
-            @set-default="setDefaultGroupAction"
-          />
-        </div>
+        <AppPageHeader
+          v-if="!showGroupPicker"
+          :title="pageTitle"
+          :groups="groups"
+          :current-group-i-d="currentGroupID"
+          :default-group-i-d="defaultGroupID"
+          :active-group="activeGroup"
+          @switch="switchGroup"
+          @set-default="setDefaultGroupAction"
+        />
 
         <!-- Group Picker Modal/Screen -->
         <section v-if="showGroupPicker" class="panel app-group-picker">
