@@ -11,8 +11,11 @@ import {
   X,
 } from '@lucide/vue';
 import { api, fetchWithAuth, toast } from '../legacy-app';
+import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
+import UnreadDot from './ui/UnreadDot.vue';
 import { createLogID } from '../runtime/logID';
 
+const unread = useFeedbackUnreadStore();
 const statuses = [
   ['pending', '待处理'],
   ['processing', '处理中'],
@@ -26,7 +29,8 @@ const sources = [
   ['automatic', '自动上报'],
 ];
 const statusFilter = ref('');
-const sourceFilter = ref('');
+const props = defineProps({ initialSource: { type: String, default: '' } });
+const sourceFilter = ref(props.initialSource);
 const items = ref([]);
 const selected = ref(null);
 const openingID = ref(0);
@@ -241,6 +245,7 @@ async function openItem(id) {
       ...data.feedback,
       attachments,
     };
+    await unread.markRead(data.feedback, true);
   } catch (error) {
     if (request !== detailRequest) return;
     closeItem();
@@ -370,7 +375,7 @@ onBeforeUnmount(closeItem);
               @click="toggleItem(item.id)"
             >
               <span class="feedback-admin__list-main">
-                <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}</strong>
+                <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}<UnreadDot v-if="unread.adminIDs.includes(item.id)" /></strong>
                 <span>{{ item.message }}</span>
                 <small class="muted">
                   {{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}

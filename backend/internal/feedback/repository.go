@@ -6,6 +6,7 @@ import (
 )
 
 type Repository interface {
+	UnreadCandidates(ctx context.Context, userID uint64, admin bool, since time.Time) ([]UnreadCandidate, error)
 	Create(ctx context.Context, item Feedback, attachments []Attachment) (uint64, error)
 	AutomaticSettings(ctx context.Context) (AutomaticSettings, error)
 	SaveAutomaticSettings(

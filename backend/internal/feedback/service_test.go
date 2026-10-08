@@ -386,3 +386,7 @@ func TestStatusAndReplyValidation(t *testing.T) {
 		t.Fatalf("status = %q", repo.status)
 	}
 }
+
+func (r *memoryRepository) UnreadCandidates(context.Context, uint64, bool, time.Time) ([]UnreadCandidate, error) {
+	return nil, nil
+}

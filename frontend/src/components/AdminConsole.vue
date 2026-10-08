@@ -5,6 +5,8 @@ import { storeToRefs } from 'pinia';
 import { ChevronRight, Plus, Trash2 } from '@lucide/vue';
 import { alertDialog, confirmDialog, promptDialog } from '../ui/dialog';
 import { useAppStateStore } from '../stores/appState';
+import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
+import UnreadDot from './ui/UnreadDot.vue';
 import { lazyPage } from '../ui/lazyPage';
 import { bibleBookReferences, inferDailyDevotionContentType } from '../runtime/content';
 import { dailyVerseTitle } from '../runtime/dailyVerseTitle';
@@ -76,6 +78,7 @@ const FeedbackAdmin = lazyPage(() => import('./FeedbackAdmin.vue'));
 const ReciteHistoryAdmin = lazyPage(() => import('./ReciteHistoryAdmin.vue'));
 const ResourceGovernance = lazyPage(() => import('./ResourceGovernance.vue'));
 const app = useAppStateStore();
+const feedbackUnread = useFeedbackUnreadStore();
 const {
   adminSection,
   canEditLearning,
@@ -881,7 +884,7 @@ async function runLocalBackupImport() {
         :tabindex="adminSection === 'feedback' ? 0 : -1"
         @click="setAdminSection('feedback')"
       >
-        反馈处理
+        反馈处理<UnreadDot v-if="feedbackUnread.adminIDs.length" />
       </button>
       <button
         v-if="user?.is_super_admin || user?.is_tenant_admin"

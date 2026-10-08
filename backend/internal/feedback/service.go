@@ -80,10 +80,15 @@ var diagnosticLimits = map[string]int{
 type Service struct {
 	repo    Repository
 	storage Storage
+	reads   *ReadStateStore
 }
 
-func NewService(repo Repository, storage Storage) *Service {
-	return &Service{repo: repo, storage: storage}
+func NewService(repo Repository, storage Storage, reads ...*ReadStateStore) *Service {
+	s := &Service{repo: repo, storage: storage}
+	if len(reads) > 0 {
+		s.reads = reads[0]
+	}
+	return s
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput, now time.Time) (*UserView, error) {

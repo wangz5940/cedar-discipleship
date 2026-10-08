@@ -161,3 +161,28 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 		t.Fatalf("closed diagnostics = %#v", adminDetail)
 	}
 }
+
+func TestUnreadCandidatesExcludeHistoryAndAutomaticReportsWithoutListLimit(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Apply(t, db, "018_feedback_workflow.sql")
+	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+ VALUES(11,'reader','读者','reader',NOW(),NOW()),(12,'other','其他','other',NOW(),NOW());
+ INSERT INTO feedbacks(id,user_id,name,contact,message,source,status,page,user_agent,created_at,updated_at)
+ VALUES(41,11,'','','历史','manual','closed','','','2020-01-01','2020-01-01'),
+ (42,11,'','','新反馈','manual','pending','','','2030-01-01','2030-01-01'),
+ (43,12,'','','他人反馈','manual','pending','','','2030-01-01','2030-01-01'),
+ (44,11,'','','自动','automatic','pending','','','2030-01-01','2030-01-01');
+ INSERT INTO feedback_replies(id,feedback_id,admin_user_id,message,created_at)
+ VALUES(10,41,99,'历史回复','2020-01-01'),(11,41,99,'旧反馈的新回复','2030-01-01'),
+ (12,43,99,'他人回复','2030-01-01'),(13,44,99,'自动反馈的回复','2030-01-01')`)
+	repo := NewMySQLRepository(db)
+	since := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	own, err := repo.UnreadCandidates(t.Context(), 11, false, since)
+	if err != nil || len(own) != 2 || own[0].ID != 44 || own[0].LastReplyID != 13 || own[1].ID != 41 || own[1].LastReplyID != 11 {
+		t.Fatalf("own=%+v err=%v", own, err)
+	}
+	admin, err := repo.UnreadCandidates(t.Context(), 99, true, since)
+	if err != nil || len(admin) != 2 || admin[0].ID != 43 || admin[1].ID != 42 {
+		t.Fatalf("admin=%+v err=%v", admin, err)
+	}
+}

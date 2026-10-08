@@ -406,3 +406,40 @@ func writeFeedbackError(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusInternalServerError, "feedback_failed")
 	}
 }
+
+func (a *app) handleFeedbackUnread(w http.ResponseWriter, r *http.Request) {
+	user := mustUser(r)
+	unread, err := a.feedbacks.Unread(r.Context(), user.ID, user.IsSuperAdmin)
+	if err != nil {
+		writeFeedbackError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, unread)
+}
+
+func (a *app) handleOwnFeedbackRead(w http.ResponseWriter, r *http.Request) {
+	a.handleFeedbackRead(w, r, false)
+}
+
+func (a *app) handleSuperFeedbackRead(w http.ResponseWriter, r *http.Request) {
+	a.handleFeedbackRead(w, r, true)
+}
+
+func (a *app) handleFeedbackRead(w http.ResponseWriter, r *http.Request, admin bool) {
+	id, err := feedbackPathID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_feedback_id")
+		return
+	}
+	var input struct {
+		ReplyID uint64 `json:"reply_id"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	if err := a.feedbacks.MarkRead(r.Context(), mustUser(r).ID, id, admin, input.ReplyID); err != nil {
+		writeFeedbackError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
   AlertCircle,
@@ -16,6 +16,8 @@ import {
   Users,
   X,
 } from '@lucide/vue';
+import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
+import UnreadDot from './ui/UnreadDot.vue';
 import { lazyPage } from '../ui/lazyPage';
 import { vDialogFocus } from '../ui/dialogFocus';
 import { useAppStateStore } from '../stores/appState';
@@ -54,10 +56,11 @@ import { loadStudyAccess, studyAccessStatus, toggleStudyAccess } from '../../pub
 
 const CourseLibrary = lazyPage(() => import('./CourseLibrary.vue'));
 const AdminConsole = lazyPage(() => import('./AdminConsole.vue'));
-const FeedbackCenter = lazyPage(() => import('./FeedbackCenter.vue'));
+const FeedbackCenter = lazyPage(() => import('./FeedbackPage.vue'));
 const PersonalSettings = lazyPage(() => import('./PersonalSettings.vue'));
 const UserGuide = lazyPage(() => import('./UserGuide.vue'));
 const app = useAppStateStore();
+const feedbackUnread = useFeedbackUnreadStore();
 const workbench = useCheckinWorkbenchStore();
 const downloadManager = useDownloadManagerStore();
 const {
@@ -77,6 +80,25 @@ const {
   learningConfig,
   calendar,
 } = storeToRefs(app);
+
+watch(() => authenticated.value ? user.value?.id : 0, (id) => {
+  feedbackUnread.setAccount(id);
+  void feedbackUnread.refresh();
+}, { immediate: true });
+let feedbackUnreadTimer;
+function refreshFeedbackReminders() {
+  if (document.visibilityState !== 'hidden') void feedbackUnread.refresh();
+}
+onMounted(() => {
+  feedbackUnreadTimer = window.setInterval(refreshFeedbackReminders, 30000);
+  window.addEventListener('focus', refreshFeedbackReminders);
+  document.addEventListener('visibilitychange', refreshFeedbackReminders);
+});
+onBeforeUnmount(() => {
+  window.clearInterval(feedbackUnreadTimer);
+  window.removeEventListener('focus', refreshFeedbackReminders);
+  document.removeEventListener('visibilitychange', refreshFeedbackReminders);
+});
 
 const loginUsername = ref('');
 const loginPassword = ref('');
@@ -382,6 +404,8 @@ async function refreshResources() {
       :user="user"
       :role="roleLabel(user || {}) || '组员'"
       :unfinished-count="downloadManager.unfinishedCount"
+      :feedback-unread="feedbackUnread.hasUnread"
+      :admin-feedback-unread="feedbackUnread.adminIDs.length > 0"
       @navigate="setTab"
       @downloads="downloadManager.openPanel()"
       @logout="logout"
@@ -553,6 +577,7 @@ async function refreshResources() {
         :tab="tab"
         :can-admin="canAdmin"
         :more-open="showMobileMoreMenu"
+        :feedback-unread="feedbackUnread.hasUnread"
         :show-groups="ministryGroupCount > 0"
         :entry-setting="settings.ministry?.show_entry"
         @navigate="setTab"
@@ -596,7 +621,7 @@ async function refreshResources() {
             @click="setTab('feedback'); showMobileMoreMenu = false;"
           >
             <MessageSquareText :size="18" class="app-more-dialog__icon" />
-            <span>建议与反馈</span>
+            <span>建议与反馈<UnreadDot v-if="feedbackUnread.hasUnread" /></span>
           </button>
           <button
             class="app-more-dialog__action"

@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ for (const [name, original] of [['个人反馈', FeedbackCenter], ['管理反馈
       await (state.loadItems || state.loadList)();
       return state;
     } };
-    const html = await renderToString(createSSRApp(component));
+    const html = await renderToString(createSSRApp(component).use(createPinia()));
     expect(state.openingID.value).toBe(0);
     expect(html.match(/aria-expanded="false"/g)).toHaveLength(3);
     expect(api.mock.calls).toHaveLength(1);
@@ -38,7 +39,7 @@ for (const [name, original] of [['个人反馈', FeedbackCenter], ['管理反馈
       await state.openItem(2);
       return state;
     } };
-    const html = await renderToString(createSSRApp(component));
+    const html = await renderToString(createSSRApp(component).use(createPinia()));
     expect(html.indexOf('反馈条目2')).toBeLessThan(html.indexOf('详情正文2'));
     expect(html.indexOf('详情正文2')).toBeLessThan(html.indexOf('反馈条目3'));
     expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);

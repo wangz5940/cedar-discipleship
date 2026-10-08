@@ -1,10 +1,14 @@
 <script setup>
 import { BarChart2, Book, BookOpen, Download, Folder, House, LogOut, MessageSquareText, Settings, User, Users } from '@lucide/vue';
 
+import UnreadDot from './UnreadDot.vue';
+
 defineProps({
   navItems: { type: Array, default: () => [] },
   tab: { type: String, required: true },
   canAdmin: Boolean,
+  feedbackUnread: Boolean,
+  adminFeedbackUnread: Boolean,
   user: { type: Object, default: null },
   role: { type: String, default: '组员' },
   unfinishedCount: { type: Number, default: 0 },
@@ -41,7 +45,7 @@ function navIcon(id) {
         @click="$emit('navigate', item[0])"
       >
         <component :is="navIcon(item[0])" :size="20" stroke-width="1.8" />
-        <span>{{ item[1] }}</span>
+        <span>{{ item[1] }}<UnreadDot v-if="item[0] === 'feedback' && feedbackUnread" /></span>
       </button>
 
       <template v-if="canAdmin">
@@ -54,7 +58,7 @@ function navIcon(id) {
           @click="$emit('navigate', 'admin')"
         >
           <Settings :size="20" stroke-width="1.8" />
-          <span>管理工作台</span>
+          <span>管理工作台<UnreadDot v-if="adminFeedbackUnread" /></span>
         </button>
       </template>
       <div v-if="!canAdmin" class="separator" />

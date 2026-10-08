@@ -154,6 +154,10 @@ func Run() error {
 	if err != nil {
 		loc = time.FixedZone("CST", 8*3600)
 	}
+	feedbackReads, err := feedbackdomain.NewReadStateStore(cfg.ResourceRoot, time.Now())
+	if err != nil {
+		slog.Error("feedback reminder state unavailable", "error", err)
+	}
 	checkinSvc := checkindomain.NewService(checkindomain.NewMySQLRepository(db))
 	a := &app{
 		db:            db,
@@ -178,6 +182,7 @@ func Run() error {
 		feedbacks: feedbackdomain.NewService(
 			feedbackdomain.NewMySQLRepository(db),
 			feedbackdomain.NewLocalStorage(cfg.ResourceRoot),
+			feedbackReads,
 		),
 		learning:      learningdomain.NewService(learningdomain.NewMySQLRepository(db)),
 		ministry:      ministrydomain.NewService(ministrydomain.NewMySQLRepository(db)),
@@ -354,6 +359,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/feedback", a.auth(a.handleCreateFeedback))
 	mux.HandleFunc("POST /api/feedback/automatic", a.auth(a.handleAutomaticFeedback))
 	mux.HandleFunc("GET /api/feedback/automatic-settings", a.auth(a.handleAutomaticFeedbackSettings))
+	mux.HandleFunc("GET /api/feedback/unread", a.auth(a.handleFeedbackUnread))
+	mux.HandleFunc("POST /api/feedback/{id}/read", a.auth(a.handleOwnFeedbackRead))
 	mux.HandleFunc("GET /api/feedback", a.auth(a.handleListOwnFeedback))
 	mux.HandleFunc("GET /api/feedback/{id}", a.auth(a.handleOwnFeedbackDetail))
 	mux.HandleFunc("GET /api/feedback/{id}/attachments/{attachment_id}", a.auth(a.handleOwnFeedbackAttachment))
@@ -481,6 +488,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/super-admin/recite-attempts", a.auth(a.requireSuper(a.handleSuperListReciteAttempts)))
 	mux.HandleFunc("DELETE /api/super-admin/recite-attempts/{id}", a.auth(a.requireSuper(a.handleSuperDeleteReciteAttempt)))
 	mux.HandleFunc("GET /api/super-admin/audit-logs", a.auth(a.requireSuper(a.handleAllAuditLogs)))
+	mux.HandleFunc("POST /api/super-admin/feedback/{id}/read", a.auth(a.requireSuper(a.handleSuperFeedbackRead)))
 	mux.HandleFunc("GET /api/super-admin/feedback", a.auth(a.requireSuper(a.handleSuperListFeedback)))
 	mux.HandleFunc("PUT /api/super-admin/feedback/automatic-settings", a.auth(a.requireSuper(a.handleSuperUpdateAutomaticFeedbackSettings)))
 	mux.HandleFunc("GET /api/super-admin/feedback/{id}", a.auth(a.requireSuper(a.handleSuperFeedbackDetail)))

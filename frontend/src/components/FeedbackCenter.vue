@@ -11,8 +11,11 @@ import {
 } from '@lucide/vue';
 import { api, fetchWithAuth, toast } from '../legacy-app';
 import { collectFeedbackDiagnostics } from '../runtime/feedbackDiagnostics';
+import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
+import UnreadDot from './ui/UnreadDot.vue';
 import { createLogID } from '../runtime/logID';
 
+const unread = useFeedbackUnreadStore();
 const maxImages = 4;
 const maxImageBytes = 5 * 1024 * 1024;
 const message = ref('');
@@ -185,6 +188,7 @@ async function openItem(id) {
       ...data.feedback,
       attachments,
     };
+    await unread.markRead(data.feedback, false);
   } catch (error) {
     if (request !== detailRequest) return;
     closeItem();
@@ -317,7 +321,7 @@ onBeforeUnmount(releaseObjectURLs);
               @click="toggleItem(item.id)"
             >
               <span class="feedback-list__main">
-                <strong>#{{ item.id }} · {{ item.message }}</strong>
+                <span class="feedback-list__title"><strong>#{{ item.id }} · {{ item.message }}</strong><UnreadDot v-if="unread.ownIDs.includes(item.id)" /></span>
                 <small class="muted">{{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(item.updated_at) }}</small>
               </span>
               <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
@@ -386,6 +390,7 @@ onBeforeUnmount(releaseObjectURLs);
 .feedback-list > button.active { color: var(--cd-primary); }
 .feedback-list > button svg.expanded { transform: rotate(90deg); }
 .feedback-list__main { display: grid; min-width: 0; gap: 4px; }
+.feedback-list__title { display: flex; align-items: center; min-width: 0; }
 .feedback-list__main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feedback-detail { margin: 0; min-width: 0; }
 .feedback-detail__head > div { display: flex; align-items: center; gap: 10px; }

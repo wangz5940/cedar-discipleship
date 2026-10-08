@@ -424,3 +424,71 @@ func TestFeedbackListHandlersForwardAndValidateSource(t *testing.T) {
 		})
 	}
 }
+
+type feedbackUnreadHandlerRepository struct {
+	feedbackHandlerRepository
+	adminQueries int
+}
+
+func (r *feedbackUnreadHandlerRepository) UnreadCandidates(_ context.Context, _ uint64, admin bool, _ time.Time) ([]feedbackdomain.UnreadCandidate, error) {
+	if admin {
+		r.adminQueries++
+		return []feedbackdomain.UnreadCandidate{{ID: 73}, {ID: 74}}, nil
+	}
+	return []feedbackdomain.UnreadCandidate{{ID: 73, LastReplyID: 9}, {ID: 74, LastReplyID: 10}}, nil
+}
+
+func TestFeedbackUnreadHandlersKeepReadsScopedAndDetailsReadOnly(t *testing.T) {
+	repo := &feedbackUnreadHandlerRepository{feedbackHandlerRepository: feedbackHandlerRepository{item: feedbackdomain.Feedback{ID: 73, UserID: 11, Replies: []feedbackdomain.Reply{{ID: 9}}}}}
+	reads, err := feedbackdomain.NewReadStateStore(t.TempDir(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &app{feedbacks: feedbackdomain.NewService(repo, &feedbackHandlerStorage{}, reads)}
+	request := httptest.NewRequest(http.MethodGet, "/api/feedback/unread", nil)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 11}))
+	response := httptest.NewRecorder()
+	application.handleFeedbackUnread(response, request)
+	if response.Code != http.StatusOK || repo.adminQueries != 0 || !strings.Contains(response.Body.String(), `"own_ids":[73,74]`) || !strings.Contains(response.Body.String(), `"admin_ids":[]`) {
+		t.Fatalf("unread=%d %s admin queries=%d", response.Code, response.Body.String(), repo.adminQueries)
+	}
+	request.SetPathValue("id", "73")
+	response = httptest.NewRecorder()
+	application.handleOwnFeedbackDetail(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("detail=%d %s", response.Code, response.Body.String())
+	}
+	unread, err := application.feedbacks.Unread(t.Context(), 11, false)
+	if err != nil || len(unread.OwnIDs) != 2 {
+		t.Fatalf("GET marked read=%+v err=%v", unread, err)
+	}
+	for _, tc := range []struct {
+		name       string
+		user       uint64
+		adminRoute bool
+		want       int
+	}{
+		{"foreign owner", 12, false, http.StatusNotFound},
+		{"ordinary user admin route", 11, true, http.StatusForbidden},
+		{"owner reads one", 11, false, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/feedback/73/read", strings.NewReader(`{"reply_id":9,"admin":true}`))
+			r.SetPathValue("id", "73")
+			r = r.WithContext(context.WithValue(r.Context(), currentUserKey, currentUser{ID: tc.user}))
+			w := httptest.NewRecorder()
+			if tc.adminRoute {
+				application.requireSuper(application.handleSuperFeedbackRead)(w, r)
+			} else {
+				application.handleOwnFeedbackRead(w, r)
+			}
+			if w.Code != tc.want {
+				t.Fatalf("read=%d %s", w.Code, w.Body.String())
+			}
+		})
+	}
+	unread, err = application.feedbacks.Unread(t.Context(), 11, false)
+	if err != nil || len(unread.OwnIDs) != 1 || unread.OwnIDs[0] != 74 {
+		t.Fatalf("per-item read=%+v err=%v", unread, err)
+	}
+}
