@@ -146,7 +146,7 @@ type feedbackNotificationSource struct {
 func (s feedbackNotificationSource) ReportNotificationFailure(event notificationdomain.Event, code string) {
 	message := "系统自动上报：学习进度通知最终发送失败"
 	if code == "potato_3023" {
-		message = "系统自动上报：群内禁止机器人发送学习进度通知，请解除禁言"
+		message = "系统自动上报：群内禁止机器人发送学习进度通知，需要恢复通知时请解除禁言并重新绑定学习小组"
 	}
 	s.reporter.observe(feedbackObservation{
 		key: fmt.Sprintf("notification:%d:%s", event.GroupID, code),
