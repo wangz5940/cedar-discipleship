@@ -31,6 +31,7 @@ import {
   resourceCategoryAccept,
 } from '../runtime/resources';
 import DateField from './ui/DateField.vue';
+import AppOverlay from './ui/AppOverlay.vue';
 import BibleVersePicker from './BibleVersePicker.vue';
 import { cleanVerseSource } from '../runtime/verseSource';
 import LearningConfigSection from './ui/LearningConfigSection.vue';
@@ -107,10 +108,29 @@ const dailyPlansExpanded = ref(false);
 const versePlanDate = ref(todayString());
 const verseConfigMode = ref('daily');
 const dailyVersePicker = ref(null);
-function addVerseDay() {
-  if (!canEditLearning.value || !versePlanDate.value) return;
+const verseDayChoiceOpen = ref(false);
+const verseSaving = ref(false);
+const verseSaveContext = ref(null);
+const verseDraftBaseline = ref('');
+const verseDrafts = new Map();
+function verseDraftSnapshot() {
+  return { sources: JSON.parse(JSON.stringify(verseSources.value)), end: versePlanEnd.value, mode: verseCompletionMode.value };
+}
+const verseDraftChanged = computed(() => JSON.stringify(verseDraftSnapshot()) !== verseDraftBaseline.value);
+function advanceVerseDay() {
+  if (!canEditLearning.value || verseSaving.value) return;
+  if (verseDraftChanged.value) verseDrafts.set(versePlanDate.value, verseDraftSnapshot());
   void dailyVersePicker.value?.remember(verseText.value);
+  verseDayChoiceOpen.value = false;
   versePlanDate.value = shiftDailyPlanDate(versePlanDate.value, 1);
+}
+function addVerseDay() {
+  if (!canEditLearning.value || !versePlanDate.value || verseSaving.value) return;
+  if (verseDraftChanged.value) verseDayChoiceOpen.value = true;
+  else advanceVerseDay();
+}
+async function saveAndAddVerseDay() {
+  if (await saveVersePlan()) advanceVerseDay();
 }
 
 const verseSources = ref([]);
@@ -218,12 +238,20 @@ const versePlans = computed(() => [...(dailyVerse.value.plans || [])].sort((a, b
 const generatedVerseTitle = computed(() => dailyVerseTitle(verseText.value));
 const verseRef = computed(() => generatedVerseTitle.value
   || versePlans.value.find((item) => item.date === versePlanDate.value)?.verse_ref || '');
-watch(currentGroupID, () => { versePlanDate.value = todayString(); });
+watch(currentGroupID, () => { verseDrafts.clear(); verseDayChoiceOpen.value = false; versePlanDate.value = todayString(); });
 watch([versePlanDate, () => JSON.stringify(dailyVerse.value.plans || []), currentGroupID], () => {
+  if (verseSaving.value && verseSaveContext.value?.groupID === currentGroupID.value && verseSaveContext.value?.date === versePlanDate.value) return;
   const plan = versePlans.value.find(item => item.date === versePlanDate.value);
   versePlanEnd.value = plan?.end_date || versePlanDate.value;
   verseSources.value = verseSourceRows(plan || { date: versePlanDate.value });
   verseCompletionMode.value = plan?.completion_mode || 'daily';
+  verseDraftBaseline.value = JSON.stringify(verseDraftSnapshot());
+  const draft = verseDrafts.get(versePlanDate.value);
+  if (draft) {
+    verseSources.value = JSON.parse(JSON.stringify(draft.sources));
+    versePlanEnd.value = draft.end;
+    verseCompletionMode.value = draft.mode;
+  }
 }, { immediate: true });
 const weeklyVerseSources = computed(() => verseSourceRows(weekDraft.value));
 function selectWeeklyVerseSource(selection) {
@@ -239,34 +267,56 @@ function removeWeeklyVerseSource(index) {
   updateWeekDraftField('verse_ref', dailyVerseTitle(text));
 }
 async function saveVersePlan() {
-  if (!canEditLearning.value) return;
+  if (!canEditLearning.value || verseSaving.value) return false;
   if (!versePlanDate.value || !verseText.value.trim()) {
     showToast('请选择背经日期和经文');
-    return;
+    return false;
   }
   if (!verseRef.value.trim()) {
     showToast('请在默写原文中保留章节标记，例如创1:1-2、罗8:5-6');
-    return;
+    return false;
   }
   if (verseRef.value.length > 255) {
     showToast('经文章节过多，请分到不同日期配置');
-    return;
+    return false;
   }
   const end = versePlanEnd.value || versePlanDate.value;
   if (end < versePlanDate.value || (verseCompletionMode.value === 'weekly' && end > shiftDailyPlanDate(versePlanDate.value, 6))) {
     showToast('结束日期不能早于开始日期，每周打卡的范围最多七天');
-    return;
+    return false;
   }
   let plans;
   try {
     plans = upsertWeekVersePlan(versePlans.value, fixedWeekVersePlan(versePlanDate.value, end, verseCompletionMode.value, verseSources.value), true);
   } catch (error) {
     showToast(error.message);
-    return;
+    return false;
   }
-  updateLearning(['task_sections', 'daily', 'verse', 'enabled'], true);
-  updateLearning(['task_sections', 'daily', 'verse', 'plans'], plans);
-  await saveLearningConfig('背经已保存');
+  const previousPlans = dailyVerse.value.plans || [];
+  const previousEnabled = dailyVerse.value.enabled;
+  verseSaving.value = true;
+  const groupID = currentGroupID.value;
+  const date = versePlanDate.value;
+  verseSaveContext.value = { groupID, date };
+  try {
+    updateLearning(['task_sections', 'daily', 'verse', 'enabled'], true);
+    updateLearning(['task_sections', 'daily', 'verse', 'plans'], plans);
+    const saved = await saveLearningConfig('背经已保存');
+    if (groupID !== currentGroupID.value || date !== versePlanDate.value) return false;
+    if (!saved) {
+      updateLearning(['task_sections', 'daily', 'verse', 'enabled'], previousEnabled);
+      updateLearning(['task_sections', 'daily', 'verse', 'plans'], previousPlans);
+    }
+    if (saved) {
+      verseDrafts.delete(date);
+      verseDraftBaseline.value = JSON.stringify(verseDraftSnapshot());
+    }
+    return saved;
+  } finally {
+    await nextTick();
+    verseSaving.value = false;
+    verseSaveContext.value = null;
+  }
 }
 
 async function deleteVersePlan() {
@@ -739,6 +789,14 @@ async function runLocalBackupImport() {
 </script>
 
 <template>
+  <AppOverlay :open="verseDayChoiceOpen" title="背经配置尚未保存" :dismissible="!verseSaving" @close="verseDayChoiceOpen = false">
+    <p>{{ versePlanDate }} 的背经配置尚未保存。可保存后进入下一天，或暂留草稿继续新增。</p>
+    <template #footer>
+      <button class="quiet" type="button" :disabled="verseSaving" @click="verseDayChoiceOpen = false">返回编辑</button>
+      <button class="secondary" type="button" :disabled="verseSaving" @click="advanceVerseDay">继续新增</button>
+      <button class="primary" type="button" :disabled="verseSaving || !verseText.trim()" @click="saveAndAddVerseDay">{{ verseSaving ? '保存中…' : '保存并新增' }}</button>
+    </template>
+  </AppOverlay>
   <div class="admin-wrapper">
     <!-- Secondary Nav Toolbar -->
     <div class="toolbar admin-tabs" role="tablist" aria-label="管理工作台功能" @keydown="navigateTabs">
@@ -1072,7 +1130,7 @@ async function runLocalBackupImport() {
                   </div>
                   <div v-show="verseConfigMode === 'daily'" class="form-stack admin-form-grid">
                     <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning || notificationSaving" @change="setLearningToggle(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
-                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /><button class="secondary" type="button" :disabled="!canEditLearning || !versePlanDate" @click="addVerseDay">新增一天</button></div>
+                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /><button class="secondary" type="button" :disabled="!canEditLearning || !versePlanDate || verseSaving" @click="addVerseDay">新增一天</button></div>
                     <div v-if="versePlanEnd !== versePlanDate" class="admin-field"><span class="admin-field-label">已有计划结束日期</span><DateField v-model="versePlanEnd" label="已有背经结束日期" :min="versePlanDate" /></div>
                     <p v-if="verseCompletionMode === 'weekly'" class="muted">此历史范围计划仍按整周一次完成，已有记录保留。</p>
                     <div v-for="(source, index) in verseSources" :key="index" class="verse-source-card">
@@ -1080,7 +1138,7 @@ async function runLocalBackupImport() {
                     </div>
                     <BibleVersePicker ref="dailyVersePicker" add-only remember-position :disabled="!canEditLearning" @select="selectVerseSource" />
                     <div class="form-actions">
-                      <button class="primary" :disabled="!canEditLearning || !verseText.trim()" type="button" @click="saveVersePlan">保存每日背经</button>
+                      <button class="primary" :disabled="!canEditLearning || !verseText.trim() || verseSaving" type="button" @click="saveVersePlan">保存每日背经</button>
                       <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除所选背经</button>
                     </div>
                     <div v-if="versePlans.length" class="daily-plan-list">
