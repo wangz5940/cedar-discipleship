@@ -551,16 +551,24 @@ async function loadCourseOptions() {
   catch { ovcmLoadError.value = 'OVCM 课程加载失败'; }
 }
 onMounted(loadCourseOptions);
-const videoOptions = computed(() => libraryItems.value.filter(isWeeklyMediaResource).concat(
-  ovcmCourses.value.flatMap(course => course.lessons.map(lesson => ({
-    title: `${course.title} · ${lesson.title}`, type: lesson.type,
-    url: ovcmLessonURL(course.id, lesson.id),
-  }))),
-));
-function matchingVideoOptions(binding) {
+const videoOptionGroups = computed(() => [
+  { label: '本组资料', options: libraryItems.value.filter(isWeeklyMediaResource) },
+  {
+    label: '外部资料（OVCM）',
+    options: ovcmCourses.value.flatMap(course => course.lessons.map(lesson => ({
+      title: `${course.title} · ${lesson.title}`, type: lesson.type,
+      url: ovcmLessonURL(course.id, lesson.id),
+    }))),
+  },
+]);
+const videoOptions = computed(() => videoOptionGroups.value.flatMap(group => group.options));
+function matchingVideoOptionGroups(binding) {
   const selected = weekBindingSelectionValue(binding, videoOptions.value);
   const query = videoQuery.value.trim().toLowerCase();
-  return videoOptions.value.filter(option => option.title.toLowerCase().includes(query) || librarySelectionValue(option) === selected);
+  return videoOptionGroups.value.map(group => ({
+    ...group,
+    options: group.options.filter(option => option.title.toLowerCase().includes(query) || librarySelectionValue(option) === selected),
+  })).filter(group => group.options.length);
 }
 const outlineOptions = computed(() => libraryItems.value.filter((item) => (
   item.type === 'image' || item.type === 'outline' || item.category === 'outline'
@@ -1197,7 +1205,9 @@ async function runLocalBackupImport() {
                         <div v-for="(item, index) in weekDraft.videos || []" :key="`video-${index}`" class="admin-binding-row video-binding-row">
                           <select aria-label="周任务音视频资源" :value="weekBindingSelectionValue(item, videoOptions)" @change="applyBindingSelection('videos', index, $event.target.value, videoOptions)">
                             <option value="">不挂载文件</option>
-                            <option v-for="option in matchingVideoOptions(item)" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
+                            <optgroup v-for="group in matchingVideoOptionGroups(item)" :key="group.label" :label="group.label">
+                              <option v-for="option in group.options" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option>
+                            </optgroup>
                           </select>
                           <button class="ghost" type="button" @click="removeWeekBinding('videos', index)">删除</button>
                         </div>

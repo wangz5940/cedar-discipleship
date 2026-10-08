@@ -36,3 +36,16 @@ it('单小组不显示标签，多小组仍可切换并设置默认小组', asyn
   expect(multiple).toContain('aria-haspopup="dialog"');
   expect(multiple).toContain('设为默认');
 });
+
+it('顶部栏统一渲染左侧标题与小组切换，空标题和单小组不产生空栏', async () => {
+  const { default: AppPageHeader } = await import('./AppPageHeader.vue');
+  const groups = [{ id: 1, name: '测试一组' }, { id: 2, name: '测试二组' }];
+  const html = await renderToString(createSSRApp(AppPageHeader, { title: '课程', groups, activeGroup: groups[0] }));
+  expect(html).toMatch(/<h1 class="app-page-title"[^>]*>课程<\/h1>/);
+  expect(html).toContain('group-switcher__trigger');
+  const single = await renderToString(createSSRApp(AppPageHeader, { title: '课程', groups: groups.slice(0, 1), activeGroup: groups[0] }));
+  expect(single).toContain('课程');
+  expect(single).not.toContain('group-switcher__trigger');
+  const empty = await renderToString(createSSRApp(AppPageHeader, { groups: groups.slice(0, 1) }));
+  expect(empty).not.toContain('<header');
+});

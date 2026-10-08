@@ -71,44 +71,10 @@
   line-height: 1.5;
 }
 
-.app-page-header__title,
-.app-page-header__actions,
-.group-switcher {
-  min-width: 0;
-}
-
-.app-page-header__actions {
-  gap: 12px;
-}
-
-.app-page-header__separator {
-  padding: 0 2px;
-  color: var(--cd-border-strong);
-}
+.group-switcher { min-width: 0; }
 
 .group-switcher {
   gap: 6px;
-}
-
-.app-content-toolbar {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.app-page-title {
-  margin: 0;
-  min-width: 0;
-  font-size: 26px;
-  line-height: 1.4;
-}
-
-@media (max-width: 767px) {
-  .app-page-title { font-size: 22px; }
-  .app-content-toolbar { flex-wrap: wrap; }
 }
 
 .group-switcher__default {
@@ -116,16 +82,6 @@
   padding: 0 8px;
   color: var(--cd-muted);
   font-size: 12px;
-}
-
-.app-page-header__logout {
-  height: 36px;
-  padding: 0 12px;
-  color: var(--cd-muted);
-}
-
-.app-page-header__logout span {
-  font-size: 13px;
 }
 
 .app-group-picker {
@@ -368,21 +324,7 @@
     max-width: 100%;
   }
 
-  .app-page-header__actions { max-width: 58%; }
-  .topbar.app-page-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  }
-  .app-page-header__title { grid-column: 2; justify-self: center; }
-  .topbar.app-page-header .app-page-header__actions {
-    grid-column: 3;
-    justify-self: end;
-    width: auto;
-    max-width: none;
-  }
   .group-switcher { width: auto; }
-  .app-page-header .mobiletitle { overflow: hidden; font-size: 15px; text-overflow: ellipsis; }
-  .app-page-header__logout,
   .group-switcher__default { display: none; }
 
   .app-group-card__actions { flex-wrap: wrap; }
@@ -408,10 +350,6 @@
     --cd-page-gutter: clamp(20px, 4vw, 36px);
   }
 
-  .app-content-toolbar {
-    margin-bottom: 24px;
-  }
-
   .app-more-dialog {
     max-width: 520px;
   }
@@ -422,5 +360,4 @@
   .app-login-card { padding: 24px 18px; }
   .app-login-hero h1 { font-size: 24px; }
   .content { padding-inline: 16px; }
-  .app-page-header { padding-inline: 16px; }
 }

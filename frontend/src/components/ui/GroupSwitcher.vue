@@ -79,7 +79,6 @@ function chooseGroup(groupID) {
 </template>
 
 <style scoped>
-.group-switcher { margin-left: auto; }
 
 .group-switcher__trigger {
   display: flex;
