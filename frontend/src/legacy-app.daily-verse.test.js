@@ -238,3 +238,49 @@ it('keeps each Luke 22 verse separate when a quotation spans multiple verses', a
   expect(viewer.html).not.toContain('viewer-quote');
   expect(viewer.html).not.toContain('<strong');
 });
+
+it('merges locally available chapters into one reader while preserving devotion and completion', async () => {
+  devotionConfig = { enabled: true, path: 'https://example.com/devotion', type: 'iframe' };
+  const task = await configureScripture('路加福音', '42', 22, { chapters_per_day: 3 });
+  const scripture = task.contentLinks.filter(link => link.taskType === 'daily_scripture');
+  expect(scripture).toHaveLength(1);
+  expect(scripture[0].label).toBe('路加福音 二十二至二十四章');
+  expect(task.contentLinks).toHaveLength(2);
+  const before = currentTaskOptions();
+  await openTaskContent(task, scripture[0]);
+  const html = useContentViewerStore().viewer.html;
+  expect(html.match(/<h2>/g)).toHaveLength(3);
+  expect(html).toContain('<h2>路加福音 二十二章</h2>');
+  expect(html).toContain('<h2>路加福音 二十四章</h2>');
+  expect(html).toContain('id="verse-42-23-1"');
+  expect(currentTaskOptions()).toEqual(before);
+  checkinMode = 'separate';
+  await setSelectedDate('2026-09-22');
+  const readingTask = currentTaskOptions().find(item => item.type === 'daily_scripture');
+  expect(readingTask.contentLinks).toHaveLength(1);
+  await openTaskContent(readingTask);
+  expect(useContentViewerStore().viewer.html).toBe(html);
+});
+
+it('keeps individual external chapter links when the local book is absent', async () => {
+  const originalFetch = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/1.json'
+    ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options));
+  const task = await configureScripture('创世记', '1', 1, { chapters_per_day: 3 });
+  expect(task.contentLinks).toHaveLength(3);
+  await openTaskContent(task, task.contentLinks[2]);
+  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/01/3.htm' });
+});
+
+it('keeps an absent chapter separate and merges the remaining local chapters', async () => {
+  const originalFetch = fetch.getMockImplementation();
+  const chapters = Array.from({ length: 36 }, (_, index) => index === 0 ? [] : [`第${index + 1}章原文`]);
+  fetch.mockImplementation((url, options) => String(url) === '/bible/cuv/4.json'
+    ? Promise.resolve(Response.json(chapters)) : originalFetch(url, options));
+  const task = await configureScripture('民数记', '4', 1, { chapters_per_day: 3 });
+  expect(task.contentLinks.map(link => link.label)).toEqual(['民数记 一章', '民数记 二至三章']);
+  await openTaskContent(task, task.contentLinks[0]);
+  expect(useContentViewerStore().viewer).toMatchObject({ type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/04/1.htm' });
+  await openTaskContent(task, task.contentLinks[1]);
+  expect(useContentViewerStore().viewer.html).toContain('第3章原文');
+});

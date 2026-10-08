@@ -101,6 +101,7 @@ const state = shallowReactive({
   viewer: null,
   siteConfig: null,
   learningConfig: null,
+  scriptureBooks: {},
   bootstrap: null,
   todayHub: null,
   summary: null,
@@ -698,6 +699,16 @@ async function loadAll(options = {}) {
     if (!isCurrent()) return;
     state.bootstrap = bootstrap;
     state.learningConfig = bootstrap.learning_config || null;
+    state.scriptureBooks = {};
+    const scripturePlans = getDailyScripturePlans();
+    if (scripturePlans.length > 1 && scripturePlans.every(plan => plan.localBible)) {
+      const books = await Promise.all([...new Set(scripturePlans.map(plan => String(plan.bookId)))].map(async id => {
+        try { return [id, await loadBibleBook(id)]; }
+        catch (error) { return [id, error.status === 404 ? null : undefined]; }
+      }));
+      if (!isCurrent()) return;
+      state.scriptureBooks = Object.fromEntries(books);
+    }
     state.members = bootstrap.members || [];
     state.todayHub = todayHub;
     state.dashboardCompletions = taskCompletions.items || [];
@@ -1320,20 +1331,26 @@ export async function openContentTarget(target) {
     closeViewer();
     const requestID = viewerRequestID;
     const context = dataContextKey();
-    let verses;
+    const plans = target.localBible.chapters || [target.localBible];
+    let sections = [];
     try {
-      const chapters = await loadBibleBook(String(target.localBible.bookId));
-      verses = chapters[target.localBible.chapter - 1];
+      sections = await Promise.all(plans.map(async plan => {
+        const chapters = await loadBibleBook(String(plan.bookId));
+        return { ...plan, verses: chapters[plan.chapter - 1] };
+      }));
     } catch (error) {
       if (requestID !== viewerRequestID || context !== dataContextKey()) return;
       if (error.status !== 404) throw error;
     }
     if (requestID !== viewerRequestID || context !== dataContextKey()) return;
     const { localBible, ...fallback } = target;
-    if (verses?.length && verses.every(verse => verse.trim())) {
+    if (sections.length && sections.every(section => section.verses?.length && section.verses.every(verse => verse.trim()))) {
       state.viewer = {
         type: 'markdown', title: target.title || target.label || '每日读经', scripture: true,
-        html: verses.map((verse, index) => `<p class="bible-verse" id="verse-${index + 1}"><sup class="bible-verse-number">${index + 1}</sup> ${escapeHTML(verse)}</p>`).join(''),
+        html: sections.map(section => {
+          const heading = sections.length > 1 ? `<h2>${escapeHTML(section.title)}</h2>` : '';
+          return heading + section.verses.map((verse, index) => `<p class="bible-verse" id="verse-${sections.length > 1 ? `${section.bookId}-${section.chapter}-` : ''}${index + 1}"><sup class="bible-verse-number">${index + 1}</sup> ${escapeHTML(verse)}</p>`).join('');
+        }).join(''),
         sourceURL: '', downloadURL: '', downloadSource: 'learning',
         originalName: '', externalURL: '', relatedSections: [],
       };
@@ -1690,7 +1707,7 @@ export function currentTaskOptions() {
   const verseTask = serverTasks.find((task) => task.task_type === 'weekly_verse');
   const outlineTask = serverTasks.find((task) => task.task_type === 'weekly_outline');
   const devotionLink = getDailyDevotionPlan();
-  const scriptureLinks = getDailyScripturePlans();
+  const scriptureLinks = dailyScriptureReadingLinks();
   const dailyLinks = [devotionLink, ...scriptureLinks].filter((item) => item?.url || item?.content);
   const dailyLabel = dailyTaskLabel();
   const dailyConfig = taskSectionsConfig().daily || {};
@@ -2243,6 +2260,24 @@ function getDailyScripturePlans(date = state.selectedDate) {
     ...(template === 'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm'
       ? { localBible: { bookId: chapter.bookId, chapter: chapter.chapter } } : {}),
   }));
+}
+
+function dailyScriptureReadingLinks() {
+  const plans = getDailyScripturePlans();
+  const available = plans.filter(plan => {
+    const verses = state.scriptureBooks[String(plan.bookId)]?.[plan.chapter - 1];
+    return plan.localBible && verses?.length && verses.every(verse => verse.trim());
+  });
+  if (available.length < 2) return plans;
+  const labels = [];
+  for (const plan of available) {
+    const last = labels.at(-1);
+    if (last?.bookId === plan.bookId && last.end + 1 === plan.chapter) last.end = plan.chapter;
+    else labels.push({ bookId: plan.bookId, bookName: plan.bookName, start: plan.chapter, end: plan.chapter });
+  }
+  const title = labels.map(item => `${item.bookName} ${numberToChinese(item.start)}${item.end !== item.start ? `至${numberToChinese(item.end)}` : ''}章`).join(' / ');
+  const combined = { ...available[0], title, label: title, localBible: { chapters: available } };
+  return plans.flatMap(plan => available.includes(plan) ? (plan === available[0] ? [combined] : []) : [plan]);
 }
 
 function checkinMatchesTask(item, task) {
