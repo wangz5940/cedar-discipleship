@@ -32,7 +32,9 @@ func NewManager(
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{client: client, store: store, queue: queue}, nil
+	manager := &Manager{client: client, store: store, queue: queue}
+	queue.unbindMuted = manager.unbindMuted
+	return manager, nil
 }
 
 func (m *Manager) Run(ctx context.Context) {
@@ -117,5 +119,23 @@ func (m *Manager) Assign(ctx context.Context, target Target, groupID uint64, now
 	if groupID > 0 {
 		return m.queue.EnqueueInitialBinding(groupID, target, now)
 	}
+	return nil
+}
+
+// Ignore results from a send whose binding was changed while the request completed.
+func (m *Manager) unbindMuted(target Target, groupID, version uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil
+	}
+	currentVersion, enabled := m.queue.targetVersion(groupID, target)
+	if !enabled || currentVersion != version {
+		return nil
+	}
+	if err := m.store.Assign(target, 0); err != nil {
+		return err
+	}
+	m.queue.SetTargets(m.store.Targets())
 	return nil
 }
