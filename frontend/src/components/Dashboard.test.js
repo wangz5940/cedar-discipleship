@@ -53,5 +53,8 @@ describe('dashboard statistics', () => {
     expect(html).not.toContain('desktop-stack-content ranking-chart-scroll');
     expect(html).toContain('完成排行');
     expect(html).toContain('分类明细');
+    expect(html).toContain('统计月份');
+    expect(html).toContain('全部历史');
+    for (const title of ['任务完成率', '小组成员', '全组完成项', '我的任务']) expect(html).not.toContain(title);
   });
 });

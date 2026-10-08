@@ -24,7 +24,7 @@ import { exportRankingPNG } from '../runtime/rankingExport';
 import {
   openMemberCalendar,
   setSelectedDate,
-  setStatsDateRange,
+  setStatsMonth,
   resetStatsRangeToHistory,
   shiftSelectedDate,
   toast as showToast,
@@ -39,12 +39,7 @@ const {
   selectedDate,
   maxDate,
   isToday,
-  overallPercent,
-  doneSlots,
-  totalSlots,
   memberCount,
-  completed,
-  taskCount,
   progressCards,
   members,
   monthLabel,
@@ -53,7 +48,6 @@ const {
   rankingFrom,
   rankingTo,
   statsFrom,
-  statsTo,
   statsMaxDate,
 } = storeToRefs(store);
 const mobileViewMode = computed(() => appUser.value?.mobile_view_mode || 'masonry');
@@ -175,9 +169,6 @@ async function exportRankingChart() {
     <div class="dashboard-page">
       <!-- Page Header: Title + Date Controls -->
       <div class="pagehead spread page-header">
-        <div>
-          <h1>小组统计</h1>
-        </div>
         <DateNavigator
           :label="selectedDate"
           :is-today="isToday"
@@ -200,28 +191,6 @@ async function exportRankingChart() {
         @today="chooseDate(maxDate)"
         @close="datePickerOpen = false"
       />
-
-      <!-- 4 Metric Cards -->
-      <div class="metricgrid">
-        <div class="panel metric">
-          <span class="muted">任务完成率</span>
-          <b>{{ overallPercent }}<span class="metric__suffix">%</span></b>
-          <span class="small muted">已完成 {{ doneSlots }} / 应完成 {{ totalSlots }}</span>
-        </div>
-        <div class="panel metric">
-          <span class="muted">小组成员</span>
-          <b>{{ memberCount }}</b>
-        </div>
-        <div class="panel metric">
-          <span class="muted">全组完成项</span>
-          <b>{{ doneSlots }}</b>
-          <span class="small muted">所选日期 · 共 {{ totalSlots }} 项</span>
-        </div>
-        <div class="panel metric">
-          <span class="muted">我的任务</span>
-          <b>{{ completed }}<span class="metric__suffix"> / {{ taskCount }}</span></b>
-        </div>
-      </div>
 
       <!-- Daily Member Attendance Table -->
       <div class="panel daily-detail">
@@ -336,22 +305,13 @@ async function exportRankingChart() {
           </div>
           <div class="inline stats-controls">
             <button class="secondary compact-control" type="button" :aria-pressed="monthLabel === '全部历史'" @click="resetStatsRangeToHistory">全部历史</button>
-            <div class="inline date-range" aria-label="统计时间范围">
-              <DateField
-                :model-value="statsFrom"
-                label="统计开始日期"
-                :max="statsTo || statsMaxDate"
-                @update:model-value="setStatsDateRange('from', $event)"
-              />
-              <span class="muted">至</span>
-              <DateField
-                :model-value="statsTo"
-                label="统计结束日期"
-                :min="statsFrom"
-                :max="statsMaxDate"
-                @update:model-value="setStatsDateRange('to', $event)"
-              />
-            </div>
+            <DateField
+              :model-value="monthLabel === '全部历史' ? '' : statsFrom.slice(0, 7)"
+              mode="month"
+              label="统计月份"
+              :max="statsMaxDate"
+              @update:model-value="setStatsMonth"
+            />
             <div class="inline view-toggle" aria-label="统计视图">
               <button
                 class="compact-control"
@@ -510,17 +470,6 @@ async function exportRankingChart() {
 .stats-center .view-toggle { background: var(--cd-primary-soft); }
 .dashboard-page { min-width: 0; }
 .page-header { margin-bottom: 24px; }
-.metric__suffix { font-size: .42em; font-weight: 600; }
-.metricgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.metricgrid > .metric { position: relative; min-height: 164px; display: grid; grid-template-rows: auto 1fr auto; align-items: start; padding: 24px 26px; overflow: hidden; text-align: left; border: 1px solid var(--cd-border); background: var(--cd-surface); background-image: none; }
-.metricgrid > .metric > .muted:first-child { color: var(--cd-text-secondary); font-size: 15px; font-weight: 600; }
-.metricgrid > .metric b { align-self: center; font-size: clamp(46px, 6vw, 68px); font-weight: 700; line-height: .95; letter-spacing: -.04em; margin: 12px 0; color: var(--cd-primary); }
-.metricgrid > .metric > .small { font-size: 13px; }
-.metricgrid > .metric::after { content: ''; position: absolute; right: 24px; bottom: 22px; width: 34px; height: 3px; border-radius: 999px; background: var(--cd-primary); opacity: .22; }
-.metricgrid > .metric:nth-child(1), .metricgrid > .metric:nth-child(4) { background: var(--cd-primary); border-color: var(--cd-primary); box-shadow: inset 0 4px var(--cd-gold-accent, var(--cd-gold)), var(--cd-shadow-card); }
-.metricgrid > .metric:nth-child(1) b, .metricgrid > .metric:nth-child(4) b { color: var(--cd-on-primary); }
-.metricgrid > .metric:nth-child(1) .muted, .metricgrid > .metric:nth-child(4) .muted { color: var(--cd-on-primary-muted); }
-.metricgrid > .metric:nth-child(1)::after, .metricgrid > .metric:nth-child(4)::after { background: var(--cd-gold-accent, var(--cd-gold)); opacity: 1; }
 .daily-detail { margin-bottom: 24px; }
 .daily-detail, .daily-table { min-width: 0; }
 .daily-table table { width: max-content; min-width: 100%; }
@@ -547,10 +496,7 @@ async function exportRankingChart() {
 .stats-center__eyebrow { margin-bottom: 6px; }
 .stats-center__title { font-size: 20px; }
 .stats-controls { flex-wrap: wrap; gap: 12px; }
-.date-range, .view-toggle { border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-surface, #fff); }
-.date-range { min-width: 0; max-width: 100%; padding: 3px 8px; font-size: 13px; }
-.date-range :deep(.date-field) { width: 168px; }
-.date-range :deep(.date-field__trigger) { min-height: 38px; border: 0; background: transparent; font-size: 13px; }
+.view-toggle { border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-surface, #fff); }
 .view-toggle { gap: 4px; padding: 2px; }
 .compact-control, .filter-chip { min-height: 36px; padding: 4px 12px; font-size: 12px; }
 .filter-chip { border: 1px solid var(--cd-border); }
@@ -582,16 +528,10 @@ async function exportRankingChart() {
 @media (max-width: 767px) {
   .page-header { align-items: stretch; gap: 16px; }
   .panel { padding: 16px; }
-  .metricgrid { gap: 10px; }
-  .metricgrid > .metric { min-height: 142px; padding: 18px 16px; }
-  .metricgrid > .metric b { font-size: clamp(40px, 13vw, 52px); margin: 10px 0; }
-  .metricgrid > .metric::after { right: 16px; bottom: 16px; width: 24px; }
   .spread { flex-wrap: wrap; gap: 10px; }
   .spread > .inline { flex-wrap: wrap; }
   .stats-center-head { align-items: stretch; }
   .stats-center-head > div { width: 100%; }
-  .date-range { width: 100%; gap: 4px; }
-  .date-range :deep(.date-field) { flex: 1; width: 0; }
   .view-toggle { width: 100%; }
   .view-toggle button { flex: 1; min-height: 44px; }
   .progress-panel { display: none; }

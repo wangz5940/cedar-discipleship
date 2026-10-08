@@ -236,12 +236,6 @@ onBeforeUnmount(releaseObjectURLs);
 
 <template>
   <section class="feedback-center">
-    <header class="pagehead">
-      <div>
-        <h1>建议与反馈</h1>
-      </div>
-    </header>
-
     <div class="feedback-center__layout">
       <form class="panel feedback-compose" @submit.prevent="submit">
         <header class="feedback-section-head">

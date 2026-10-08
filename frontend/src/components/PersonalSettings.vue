@@ -82,12 +82,6 @@ async function changePassword() {
 
 <template>
   <section class="personal-settings">
-    <header class="pagehead">
-      <div>
-        <h1>个人设置</h1>
-      </div>
-    </header>
-
     <form class="personal-settings__form" @submit.prevent="submit">
       <section class="panel personal-settings__section">
         <header>
@@ -170,8 +164,6 @@ async function changePassword() {
 
 <style scoped>
 .personal-settings { width: min(760px, 100%); margin: 0 auto; }
-.personal-settings .pagehead { margin-bottom: 20px; }
-.personal-settings .pagehead > div { display: flex; align-items: center; gap: 12px; }
 .personal-settings__form { display: grid; gap: 16px; }
 .personal-settings__section { display: grid; gap: 18px; }
 .personal-settings__section > header { display: flex; align-items: center; gap: 10px; color: var(--cd-primary); }

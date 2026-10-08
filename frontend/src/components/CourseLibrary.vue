@@ -149,7 +149,6 @@ async function openFavorite(item) {
     <div class="library-intro">
       <div class="library-intro-copy">
 
-        <h1>留一点时间，给生命的成长。</h1>
         <form class="course-search" @submit.prevent="submitSearch"><button class="course-search__submit" type="submit" aria-label="提交课程搜索"><Search :size="20" /></button><input v-model="query" type="search" aria-label="搜索课程" placeholder="寻找一堂课、一段音频…" /></form>
         <a v-if="preview" class="library-login" href="/">登录并同步学习 <span aria-hidden="true">↗</span></a>
       </div>

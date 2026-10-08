@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { bibleBookReferences } from '../runtime/content';
 import { loadBibleBook, selectedVerseText } from '../runtime/verseSource';
-const props = defineProps({ disabled: Boolean, addOnly: Boolean });
+const props = defineProps({ disabled: Boolean, addOnly: Boolean, rememberPosition: Boolean });
 const emit = defineEmits(['select']);
 const open = ref(false);
 const dialog = ref(null);
@@ -33,6 +33,24 @@ async function chooseBook(id) {
   } catch { error.value = '经文加载失败，请重新选择书卷重试。'; }
   finally { loading.value = false; }
 }
+async function remember(text) {
+  if (!props.rememberPosition || first.value) return;
+  const lines = String(text || '').trim().split('\n');
+  const line = lines[lines.length - 1] || '';
+  const match = line.match(/^([^\d\s]+)(\d+):(\d+)/);
+  if (!match) return;
+  const reference = bibleBookReferences.find(item => item[0] === match[1] || item[3].includes(match[1]));
+  if (!reference) return;
+  await chooseBook(reference[1]);
+  const number = Number(match[2]);
+  const verse = Number(match[3]);
+  if (!chapters.value[number - 1]?.[verse - 1]) return;
+  chapter.value = number;
+  first.value = last.value = verse;
+  stage.value = 'verse';
+}
+defineExpose({ remember });
+
 function chooseChapter(number) {
   chapter.value = number;
   first.value = last.value = 0;
@@ -50,7 +68,7 @@ function useSelection(append) {
 </script>
 
 <template>
-  <button type="button" class="secondary" :disabled="props.disabled" :aria-label="props.addOnly ? '追加背诵经文' : '选择经文'" @click="open = true; stage = 'book'">{{ props.addOnly ? '＋' : '选择经文' }}</button>
+  <button type="button" class="secondary" :disabled="props.disabled" :aria-label="props.addOnly ? '追加背诵经文' : '选择经文'" @click="open = true; stage = props.rememberPosition && chapters.length && first ? 'verse' : 'book'">{{ props.addOnly ? '＋' : '选择经文' }}</button>
   <Teleport to="body">
       <dialog ref="dialog" class="bible-picker" aria-label="选择背诵经文" @close="open = false" @cancel="open = false">
         <header><h2>选择经文</h2><button type="button" class="quiet" aria-label="关闭经文选择" @click="open = false">✕</button></header>

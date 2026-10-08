@@ -26,11 +26,17 @@ it('新建周的开关只更新草稿，不自动提交未确认的内容和资�
   expect(showToast).toHaveBeenCalledWith('新周选项已更新，保存周任务后生效');
 });
 
-it('每日背经保存指定日期，保留其他计划且不写入周任务', async () => {
+it.each([true, false])('每日背经保存结果 %s：保留其他计划，失败时回退且不写入周任务', async (saved) => {
   const old = { date: '2026-10-05', end_date: '2026-10-11', completion_mode: 'daily', verse_ref: '太1:1', recite_text: '太1:1 旧。' };
   const updates = [];
-  const saveLearningConfig = vi.fn();
+  const saveLearningConfig = vi.fn(async () => saved);
+  const verseSaving = { value: false };
+  const verseDraftBaseline = { value: '原草稿' };
+  const verseDrafts = new Map([['2026-10-06', '待保存']]);
   const save = handler('saveVersePlan', {
+    verseSaving, verseSaveContext: { value: null }, currentGroupID: { value: 1 },
+    dailyVerse: { value: { plans: [old], enabled: true } },
+    verseDrafts, verseDraftBaseline, verseDraftSnapshot: () => ({ sources: ['新经文'] }), nextTick: async () => {},
     canEditLearning: { value: true }, versePlanDate: { value: '2026-10-06' }, versePlanEnd: { value: '2026-10-06' },
     verseText: { value: '民14:1 新。' }, verseRef: { value: '民14:1' }, verseCompletionMode: { value: 'daily' },
     verseSources: { value: [{ recite_text: '民14:1 新。', verse_ref: '民14:1' }] }, versePlans: { value: [old] },
@@ -38,7 +44,7 @@ it('每日背经保存指定日期，保留其他计划且不写入周任务', a
     updateLearning: (path, value) => updates.push({ path, value }),
     shiftDailyPlanDate: () => { throw new Error('每日配置不能使用周日期'); },
   });
-  await save();
+  expect(await save()).toBe(saved);
   expect(updates[1].path).toEqual(['task_sections', 'daily', 'verse', 'plans']);
   expect(updates[1].value).toEqual([
     { ...old, end_date: '2026-10-05' },
@@ -47,6 +53,14 @@ it('每日背经保存指定日期，保留其他计划且不写入周任务', a
   ]);
   expect(old.end_date).toBe('2026-10-11');
   expect(saveLearningConfig).toHaveBeenCalledOnce();
+  expect(verseSaving.value).toBe(false);
+  if (!saved) {
+    expect(updates[3]).toEqual({ path: ['task_sections', 'daily', 'verse', 'plans'], value: [old] });
+    expect(verseDraftBaseline.value).toBe('原草稿');
+    expect(verseDrafts.has('2026-10-06')).toBe(true);
+  } else {
+    expect(verseDrafts.has('2026-10-06')).toBe(false);
+  }
 });
 
 it('每周经文追加及移除只修改周草稿，自动合并标题并保留多书卷', () => {
