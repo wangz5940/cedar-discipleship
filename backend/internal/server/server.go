@@ -367,6 +367,11 @@ func (a *app) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/app/bootstrap", a.auth(a.handleBootstrap))
 	mux.HandleFunc("GET /api/today", a.auth(a.handleToday))
+	mux.HandleFunc("GET /api/learning-reminders", a.auth(a.handleLearningReminders))
+	mux.HandleFunc("POST /api/learning-reminders", a.auth(a.handleCreateLearningReminder))
+	mux.HandleFunc("POST /api/learning-reminders/{id}/read", a.auth(a.handleReadLearningReminder))
+	mux.HandleFunc("POST /api/learning-reminders/read-all", a.auth(a.handleReadAllLearningReminders))
+	mux.HandleFunc("PUT /api/learning-reminders/preference", a.auth(a.handleLearningReminderPreference))
 	mux.HandleFunc("GET /api/dashboard/summary", a.auth(a.handleDashboardSummary))
 	mux.HandleFunc("GET /api/dashboard/task-completions", a.auth(a.handleDashboardTaskCompletions))
 	mux.HandleFunc("GET /api/dashboard/monthly-ranking", a.auth(a.handleDashboardMonthlyRanking))

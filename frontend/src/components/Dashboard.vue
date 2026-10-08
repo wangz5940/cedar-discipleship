@@ -6,6 +6,7 @@ import {
   ChevronUp,
   ChevronsUpDown,
 } from '@lucide/vue';
+import MemberReminderControl from './ui/MemberReminderControl.vue';
 import DateNavigator from './ui/DateNavigator.vue';
 import DateCalendarDialog from './ui/DateCalendarDialog.vue';
 import DateField from './ui/DateField.vue';
@@ -221,6 +222,7 @@ async function exportRankingChart() {
                       {{ member.avatar }}
                     </button>
                     <b>{{ member.name }}{{ member.isSelf ? '（我）' : '' }}</b>
+                    <MemberReminderControl :member="member" :is-today="isToday" />
                   </div>
                 </td>
                 <td v-for="item in member.taskStates" :key="item.title">
@@ -260,6 +262,7 @@ async function exportRankingChart() {
               <header>
                 <button class="avatar member-avatar" type="button" :aria-label="`查看${member.name}打卡月历`" @click="openMemberCalendar(member)">{{ member.avatar }}</button>
                 <div><b>{{ member.name }}{{ member.isSelf ? '（我）' : '' }}</b><small>{{ member.taskStates.filter((state) => state.done).length }} / {{ member.taskStates.length }} 项完成</small></div>
+                <MemberReminderControl :member="member" :is-today="isToday" />
               </header>
               <div class="member-stack-tasks">
                 <div v-for="state in member.taskStates" :key="state.title">

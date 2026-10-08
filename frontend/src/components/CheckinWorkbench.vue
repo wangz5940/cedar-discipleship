@@ -238,17 +238,16 @@ async function exportStatsChart() {
                     :title="link.title || link.label"
                     @click="openTaskContent(task, link)"
                   >
+                    <span class="task-material-action">{{ taskActionText(task, link) }}<ChevronRight :size="16" /></span>
                     <span class="task-material-copy">
                       <span>{{ link.label || link.title || '学习资料' }}</span>
                       <small v-if="taskMaterialTitle(link)">{{ taskMaterialTitle(link) }}</small>
                     </span>
-                    <span class="task-material-action">{{ taskActionText(task, link) }}<ChevronRight :size="16" /></span>
                   </button>
                 </div>
               </div>
 
               <footer class="actions">
-                <button v-if="['weekly_verse', 'daily_verse'].includes(task.type)" class="secondary" type="button" title="确认或粘贴原文后生成默写卷" @click="quizTask = task">默写</button>
                 <button
                   v-if="visibleTaskContentLinks(task).length === 1"
                   class="secondary task-read-button"
@@ -257,6 +256,7 @@ async function exportStatsChart() {
                 >
                   {{ taskActionText(task) }}
                 </button>
+                <button v-if="['weekly_verse', 'daily_verse'].includes(task.type)" class="secondary" type="button" title="确认或粘贴原文后生成默写卷" @click="quizTask = task">默写</button>
                 <button
                   :class="taskIsCompleted(task) ? 'taskdone' : 'primary'"
                   type="button"

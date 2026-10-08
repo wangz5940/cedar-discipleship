@@ -49,7 +49,7 @@ func Open(t *testing.T) *sql.DB {
 			t.Error(err)
 		}
 	})
-	for _, migration := range []string{"001_init.sql", "002_checkin_partitions.sql", "007_resource_sharing.sql", "015_tenants.sql", "017_audit_log_id.sql", "018_feedback_workflow.sql", "023_recite_paper.sql"} {
+	for _, migration := range []string{"001_init.sql", "002_checkin_partitions.sql", "007_resource_sharing.sql", "015_tenants.sql", "017_audit_log_id.sql", "018_feedback_workflow.sql", "023_recite_paper.sql", "024_learning_reminders.sql"} {
 		Apply(t, db, migration)
 	}
 	return db
