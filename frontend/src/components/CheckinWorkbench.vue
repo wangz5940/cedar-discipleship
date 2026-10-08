@@ -237,6 +237,10 @@ async function exportStatsChart() {
                 </div>
               </div>
 
+              <div v-else-if="visibleTaskContentLinks(task)[0]?.localBible" class="task__body">
+                <span class="task-material-copy">{{ visibleTaskContentLinks(task)[0].label || visibleTaskContentLinks(task)[0].title }}</span>
+              </div>
+
               <footer class="actions">
                 <button v-if="['weekly_verse', 'daily_verse'].includes(task.type)" class="secondary" type="button" title="确认或粘贴原文后生成默写卷" @click="quizTask = task">默写</button>
                 <button
