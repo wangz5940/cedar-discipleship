@@ -78,3 +78,38 @@ it.each([['daily_verse', '每日背经'], ['weekly_verse', '每周背经']])('of
   expect(html).toContain(label);
   expect(html).toContain('>默写</button>');
 });
+
+it.each(['daily_scripture', 'daily_devotion'])('shows the scripture range for a single local reading item in %s', async (type) => {
+  const pinia = createPinia();
+  useCheckinWorkbenchStore(pinia).setSnapshot({
+    visible: true, selectedDate: '2026-10-08', maxDate: '2026-10-08', total: 1,
+    tasks: [{ type, title: type === 'daily_scripture' ? '每日读经' : '十月八号', contentLinks: [
+      { label: '创世记 一至三章', title: '创世记 一至三章', url: '/bible/cuv/1.json', localBible: { chapters: [] } },
+    ] }],
+  });
+  const context = {};
+  await renderToString(createSSRApp(CheckinWorkbench).use(pinia), context);
+  const html = context.teleports['#vue-checkin-workbench'];
+  expect(html).toMatch(/class="tasktype"[^>]*>每日读经<\/p>/);
+  expect(html).toMatch(/class="task-name"[^>]*>创世记 一至三章<\/h3>/);
+  expect(html).not.toContain('class="task__body"');
+  expect(html).not.toContain('十月八号');
+  expect(html.match(/task-read-button/g)).toHaveLength(1);
+  expect(html.match(/完成并打卡/g)).toHaveLength(1);
+});
+
+it.each([
+  [{ title: '十月八号', label: '灵修', url: '/devotion.md' }],
+  [{ title: '十月八号', label: '灵修', url: '/devotion.md' }, { title: '创世记 一至三章', label: '读经', url: '/bible/cuv/1.json', localBible: {} }],
+])('preserves the devotion heading when devotion content exists (%j)', async (...links) => {
+  const pinia = createPinia();
+  useCheckinWorkbenchStore(pinia).setSnapshot({
+    visible: true, total: 1,
+    tasks: [{ type: 'daily_devotion', title: '十月八号', contentLinks: links }],
+  });
+  const context = {};
+  await renderToString(createSSRApp(CheckinWorkbench).use(pinia), context);
+  const html = context.teleports['#vue-checkin-workbench'];
+  expect(html).toMatch(/class="tasktype"[^>]*>每日灵修<\/p>/);
+  expect(html).toMatch(/class="task-name"[^>]*>十月八号<\/h3>/);
+});
