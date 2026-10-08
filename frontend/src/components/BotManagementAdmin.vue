@@ -1,7 +1,13 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, provide, ref } from 'vue';
 import { Bot, Plus, RefreshCw, Trash2 } from '@lucide/vue';
 import { api, toast as showToast } from '../legacy-app';
+import { useAppStateStore } from '../stores/appState';
+import LearningConfigSection from './ui/LearningConfigSection.vue';
+
+const app = useAppStateStore();
+// Robot panels keep their own account state, separate from learning configuration.
+provide('learningConfigAccordion', null);
 
 const configured = ref(false);
 const robots = ref([]);
@@ -68,6 +74,16 @@ async function clearFailedNotifications(robot) {
   } finally {
     clearingFailed.value = '';
   }
+}
+
+function sectionKey(id) {
+  return `bot-management:${app.user?.id || 0}:${id}`;
+}
+
+function robotTitle(robot) {
+  const name = robot.name || robot.identity?.first_name || '未命名机器人';
+  const failed = Number(robot.queue?.failed || 0);
+  return `${name} · ${robotStatus(robot)}${failed ? ` · 失败 ${failed}` : ''}`;
 }
 
 function bindingKey(robot, chat) {
@@ -137,24 +153,24 @@ async function assign(robot, chat, event) {
       </button>
     </div>
 
-    <form class="card bot-registration" @submit.prevent="createRobot">
-      <strong>新增机器人</strong>
-      <div class="bot-registration-grid">
-        <input v-model="newRobot.token" type="password" placeholder="机器人 Token" :disabled="savingRobot">
-        <input v-model="newRobot.name" placeholder="显示名称（可选）" :disabled="savingRobot">
-        <input v-model="newRobot.id" placeholder="机器人 ID（可选）" :disabled="savingRobot">
-        <button class="ok" type="submit" :disabled="savingRobot"><Plus :size="16" /> 新增</button>
-      </div>
-    </form>
+    <LearningConfigSection title="新增机器人" :storage-key="sectionKey('registration')" class="bot-registration-section">
+      <form class="bot-registration" @submit.prevent="createRobot">
+        <div class="bot-registration-grid">
+          <input v-model="newRobot.token" type="password" placeholder="机器人 Token" :disabled="savingRobot">
+          <input v-model="newRobot.name" placeholder="显示名称（可选）" :disabled="savingRobot">
+          <input v-model="newRobot.id" placeholder="机器人 ID（可选）" :disabled="savingRobot">
+          <button class="ok" type="submit" :disabled="savingRobot"><Plus :size="16" /> 新增</button>
+        </div>
+      </form>
+    </LearningConfigSection>
 
     <div v-if="loading && !robots.length" class="empty">正在读取机器人群聊…</div>
     <div v-else-if="!configured" class="empty">机器人尚未配置</div>
     <div v-else class="bot-management">
-      <article v-for="robot in robots" :key="robot.id || 'default'" class="card bot-robot-card">
+      <LearningConfigSection v-for="robot in robots" :key="robot.id || 'default'" :title="robotTitle(robot)" :storage-key="sectionKey(`robot:${robot.id || 'default'}`)" class="bot-robot-card">
         <header class="bot-robot-header">
           <span class="bot-chat-icon"><Bot :size="20" /></span>
           <div class="bot-robot-copy">
-            <strong>{{ robot.name || robot.identity?.first_name || '未命名机器人' }}</strong>
             <div class="muted">
               {{ robot.identity?.username ? `@${robot.identity.username} · ` : '' }}ID: {{ robot.id || 'default' }}
             </div>
@@ -207,7 +223,7 @@ async function assign(robot, chat, event) {
             </select>
           </label>
         </div>
-      </article>
+      </LearningConfigSection>
     </div>
   </section>
 </template>
@@ -215,23 +231,24 @@ async function assign(robot, chat, event) {
 <style scoped>
 section { min-width: 0; }
 .bot-management-title { gap: 12px; }
-.bot-registration { display: grid; gap: 12px; padding: 16px 20px; margin-bottom: 14px; }
+.bot-registration-section { margin-bottom: 14px; }
+.bot-registration { display: grid; gap: 12px; }
 .bot-registration-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 10px; align-items: end; }
 .bot-registration-grid input { min-width: 0; }
 .icon-button { min-width: 44px; min-height: 44px; }
 .bot-management { display: grid; gap: 14px; }
-.bot-robot-card { overflow: hidden; padding: 0; }
-.bot-robot-header { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.bot-robot-card { overflow: hidden; }
+.bot-robot-header { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .bot-robot-copy { min-width: 0; flex: 1; }
 .bot-robot-copy strong, .bot-robot-copy .muted { overflow-wrap: anywhere; }
 .bot-status { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: rgba(107, 114, 128, .1); color: var(--muted); font-size: 12px; font-weight: 700; }
 .bot-status.is-healthy { background: var(--cd-status-soft); color: var(--cd-success); }
 .bot-status.is-degraded { background: var(--cd-status-subtle); color: var(--cd-warning); }
 .bot-status.is-unavailable { background: var(--cd-status-soft); color: var(--cd-danger); }
-.bot-queue-status { display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 8px 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.bot-queue-status { display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .bot-queue-status .has-failures { color: var(--cd-danger); font-weight: 700; }
 .bot-queue-status .icon-button { margin-left: auto; }
-.bot-chat-row { min-width: 0; padding: 16px 20px; }
+.bot-chat-row { min-width: 0; padding: 16px 0; }
 .bot-chat-main { min-width: 0; }
 .bot-chat-main strong, .bot-chat-main .muted { overflow-wrap: anywhere; }
 .bot-group-binding select { min-height: 44px; }
@@ -239,10 +256,10 @@ section { min-width: 0; }
 .bot-empty { padding-block: 24px; }
 @media (max-width: 767px) {
   .bot-registration-grid { grid-template-columns: 1fr; }
-  .bot-robot-header { align-items: flex-start; padding: 14px; }
+  .bot-robot-header { align-items: flex-start; }
   .bot-status { max-width: 38%; text-align: center; }
-  .bot-queue-status { gap: 12px; padding-inline: 14px; }
-  .bot-chat-row { align-items: stretch; flex-direction: column; gap: 12px; padding: 14px; }
+  .bot-queue-status { gap: 12px; }
+  .bot-chat-row { align-items: stretch; flex-direction: column; gap: 12px; }
   .bot-group-binding { width: 100%; }
   .bot-group-binding select { min-height: 40px; padding-block: 8px; }
 }

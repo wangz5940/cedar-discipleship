@@ -76,3 +76,16 @@ it('已展开的个人反馈收到新回复后点击直接显示最新回复并�
   expect(html).toContain('新回复12');
   expect(api.mock.calls.filter(([path]) => path === '/feedback/2/read').map(([, options]) => JSON.parse(options.body).reply_id)).toEqual([10, 12]);
 });
+
+it.each(['potato_3023', 'http_400'])('通知失败%s只为确认的禁言显示解除提示，历史诊断保持可见', async (code) => {
+  api.mockResolvedValue({ feedback: { ...records[1], source: 'automatic', message: '学习通知发送失败', diagnostics: { error_code: 'notification_delivery_failed', error_message: code } } });
+  const component = { ...FeedbackAdmin, async setup(props, context) {
+    const state = FeedbackAdmin.setup(props, context);
+    state.items.value = records;
+    await state.openItem(2);
+    return state;
+  } };
+  const html = await renderToString(createSSRApp(component).use(createPinia()));
+  expect(html.includes('群内禁止机器人发言，请解除禁言后再发送通知。')).toBe(code === 'potato_3023');
+  expect(html).toContain(code);
+});

@@ -59,6 +59,7 @@ func TestPotatoSendText(t *testing.T) {
 		{"rate limit", 200, `{"ok":false,"error_code":1007}`, "potato_1007", true},
 		{"slow mode", 200, `{"ok":false,"error_code":4048}`, "potato_4048", true},
 		{"server error", 200, `{"ok":false,"error_code":1001}`, "potato_1001", true},
+		{"muted bot", 400, `{"ok":false,"error_code":3023}`, "potato_3023", false},
 		{"HTTP body error code", 400, `{"ok":false,"error_code":1002,"result":"secret"}`, "potato_1002", false},
 		{"forbidden", 403, "secret", "http_403", false},
 		{"HTTP limit", 429, "", "http_429", true},
