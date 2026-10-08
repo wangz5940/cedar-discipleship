@@ -9,6 +9,7 @@ import (
 func (a *app) handleStudyMemory(w http.ResponseWriter, r *http.Request) {
 	result, err := a.studyMemory.Load(r.Context(), mustUser(r).ID)
 	if err != nil {
+		logBusinessDiagnostic(r, "study_memory_load", err)
 		writeError(w, http.StatusInternalServerError, "study_memory_failed")
 		return
 	}
@@ -28,6 +29,7 @@ func (a *app) handleStudyProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	req.UpdatedAt = time.Now().UTC().UnixMilli()
 	if err := a.studyMemory.SaveProgress(r.Context(), mustUser(r).ID, req.Key, req.Progress); err != nil {
+		logBusinessDiagnostic(r, "study_progress_save", err)
 		writeError(w, http.StatusInternalServerError, "study_memory_failed")
 		return
 	}
@@ -53,6 +55,7 @@ func (a *app) handleStudyFavorite(w http.ResponseWriter, r *http.Request) {
 		req.Item = nil
 	}
 	if err := a.studyMemory.SetFavorite(r.Context(), mustUser(r).ID, req.Key, req.Item); err != nil {
+		logBusinessDiagnostic(r, "study_favorite_save", err)
 		writeError(w, http.StatusInternalServerError, "study_memory_failed")
 		return
 	}

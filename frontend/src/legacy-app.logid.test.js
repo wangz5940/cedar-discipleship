@@ -34,6 +34,7 @@ describe('API log ID propagation', () => {
 
   afterEach(() => {
     clearAccessToken();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -185,7 +186,59 @@ describe('API log ID propagation', () => {
       expect(diagnostics).toMatchObject({
         error_name: 'TypeError',
         error_code: 'network_request_failed',
+        response_received: 'false',
+        response_log_id: '',
+        response_content_type: '',
+        request_started_at: expect.stringMatching(/Z$/),
       });
+    });
+
+    it.each(['text/html', 'application/json'])('records response evidence for %s without changing the outcome', async (contentType) => {
+      let now = Date.parse('2026-10-08T08:00:00Z');
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      document.visibilityState = 'visible';
+      const res = new Response(contentType === 'text/html' ? '<h1>Bad Gateway</h1>' : '{"error":"save_failed"}', {
+        status: 502,
+        headers: { 'Content-Type': contentType, 'X-Log-ID': logID },
+      });
+      vi.stubGlobal('fetch', vi.fn()
+        .mockImplementationOnce(async () => {
+          now += 1250;
+          document.visibilityState = 'hidden';
+          return res;
+        })
+        .mockResolvedValueOnce(response({ settings: { enabled: true } }))
+        .mockResolvedValueOnce(new Response(null, { status: 201 })));
+      const result = request({});
+      if (name === 'api') await expect(result).rejects.toMatchObject({ status: 502 });
+      else await expect(result).resolves.toBe(res);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+      expect(JSON.parse(fetch.mock.calls[2][1].body.get('diagnostics'))).toMatchObject({
+        request_started_at: '2026-10-08T08:00:00.000Z',
+        request_duration_ms: '1250',
+        request_visibility: 'visible',
+        visibility_state: 'hidden',
+        response_received: 'true',
+        response_log_id: logID,
+        response_content_type: contentType,
+      });
+    });
+
+    it('contains optional response diagnostic failures', async () => {
+      const res = response({ error: 'save_failed' }, 500);
+      const get = res.headers.get.bind(res.headers);
+      vi.spyOn(res.headers, 'get').mockImplementation((key) => {
+        if (key === 'Content-Type') throw new Error('header_unavailable');
+        return get(key);
+      });
+      vi.stubGlobal('fetch', vi.fn()
+        .mockResolvedValueOnce(res)
+        .mockResolvedValueOnce(response({ settings: { enabled: true } }))
+        .mockResolvedValueOnce(new Response(null, { status: 201 })));
+      const result = request({});
+      if (name === 'api') await expect(result).rejects.toMatchObject({ message: 'save_failed', status: 500 });
+      else await expect(result).resolves.toBe(res);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     });
 
     it('reports callback context without changing the request result', async () => {

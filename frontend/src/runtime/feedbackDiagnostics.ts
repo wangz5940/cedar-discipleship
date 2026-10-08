@@ -17,6 +17,8 @@ export type FeedbackDiagnostics = {
   client_time: string;
   network_online: string;
   visibility_state: string;
+  page_title: string;
+  script_sources: string;
 };
 
 export function isLoopbackHostname(hostname: unknown): boolean {
@@ -39,6 +41,21 @@ export function collectFeedbackDiagnostics(
     userAgentData?: { platform?: string };
   };
   const hostname = window.location.hostname || '';
+  let pageTitle = '';
+  let scriptSources = '';
+  try {
+    pageTitle = (document.querySelector('.app-page-title')?.textContent || '').trim().slice(0, 128);
+  } catch { /* DOM diagnostics are optional. */ }
+  try {
+    scriptSources = Array.from(document.querySelectorAll<HTMLScriptElement>('script[src]'))
+      .map((script) => {
+        const url = new URL(script.src, window.location.origin);
+        return /^https?:$/.test(url.protocol) ? `${url.origin}${url.pathname}` : '';
+      })
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 1024);
+  } catch { /* Keep the remaining evidence if script inspection fails. */ }
   return {
     app_version: String(__APP_BUILD_VERSION__),
     page: `${window.location.pathname}${window.location.search}`,
@@ -54,5 +71,7 @@ export function collectFeedbackDiagnostics(
     client_time: new Date().toISOString(),
     network_online: typeof navigator.onLine === 'boolean' ? String(navigator.onLine) : '',
     visibility_state: document.visibilityState || '',
+    page_title: pageTitle,
+    script_sources: scriptSources,
   };
 }

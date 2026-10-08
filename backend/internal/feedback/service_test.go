@@ -174,6 +174,11 @@ func TestBrowserDiagnosticsContract(t *testing.T) {
 			"viewport": "390x844", "screen": "390x844",
 			"client_time":    "2026-10-08T02:10:09.151Z",
 			"network_online": "true", "visibility_state": "visible",
+			"page_title": "打卡", "script_sources": "https://cedar.example.test/assets/index.js",
+			"error_stack_source": "unavailable", "request_started_at": "2026-10-08T02:10:08.000Z",
+			"request_duration_ms": "1151", "request_visibility": "visible",
+			"response_received": "true", "response_log_id": "0123456789abcdef0123456789abcdef",
+			"response_content_type": "text/html",
 		}}
 		var err error
 		if automatic {
@@ -189,6 +194,11 @@ func TestBrowserDiagnosticsContract(t *testing.T) {
 			view.Diagnostics["environment"] != "production" ||
 			view.Diagnostics["network_online"] != "true" {
 			t.Fatalf("diagnostics not preserved: view=%+v err=%v", view, err)
+		}
+		for key, value := range input.Diagnostics {
+			if view.Diagnostics[key] != value {
+				t.Fatalf("diagnostic %q = %q, want %q", key, view.Diagnostics[key], value)
+			}
 		}
 	}
 }

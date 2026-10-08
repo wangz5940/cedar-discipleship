@@ -78,9 +78,26 @@ describe('automatic error feedback', () => {
       request_path: '/api/assets/7/download',
       http_status: '404',
       error_code: 'asset_not_found',
+      error_stack: error.stack,
+      error_stack_source: 'original',
       network_online: 'true',
       visibility_state: 'visible',
       client_time: expect.stringMatching(/Z$/),
+    });
+  });
+
+  it('does not fabricate a stack for opaque browser script errors', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ settings: { enabled: true } }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(reportAutomaticFeedback('Script error.', { actionContext: 'runtime_error' })).resolves.toBe(true);
+
+    expect(JSON.parse(fetch.mock.calls[1][1].body.get('diagnostics'))).toMatchObject({
+      error_message: 'Script error.',
+      error_stack: '',
+      error_stack_source: 'unavailable',
     });
   });
 
