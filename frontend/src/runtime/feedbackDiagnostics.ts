@@ -14,6 +14,9 @@ export type FeedbackDiagnostics = {
   platform: string;
   viewport: string;
   screen: string;
+  client_time: string;
+  network_online: string;
+  visibility_state: string;
 };
 
 export function isLoopbackHostname(hostname: unknown): boolean {
@@ -48,5 +51,8 @@ export function collectFeedbackDiagnostics(
     platform: navigatorWithUAData.userAgentData?.platform || '',
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     screen: `${window.screen.width}x${window.screen.height}`,
+    client_time: new Date().toISOString(),
+    network_online: typeof navigator.onLine === 'boolean' ? String(navigator.onLine) : '',
+    visibility_state: document.visibilityState || '',
   };
 }

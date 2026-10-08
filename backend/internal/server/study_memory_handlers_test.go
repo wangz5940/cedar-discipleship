@@ -115,3 +115,24 @@ func TestStudyMemoryRejectsInvalidInputAndAnonymousRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestStudyProgressMarksHighFrequencySyncAsAuditHandled(t *testing.T) {
+	t.Parallel()
+
+	application := &app{studyMemory: &studyMemoryTestRepository{}}
+	state := &requestAuditState{}
+	request := studyRequest(11, 1, `{"key":"asset:9","time":12,"duration":60}`)
+	request = request.WithContext(context.WithValue(
+		request.Context(), requestAuditStateKey, state,
+	))
+	response := httptest.NewRecorder()
+
+	application.handleStudyProgress(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+	if !state.handled || state.recorded {
+		t.Fatalf("audit state=%+v", state)
+	}
+}

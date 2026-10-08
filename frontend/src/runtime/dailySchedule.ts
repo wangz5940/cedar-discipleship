@@ -93,6 +93,7 @@ export function nextDailyDevotionPlan(
   const date = shiftScheduleDate(baseDate, previous || validScheduleDate(fromDate) ? 1 : 0);
   const type = contentType === 'pdf' ? 'pdf' : 'markdown';
   const plan = emptyDailyDevotionPlan(date, type);
+  plan.path = String(previous?.path || config.custom_path || config.path || '').trim();
   if (type === 'pdf') {
     const previousEnd = Number(previous?.page_end || previous?.page_start || 0);
     const page = previousEnd > 0

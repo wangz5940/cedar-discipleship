@@ -20,13 +20,20 @@ const images = ref([]);
 const submitting = ref(false);
 const loading = ref(false);
 const items = ref([]);
+const sourceFilter = ref('');
 const selected = ref(null);
 const openingID = ref(0);
+let listRequest = 0;
 let detailRequest = 0;
 const detailLoading = ref(false);
 const uploadInput = ref(null);
 const uploadURLs = new Set();
 const detailURLs = new Set();
+const sources = [
+  ['', '全部'],
+  ['manual', '用户上报'],
+  ['automatic', '自动上报'],
+];
 
 const diagnostics = computed(() => collectFeedbackDiagnostics('feedback'));
 const diagnosticRows = computed(() => {
@@ -40,6 +47,9 @@ const diagnosticRows = computed(() => {
     platform: '设备平台',
     viewport: '页面尺寸',
     screen: '屏幕尺寸',
+    client_time: '发生时间',
+    network_online: '浏览器联网状态',
+    visibility_state: '页面可见状态',
   };
   return Object.entries(diagnostics.value || {})
     .filter(([, value]) => value)
@@ -108,18 +118,28 @@ function chooseImages(event) {
 }
 
 async function loadItems(selectID = 0) {
+  const request = ++listRequest;
   loading.value = true;
   try {
-    const data = await api('/feedback');
+    const query = sourceFilter.value ? `?source=${encodeURIComponent(sourceFilter.value)}` : '';
+    const data = await api(`/feedback${query}`);
+    if (request !== listRequest) return;
     items.value = data.items || [];
     const targetID = selectID || selected.value?.id || items.value[0]?.id;
     if (targetID) await openItem(targetID);
     else closeItem();
   } catch (error) {
-    toast(error.message);
+    if (request === listRequest) toast(error.message);
   } finally {
-    loading.value = false;
+    if (request === listRequest) loading.value = false;
   }
+}
+
+function selectSource(source) {
+  if (source === sourceFilter.value) return;
+  sourceFilter.value = source;
+  closeItem();
+  void loadItems();
 }
 
 function closeItem() {
@@ -184,7 +204,7 @@ async function submit() {
   try {
     const form = new FormData();
     form.append('message', message.value.trim());
-    form.append('diagnostics', JSON.stringify(diagnostics.value));
+    form.append('diagnostics', JSON.stringify(collectFeedbackDiagnostics('feedback')));
     for (const image of images.value) form.append('images', image.file);
     const result = await api('/feedback', {
       method: 'POST',
@@ -194,6 +214,7 @@ async function submit() {
     message.value = '';
     while (images.value.length) removeImage(images.value.length - 1);
     toast('反馈已提交');
+    sourceFilter.value = 'manual';
     await loadItems(result.feedback?.id);
   } catch (error) {
     const messages = {
@@ -280,6 +301,17 @@ onBeforeUnmount(releaseObjectURLs);
           <h2>我的反馈</h2>
           <span class="pill">{{ items.length }}</span>
         </header>
+        <div class="segmented-control feedback-source-tabs" role="tablist" aria-label="反馈来源">
+          <button
+            v-for="[value, label] in sources"
+            :key="value"
+            type="button"
+            role="tab"
+            :aria-selected="sourceFilter === value"
+            :class="{ active: sourceFilter === value }"
+            @click="selectSource(value)"
+          >{{ label }}</button>
+        </div>
         <div v-if="loading" class="empty">正在加载...</div>
         <div v-else-if="!items.length" class="empty">还没有提交过反馈</div>
         <div v-else class="feedback-list">
@@ -293,7 +325,7 @@ onBeforeUnmount(releaseObjectURLs);
           >
             <span class="feedback-list__main">
               <strong>#{{ item.id }} · {{ item.message }}</strong>
-              <small class="muted">{{ item.source === 'automatic' ? '自动上报 · ' : '' }}{{ formatDate(item.updated_at) }}</small>
+              <small class="muted">{{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(item.updated_at) }}</small>
             </span>
             <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
             <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
@@ -307,7 +339,7 @@ onBeforeUnmount(releaseObjectURLs);
       <template v-else>
         <header class="feedback-detail__head">
           <div>
-            <span v-if="selected.source === 'automatic'" class="pill">自动上报</span>
+            <span class="pill">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }}</span>
             <span class="pill" :class="`status-${selected.status}`">{{ statusLabel(selected.status) }}</span>
             <small class="muted">{{ formatDate(selected.created_at) }}</small>
           </div>
@@ -355,6 +387,7 @@ onBeforeUnmount(releaseObjectURLs);
 .feedback-privacy dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--cd-text); }
 .feedback-submit { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
 .feedback-history { min-width: 0; }
+.feedback-source-tabs { margin-top: 12px; }
 .feedback-list { display: grid; margin-top: 12px; border-top: 1px solid var(--cd-border); }
 .feedback-list > button { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 72px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--cd-border); border-radius: 0; background: transparent; color: var(--cd-text); text-align: left; box-shadow: none; }
 .feedback-list > button.active { color: var(--cd-primary); }

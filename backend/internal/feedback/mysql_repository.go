@@ -115,8 +115,12 @@ func (r *MySQLRepository) Create(ctx context.Context, item Feedback, attachments
 	return feedbackID, nil
 }
 
-func (r *MySQLRepository) ListByUser(ctx context.Context, userID uint64, limit int) ([]Feedback, error) {
-	return r.list(ctx, `WHERE f.user_id=? ORDER BY f.id DESC LIMIT ?`, userID, limit)
+func (r *MySQLRepository) ListByUser(ctx context.Context, userID uint64, source Source, limit int) ([]Feedback, error) {
+	if source == "" {
+		return r.list(ctx, `WHERE f.user_id=? ORDER BY f.id DESC LIMIT ?`, userID, limit)
+	}
+	return r.list(ctx, `WHERE f.user_id=? AND COALESCE(NULLIF(f.source,''),'manual')=?
+		ORDER BY f.id DESC LIMIT ?`, userID, source, limit)
 }
 
 func (r *MySQLRepository) FindByUser(ctx context.Context, userID, feedbackID uint64) (*Feedback, error) {
@@ -130,11 +134,19 @@ func (r *MySQLRepository) FindByUser(ctx context.Context, userID, feedbackID uin
 	return item, nil
 }
 
-func (r *MySQLRepository) ListAll(ctx context.Context, status Status, limit int) ([]Feedback, error) {
-	if status == "" {
+func (r *MySQLRepository) ListAll(ctx context.Context, status Status, source Source, limit int) ([]Feedback, error) {
+	switch {
+	case status == "" && source == "":
 		return r.list(ctx, `ORDER BY f.id DESC LIMIT ?`, limit)
+	case status == "":
+		return r.list(ctx, `WHERE COALESCE(NULLIF(f.source,''),'manual')=?
+			ORDER BY f.id DESC LIMIT ?`, source, limit)
+	case source == "":
+		return r.list(ctx, `WHERE f.status=? ORDER BY f.id DESC LIMIT ?`, status, limit)
+	default:
+		return r.list(ctx, `WHERE f.status=? AND COALESCE(NULLIF(f.source,''),'manual')=?
+			ORDER BY f.id DESC LIMIT ?`, status, source, limit)
 	}
-	return r.list(ctx, `WHERE f.status=? ORDER BY f.id DESC LIMIT ?`, status, limit)
 }
 
 func (r *MySQLRepository) FindByID(ctx context.Context, feedbackID uint64) (*Feedback, error) {

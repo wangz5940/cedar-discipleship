@@ -239,15 +239,24 @@ func (c *PotatoClient) SendText(ctx context.Context, target Target, text string)
 		return &deliveryError{code: "transport_failed", retry: true}
 	}
 	defer resp.Body.Close()
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024+1))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if readErr == nil && len(data) <= 64*1024 {
+			var result struct {
+				OK        bool `json:"ok"`
+				ErrorCode int  `json:"error_code"`
+			}
+			if json.Unmarshal(data, &result) == nil && !result.OK && result.ErrorCode != 0 {
+				return potatoDeliveryError(result.ErrorCode)
+			}
+		}
 		return &deliveryError{
 			code:       fmt.Sprintf("http_%d", resp.StatusCode),
 			retry:      resp.StatusCode == 429 || resp.StatusCode >= 500,
 			retryAfter: retryAfter(resp.Header.Get("Retry-After"), time.Now()),
 		}
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024+1))
-	if err != nil || len(data) > 64*1024 {
+	if readErr != nil || len(data) > 64*1024 {
 		return &deliveryError{code: "response_read_failed", retry: true}
 	}
 	var result struct {
@@ -258,13 +267,16 @@ func (c *PotatoClient) SendText(ctx context.Context, target Target, text string)
 		return &deliveryError{code: "response_invalid", retry: true}
 	}
 	if !result.OK {
-		return &deliveryError{
-			code: fmt.Sprintf("potato_%d", result.ErrorCode),
-			retry: result.ErrorCode == 1001 || result.ErrorCode == 1007 ||
-				result.ErrorCode == 4048,
-		}
+		return potatoDeliveryError(result.ErrorCode)
 	}
 	return nil
+}
+
+func potatoDeliveryError(code int) *deliveryError {
+	return &deliveryError{
+		code:  fmt.Sprintf("potato_%d", code),
+		retry: code == 1001 || code == 1007 || code == 4048,
+	}
 }
 
 func retryAfter(value string, now time.Time) time.Duration {

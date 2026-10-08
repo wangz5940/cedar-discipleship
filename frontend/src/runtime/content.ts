@@ -76,10 +76,32 @@ function bibleReferenceTarget(value: unknown): string {
       const chapter = Number(match[1]);
       const verse = Number(match[2]);
       if (chapter < 1 || chapter > chapters || verse < 1) return '';
-      return `https://www.wordproject.org/bibles/gb/${id}/${chapter}.htm#${verse}`;
+      return `${scriptureChapterURL(
+        'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm',
+        id,
+        name,
+        chapter,
+      )}#${verse}`;
     }
   }
   return '';
+}
+
+export function scriptureChapterURL(
+  template: unknown,
+  bookID: unknown,
+  bookName: unknown,
+  chapter: unknown,
+): string {
+  const source = String(template || '');
+  const rawBookID = String(bookID || '');
+  const formattedBookID = source.includes('wordproject.org/bibles/gb/{book_id}/')
+    ? rawBookID.padStart(2, '0')
+    : rawBookID;
+  return source
+    .replaceAll('{book_id}', encodeURIComponent(formattedBookID))
+    .replaceAll('{book}', encodeURIComponent(String(bookName || '')))
+    .replaceAll('{chapter}', encodeURIComponent(String(chapter || '')));
 }
 
 export function sameOriginAPIPath(value: unknown, origin = ''): string {

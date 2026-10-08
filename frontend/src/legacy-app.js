@@ -38,6 +38,7 @@ import {
   pdfViewerSinglePage,
   resolvePdfPageRange,
   sameOriginAPIPath,
+  scriptureChapterURL,
   shouldRenderWeeklyTask,
   weeklyTitleFromContent,
 } from './runtime/content';
@@ -376,6 +377,7 @@ export async function api(path, options = {}) {
     res = await fetch(requestPath, { ...requestOptions, headers, credentials: 'same-origin' });
   } catch (rawError) {
     const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+    error.code = error.code || 'network_request_failed';
     error.logID = logID;
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
@@ -474,6 +476,7 @@ export async function fetchWithAuth(url, options = {}) {
     });
   } catch (rawError) {
     const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+    error.code = error.code || 'network_request_failed';
     error.logID = logID;
     error.requestMethod = requestMethod;
     error.requestPath = requestPath;
@@ -2194,9 +2197,7 @@ function getDailyScripturePlans(date = state.selectedDate) {
     ...chapter,
     label: `${chapter.bookName} ${numberToChinese(chapter.chapter)}章`,
     title: `${chapter.bookName} ${numberToChinese(chapter.chapter)}章`,
-    url: template.replaceAll('{book_id}', encodeURIComponent(chapter.bookId))
-      .replaceAll('{book}', encodeURIComponent(chapter.bookName))
-      .replaceAll('{chapter}', encodeURIComponent(String(chapter.chapter))),
+    url: scriptureChapterURL(template, chapter.bookId, chapter.bookName, chapter.chapter),
     type: cfg.type || 'iframe',
     taskType: 'daily_scripture',
   }));
@@ -2396,7 +2397,7 @@ export async function saveLearningToggle(path, value) {
       if (!isPlainObject(target[key])) target[key] = {};
       target = target[key];
     }
-    target[path.at(-1)] = value;
+    target[path[path.length - 1]] = value;
     const saved = await api('/admin/learning-config', { method: 'PUT', body: JSON.stringify(settings) });
     if (groupID !== state.user?.current_group_id) return true;
     // A stale content draft must retain its old revision and fail the later CAS save.

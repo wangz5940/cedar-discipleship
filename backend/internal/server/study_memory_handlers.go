@@ -31,6 +31,7 @@ func (a *app) handleStudyProgress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "study_memory_failed")
 		return
 	}
+	markAuditHandled(r)
 	writeJSON(w, http.StatusOK, req.Progress)
 }
 func (a *app) handleStudyFavorite(w http.ResponseWriter, r *http.Request) {

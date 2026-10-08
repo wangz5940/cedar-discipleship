@@ -18,6 +18,7 @@ import {
   parseReaderPageRequest,
   pdfViewerSinglePage,
   sameOriginAPIPath,
+  scriptureChapterURL,
   shouldRenderWeeklyTask,
   videoMediaErrorMessage,
   weeklyTitleFromContent,
@@ -42,8 +43,21 @@ describe('content runtime helpers', () => {
     expect(buildWeeklyVerseContentLink('林前 13：4-8', '')).toMatchObject({
       type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/46/13.htm#4',
     });
+    expect(buildWeeklyVerseContentLink('创世记 1:1', '')).toMatchObject({
+      type: 'iframe', url: 'https://www.wordproject.org/bibles/gb/01/1.htm#1',
+    });
     expect(buildWeeklyVerseContentLink('未识别的经文', '')).toBeNull();
     expect(buildWeeklyVerseContentLink('彼得后书 4:1', '')).toBeNull();
+  });
+
+  it('pads WordProject book IDs without changing custom templates', () => {
+    const wordProject = 'https://www.wordproject.org/bibles/gb/{book_id}/{chapter}.htm';
+    expect(scriptureChapterURL(wordProject, '1', '创世记', 2))
+      .toBe('https://www.wordproject.org/bibles/gb/01/2.htm');
+    expect(scriptureChapterURL(wordProject, '10', '撒母耳记下', 3))
+      .toBe('https://www.wordproject.org/bibles/gb/10/3.htm');
+    expect(scriptureChapterURL('https://example.test/{book_id}/{book}/{chapter}', '1', '创世记', 2))
+      .toBe('https://example.test/1/%E5%88%9B%E4%B8%96%E8%AE%B0/2');
   });
 
   it('normalizes persisted boolean flags', () => {

@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { createVerseBlanks, gradeVerseAnswer, gradeVersePaper, tokenizeVerse, verseBlankWidth } from './verseQuiz';
 
 describe('verse quiz', () => {
+  it('works in Safari versions without Array.at', () => {
+    const original = Object.getOwnPropertyDescriptor(Array.prototype, 'at');
+    try {
+      Object.defineProperty(Array.prototype, 'at', { value: undefined, configurable: true });
+      const tokens = tokenizeVerse('【约4:2】（其实不是耶稣亲自施洗，乃是他的门徒施洗），', 3);
+      const blanks = createVerseBlanks(tokens, 100, () => 0, 3);
+      expect(blanks.map(index => tokens[index])).toEqual(['其实不是耶稣亲自施洗', '乃是他的门徒施洗']);
+    } finally {
+      Object.defineProperty(Array.prototype, 'at', original);
+    }
+  });
+
   it.each([
     '【约4:1】主知道法利赛人听见他收门徒施洗比约翰还多\n【约4:2】（其实不是耶稣亲自施洗，乃是他的门徒施洗），',
     '主知道法利赛人听见他收门徒，施洗，比约翰还多，（其实不是耶稣亲自施洗，乃是他的门徒施洗，）\n(约翰福音 4:1-2 和合本)',
