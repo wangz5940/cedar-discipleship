@@ -125,8 +125,8 @@ async function loadItems(selectID = 0) {
     const data = await api(`/feedback${query}`);
     if (request !== listRequest) return;
     items.value = data.items || [];
-    const targetID = selectID || selected.value?.id || items.value[0]?.id;
-    if (targetID) await openItem(targetID);
+    const targetID = selectID || selected.value?.id;
+    if (targetID && items.value.some((item) => item.id === targetID)) await openItem(targetID);
     else closeItem();
   } catch (error) {
     if (request === listRequest) toast(error.message);
@@ -309,50 +309,49 @@ onBeforeUnmount(releaseObjectURLs);
         <div v-if="loading" class="empty">正在加载...</div>
         <div v-else-if="!items.length" class="empty">还没有提交过反馈</div>
         <div v-else class="feedback-list">
-          <button
-            v-for="item in items"
-            :key="item.id"
-            type="button"
-            :class="{ active: openingID === item.id }"
-            :aria-expanded="openingID === item.id"
-            @click="toggleItem(item.id)"
-          >
-            <span class="feedback-list__main">
-              <strong>#{{ item.id }} · {{ item.message }}</strong>
-              <small class="muted">{{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(item.updated_at) }}</small>
-            </span>
-            <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
-            <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
-          </button>
+          <template v-for="item in items" :key="item.id">
+            <button
+              type="button"
+              :class="{ active: openingID === item.id }"
+              :aria-expanded="openingID === item.id"
+              @click="toggleItem(item.id)"
+            >
+              <span class="feedback-list__main">
+                <strong>#{{ item.id }} · {{ item.message }}</strong>
+                <small class="muted">{{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(item.updated_at) }}</small>
+              </span>
+              <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
+              <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
+            </button>
+            <section v-if="openingID === item.id" class="panel feedback-detail">
+              <div v-if="detailLoading" class="empty">正在加载详情...</div>
+              <template v-else-if="selected && selected.id === item.id">
+                <header class="feedback-detail__head">
+                  <div>
+                    <span class="pill">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }}</span>
+                    <span class="pill" :class="`status-${selected.status}`">{{ statusLabel(selected.status) }}</span>
+                    <small class="muted">{{ formatDate(selected.created_at) }}</small>
+                  </div>
+                </header>
+                <p class="feedback-detail__message">{{ selected.message }}</p>
+                <div v-if="selected.attachments?.length" class="feedback-detail__images">
+                  <a v-for="image in selected.attachments" :key="image.id" :href="image.url" target="_blank" rel="noopener">
+                    <img :src="image.url" :alt="image.original_name" />
+                  </a>
+                </div>
+                <div v-if="selected.replies?.length" class="feedback-replies">
+                  <div v-for="reply in selected.replies" :key="reply.id" class="feedback-reply">
+                    <div><strong>{{ reply.admin_display_name || '管理员' }}</strong><small class="muted">{{ formatDate(reply.created_at) }}</small></div>
+                    <p>{{ reply.message }}</p>
+                  </div>
+                </div>
+                <p v-else class="muted">管理员暂未回复。</p>
+              </template>
+            </section>
+          </template>
         </div>
       </section>
     </div>
-
-    <section v-if="selected || detailLoading" class="panel feedback-detail">
-      <div v-if="detailLoading" class="empty">正在加载详情...</div>
-      <template v-else>
-        <header class="feedback-detail__head">
-          <div>
-            <span class="pill">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }}</span>
-            <span class="pill" :class="`status-${selected.status}`">{{ statusLabel(selected.status) }}</span>
-            <small class="muted">{{ formatDate(selected.created_at) }}</small>
-          </div>
-        </header>
-        <p class="feedback-detail__message">{{ selected.message }}</p>
-        <div v-if="selected.attachments?.length" class="feedback-detail__images">
-          <a v-for="image in selected.attachments" :key="image.id" :href="image.url" target="_blank" rel="noopener">
-            <img :src="image.url" :alt="image.original_name" />
-          </a>
-        </div>
-        <div v-if="selected.replies?.length" class="feedback-replies">
-          <div v-for="reply in selected.replies" :key="reply.id" class="feedback-reply">
-            <div><strong>{{ reply.admin_display_name || '管理员' }}</strong><small class="muted">{{ formatDate(reply.created_at) }}</small></div>
-            <p>{{ reply.message }}</p>
-          </div>
-        </div>
-        <p v-else class="muted">管理员暂未回复。</p>
-      </template>
-    </section>
   </section>
 </template>
 
@@ -388,7 +387,7 @@ onBeforeUnmount(releaseObjectURLs);
 .feedback-list > button svg.expanded { transform: rotate(90deg); }
 .feedback-list__main { display: grid; min-width: 0; gap: 4px; }
 .feedback-list__main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feedback-detail { margin-top: 18px; }
+.feedback-detail { margin: 0; min-width: 0; }
 .feedback-detail__head > div { display: flex; align-items: center; gap: 10px; }
 .feedback-detail__message { margin: 16px 0; white-space: pre-wrap; line-height: 1.7; }
 .feedback-detail__images a { aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--cd-radius-base); }

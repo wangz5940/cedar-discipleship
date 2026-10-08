@@ -37,9 +37,7 @@ describe('feedback UI boundaries', () => {
     expect(adminComponent).toContain('selectedContext');
     expect(adminComponent).toContain('technicalDiagnostics');
     expect(adminComponent).toContain('业务概览');
-    expect(adminComponent).toContain('selectedDetailRow');
-    expect(adminComponent).toContain('gridRow: index * 2 + 1');
-    expect(adminComponent).toContain('v-if="openingID"');
+    expect(adminComponent).toContain('v-if="openingID === item.id"');
     expect(adminComponent).toContain("api('/feedback/automatic-settings')");
     expect(adminComponent).toContain("api('/super-admin/feedback/automatic-settings'");
     expect(adminComponent).toContain('静默此类错误');
