@@ -16,7 +16,7 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 }
 
 func (r *MySQLRepository) UnreadCandidates(ctx context.Context, userID uint64, admin bool, since time.Time) ([]UnreadCandidate, error) {
-	clause := `WHERE f.user_id=? AND EXISTS
+	clause := `WHERE f.user_id=? AND COALESCE(NULLIF(f.source,''),'manual')='manual' AND EXISTS
 		(SELECT 1 FROM feedback_replies fr WHERE fr.feedback_id=f.id AND fr.created_at>=?)`
 	args := []any{userID, since}
 	if admin {
