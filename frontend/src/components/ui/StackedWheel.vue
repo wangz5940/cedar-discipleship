@@ -8,6 +8,7 @@ const props = defineProps({
   itemKey: { type: Function, required: true },
   ariaLabel: { type: String, default: '层叠滚动列表' },
   cardHeight: { type: Number, default: 210 },
+  controlsAtBottom: Boolean,
 });
 
 const emit = defineEmits(['change']);
@@ -65,9 +66,9 @@ function emitChange() {
 </script>
 
 <template>
-  <section class="stacked-wheel" :style="{ '--stack-card-height': `${cardHeight}px` }">
-    <div class="stacked-wheel__head">
-      <span>{{ ariaLabel }}</span>
+  <section class="stacked-wheel" :class="{ 'stacked-wheel--bottom-controls': controlsAtBottom }" :style="{ '--stack-card-height': `${cardHeight}px` }">
+    <div v-if="items.length || !controlsAtBottom" class="stacked-wheel__head">
+      <span v-if="!controlsAtBottom">{{ ariaLabel }}</span>
       <div v-if="items.length" class="stacked-wheel__controls">
         <button class="quiet" type="button" :aria-label="`上一项${ariaLabel}`" @click="gesture.step(-1)"><ChevronUp :size="16" /></button>
         <b>{{ String(activeIndex + 1).padStart(2, '0') }} / {{ String(items.length).padStart(2, '0') }}</b>
@@ -110,6 +111,10 @@ function emitChange() {
 
 <style scoped>
 .stacked-wheel { min-width: 0; }
+.stacked-wheel--bottom-controls { display: flex; flex-direction: column; }
+.stacked-wheel--bottom-controls .stacked-wheel__head { order: 1; justify-content: center; margin: 8px 0 0; }
+.stacked-wheel--bottom-controls .stacked-wheel__controls { gap: 12px; padding: 4px; border: 1px solid var(--cd-border); border-radius: 14px; background: var(--cd-bg); }
+.stacked-wheel--bottom-controls .stacked-wheel__controls button { width: 44px; min-width: 44px; min-height: 44px; }
 .stacked-wheel__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--cd-muted); font-size: 12px; }
 .stacked-wheel__head b { color: var(--cd-text); font-variant-numeric: tabular-nums; }
 .stacked-wheel__controls { display: flex; align-items: center; gap: 4px; }

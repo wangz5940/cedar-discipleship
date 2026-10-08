@@ -27,17 +27,16 @@ defineEmits(['switch', 'set-default']);
 
 <style scoped>
 .app-content-toolbar {
-  display: flex;
+  display: grid;
   width: 100%;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
 }
-.app-page-title { margin: 0; min-width: 0; font-size: 26px; line-height: 1.4; }
-.app-content-toolbar :deep(.group-switcher) { margin-left: auto; }
+.app-page-title { margin: 0; min-width: 0; font-size: 26px; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
+.app-content-toolbar :deep(.group-switcher) { justify-self: end; }
 @media (max-width: 767px) {
   .app-page-title { font-size: 22px; }
-  .app-content-toolbar { flex-wrap: wrap; }
 }
 @media (min-width: 768px) and (max-width: 1199px) and (pointer: coarse) {
   .app-content-toolbar { margin-bottom: 24px; }

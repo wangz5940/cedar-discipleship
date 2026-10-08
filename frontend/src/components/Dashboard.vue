@@ -194,12 +194,10 @@ async function exportRankingChart() {
 
       <!-- Daily Member Attendance Table -->
       <div class="panel daily-detail">
-        <div class="spread sectiontitle">
-          <div>
-            <h2 class="section-heading">成员打卡明细</h2>
-            <span class="small muted">所选日期：{{ selectedDate }} · 点击头像查看成员月历</span>
-          </div>
+        <div class="sectiontitle member-detail-heading">
+          <h2 class="section-heading">成员打卡明细</h2>
           <span class="pill">{{ members.length }} 位成员</span>
+          <p class="small muted">点击头像查看成员月历</p>
         </div>
         <div class="tablewrap responsive-table daily-table desktop-stack-content">
           <table>
@@ -254,6 +252,7 @@ async function exportRankingChart() {
           :item-key="(member) => member.user_id"
           :mode="mobileViewMode"
           aria-label="成员打卡明细"
+          controls-at-bottom
           :card-height="memberCardHeight"
         >
           <template #default="{ item: member }">
@@ -475,6 +474,13 @@ async function exportRankingChart() {
 .daily-table table { width: max-content; min-width: 100%; }
 .sectiontitle { margin-bottom: 16px; }
 .section-heading { font-size: 18px; }
+.member-detail-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.member-detail-heading .section-heading { grid-column: 1 / -1; grid-row: 1; margin: 0; padding-inline: 68px; text-align: center; }
+.member-detail-heading .pill { grid-column: 2; grid-row: 1; justify-self: end; }
+.member-detail-heading p { grid-column: 1 / -1; grid-row: 2; margin: 0; text-align: center; }
+@media (max-width: 360px) {
+  .member-detail-heading .section-heading { font-size: 16px; }
+}
 .responsive-table { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
 .daily-table th:first-child { min-width: 140px; }
 .member-cell { gap: 10px; }
