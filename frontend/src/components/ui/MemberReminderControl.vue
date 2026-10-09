@@ -1,11 +1,16 @@
 <script setup>
 import { Bell, BellOff } from '@lucide/vue';
+import { computed } from 'vue';
+import { useAppStateStore } from '../../stores/appState';
 import { useLearningRemindersStore } from '../../stores/learningReminders';
 import { api, toast } from '../../legacy-app';
 import { canUseSystemNotifications, hasLearningPushSubscription, requestSystemNotifications } from '../../runtime/learningNotifications';
 
 const props = defineProps({ member: { type: Object, required: true }, isToday: Boolean });
 const reminders = useLearningRemindersStore();
+const app = useAppStateStore();
+const unlimited = computed(() => Boolean(app.user?.is_super_admin));
+const alreadySent = computed(() => !unlimited.value && reminders.sentIDs.includes(Number(props.member.user_id)));
 async function act() {
   try {
     if (props.member.isSelf) {
@@ -31,17 +36,17 @@ async function act() {
 
 <template>
   <button
-    v-if="member.isSelf || (isToday && member.taskStates?.some(task => !task.done))"
+    v-if="member.isSelf || (isToday && (unlimited || member.taskStates?.some(task => !task.done)))"
     class="secondary member-reminder-control"
     type="button"
-    :disabled="member.isSelf ? reminders.savingPreference : reminders.busyIDs.includes(Number(member.user_id)) || reminders.sentIDs.includes(Number(member.user_id))"
+    :disabled="member.isSelf ? reminders.savingPreference : reminders.busyIDs.includes(Number(member.user_id)) || alreadySent"
     :aria-label="member.isSelf ? (reminders.muted ? '允许通知' : '静音通知') : `提醒${member.name}今天打卡`"
     :aria-pressed="member.isSelf ? reminders.muted : undefined"
     @click="act"
   >
     <BellOff v-if="member.isSelf && reminders.muted" :size="16" />
     <Bell v-else :size="16" />
-    <span>{{ member.isSelf ? (reminders.muted ? '已静音' : '允许通知') : reminders.sentIDs.includes(Number(member.user_id)) ? '已提醒' : '提醒' }}</span>
+    <span>{{ member.isSelf ? (reminders.muted ? '已静音' : '允许通知') : alreadySent ? '已提醒' : '提醒' }}</span>
   </button>
 </template>
 
