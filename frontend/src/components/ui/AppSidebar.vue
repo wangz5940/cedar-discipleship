@@ -2,21 +2,19 @@
 import { BarChart2, Book, BookOpen, Download, Folder, House, LogOut, MessageSquareText, Settings, User, Users } from '@lucide/vue';
 
 import UnreadDot from './UnreadDot.vue';
-import { vLearningReminderHold } from '../../ui/learningReminderHold';
 
 defineProps({
   navItems: { type: Array, default: () => [] },
   tab: { type: String, required: true },
   canAdmin: Boolean,
   feedbackUnread: Boolean,
-  learningUnread: Boolean,
   adminFeedbackUnread: Boolean,
   user: { type: Object, default: null },
   role: { type: String, default: '组员' },
   unfinishedCount: { type: Number, default: 0 },
 });
 
-const emit = defineEmits(['navigate', 'downloads', 'logout', 'learning-reminder', 'clear-learning']);
+defineEmits(['navigate', 'downloads', 'logout']);
 
 function navIcon(id) {
   return { home: House, courses: BookOpen, dashboard: BarChart2, groups: Users, resources: Folder, feedback: MessageSquareText, settings: User }[id] || Book;
@@ -40,15 +38,14 @@ function navIcon(id) {
       <button
         v-for="item in navItems.filter((entry) => entry[0] !== 'admin' && entry[0] !== 'resources')"
         :key="item[0]"
-        v-learning-reminder-hold="item[0] === 'home' ? () => emit('clear-learning') : null"
-        :class="{ active: (tab === 'resources' ? 'courses' : tab) === item[0], 'learning-reminder-trigger': item[0] === 'home' }"
+        :class="{ active: (tab === 'resources' ? 'courses' : tab) === item[0] }"
         :aria-current="(tab === 'resources' ? 'courses' : tab) === item[0] ? 'page' : undefined"
         :title="item[1]"
         type="button"
         @click="$emit('navigate', item[0])"
       >
         <component :is="navIcon(item[0])" :size="20" stroke-width="1.8" />
-        <span>{{ item[1] }}<UnreadDot v-if="item[0] === 'home' && learningUnread" @click.stop="$emit('learning-reminder')" /><UnreadDot v-else-if="item[0] === 'feedback' && feedbackUnread" /></span>
+        <span>{{ item[1] }}<UnreadDot v-if="item[0] === 'feedback' && feedbackUnread" /></span>
       </button>
 
       <template v-if="canAdmin">

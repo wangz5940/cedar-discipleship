@@ -361,10 +361,3 @@
   .app-login-hero h1 { font-size: 24px; }
   .content { padding-inline: 16px; }
 }
-
-.learning-reminder-trigger,
-.learning-reminder-trigger * {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 vi.mock('../legacy-app', () => ({ api: vi.fn() }));
+vi.mock('../runtime/learningNotifications', () => ({ encouragement: () => '你当刚强壮胆', closeLearningNotification: vi.fn(), showLearningNotification: vi.fn() }));
+import { showLearningNotification } from '../runtime/learningNotifications';
 import { api } from '../legacy-app';
 import { useLearningRemindersStore } from './learningReminders';
 
@@ -11,6 +13,16 @@ describe('learning reminder state', () => {
     vi.stubGlobal('localStorage', { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) });
   });
   afterEach(() => vi.unstubAllGlobals());
+  it('offers every new reminder to system notifications once without reading records', async () => {
+    const store = useLearningRemindersStore(); store.setScope(1, 2);
+    api.mockResolvedValue({ items: [{ id: 8 }, { id: 9 }, { id: 10 }], muted: false });
+    await store.refresh();
+    expect(showLearningNotification.mock.calls.map(([item]) => item.id)).toEqual([10, 9, 8]);
+    await store.refresh();
+    expect(showLearningNotification).toHaveBeenCalledTimes(3);
+    expect(store.items).toHaveLength(3);
+    expect(api.mock.calls.every(([path]) => path === '/learning-reminders')).toBe(true);
+  });
   it('shows new notifications and preserves unread until the displayed banner is read', async () => {
     const store = useLearningRemindersStore(); store.setScope(1, 2);
     api.mockResolvedValue({ items: [{ id: 8, sender: '甲' }], muted: false });

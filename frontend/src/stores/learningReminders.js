@@ -44,7 +44,7 @@ export const useLearningRemindersStore = defineStore('learningReminders', {
         try { localStorage.setItem(`learning-reminders-offered:${scope}`, JSON.stringify(this.offeredIDs)); } catch { /* Keep the session's automatic-display state. */ }
         if (fresh.length && !this.muted) {
           this.banner = fresh[0];
-          void showLearningNotification(this.banner);
+          fresh.forEach(item => { void showLearningNotification(item); });
         }
       } catch { /* Reminder failures must not interrupt learning or clear unread state. */ }
     },
