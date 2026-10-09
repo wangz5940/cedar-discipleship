@@ -1,3 +1,5 @@
+import { ref } from 'vue';
+
 const encouragements = [
   '你们要靠主常常喜乐。',
   '我们行善，不可丧志。',
@@ -6,10 +8,10 @@ const encouragements = [
   '在指望中要喜乐，在患难中要忍耐。',
 ];
 
-let pushSubscriptionReady = false;
+const pushSubscriptionReady = ref(false);
 let subscriptionOperation = Promise.resolve();
 
-export function hasLearningPushSubscription() { return pushSubscriptionReady; }
+export function hasLearningPushSubscription() { return pushSubscriptionReady.value; }
 
 export function syncLearningPushSubscription(api) {
   subscriptionOperation = subscriptionOperation.catch(() => {}).then(() => registerLearningPush(api));
@@ -25,7 +27,7 @@ async function registerLearningPush(api) {
   const bytes = Uint8Array.from(atob(config.public_key.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
   const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
   await api('/learning-reminders/push-subscription', { method: 'PUT', body: JSON.stringify(subscription.toJSON()), retryAuth: false });
-  pushSubscriptionReady = true;
+  pushSubscriptionReady.value = true;
   return true;
 }
 
@@ -35,7 +37,7 @@ export function unsubscribeLearningPush(api) {
 }
 
 async function removeLearningPush(api) {
-  pushSubscriptionReady = false;
+  pushSubscriptionReady.value = false;
   if (!canUseSystemNotifications()) return;
   const registration = await navigator.serviceWorker.getRegistration('/');
   const subscription = await registration?.pushManager?.getSubscription();
@@ -67,16 +69,13 @@ export async function requestSystemNotifications(api) {
 
 export async function showLearningNotification(item) {
   if (!canUseSystemNotifications() || Notification.permission !== 'granted') return;
-  if (pushSubscriptionReady) return; // The server push owns the system alert; keep the page banner.
+  if (pushSubscriptionReady.value) return; // The server push owns the system alert.
   try {
     await navigator.serviceWorker.register('/learning-notifications-sw.js');
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification(`${item.sender} 提醒你打卡`, {
-      body: item.encouragement,
-      icon: '/site-avatar.png',
-      tag: `learning-reminder-${item.id}`,
-      data: { url: '/' },
-    });
+    registration.active?.postMessage({ type: 'show-learning-notification', item: {
+      id: item.id, title: `${item.sender} 提醒你打卡`, body: item.encouragement,
+    } });
   } catch { /* System notifications are optional; keep the in-app reminder. */ }
 }
 

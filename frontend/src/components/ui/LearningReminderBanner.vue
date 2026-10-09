@@ -3,16 +3,17 @@ import { watch, onMounted, onBeforeUnmount } from 'vue';
 import { Bell, X } from '@lucide/vue';
 import { useLearningRemindersStore } from '../../stores/learningReminders';
 import { setTab, setSelectedDate, toast } from '../../legacy-app';
+import { hasLearningPushSubscription } from '../../runtime/learningNotifications';
 const reminders = useLearningRemindersStore();
 let timer;
 function scheduleDismiss() {
   clearTimeout(timer);
   const item = reminders.banner;
-  if (item && document.visibilityState !== 'hidden') {
+  if (item && !hasLearningPushSubscription() && document.visibilityState !== 'hidden') {
     timer = setTimeout(() => { void reminders.dismiss(item); }, 4000);
   }
 }
-watch(() => reminders.banner?.id, () => {
+watch([() => reminders.banner?.id, hasLearningPushSubscription], () => {
   scheduleDismiss();
 }, { immediate: true });
 onMounted(() => document.addEventListener('visibilitychange', scheduleDismiss));
@@ -36,7 +37,7 @@ async function open() {
 <template>
   <Teleport to="body">
     <Transition name="learning-notice">
-      <aside v-if="reminders.banner" class="learning-notice" role="status" aria-live="polite" aria-label="学习打卡提醒">
+      <aside v-if="reminders.banner && !hasLearningPushSubscription()" class="learning-notice" role="status" aria-live="polite" aria-label="学习打卡提醒">
         <Bell :size="22" class="learning-notice-icon" />
         <button class="learning-notice-content" type="button" @click="open">
           <strong>{{ reminders.banner.sender }} 提醒你打卡</strong>

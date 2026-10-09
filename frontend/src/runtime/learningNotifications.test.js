@@ -3,7 +3,7 @@ import { requestSystemNotifications, showLearningNotification, closeLearningNoti
 
 afterEach(async () => { await unsubscribeLearningPush(); vi.unstubAllGlobals(); });
 function platform(permission = 'granted') {
-  const registration = { showNotification: vi.fn().mockResolvedValue(), getNotifications: vi.fn().mockResolvedValue([]) };
+  const registration = { active: { postMessage: vi.fn() }, showNotification: vi.fn().mockResolvedValue(), getNotifications: vi.fn().mockResolvedValue([]) };
   const serviceWorker = { register: vi.fn().mockResolvedValue(registration), ready: Promise.resolve(registration), getRegistration: vi.fn().mockResolvedValue(registration) };
   const notification = { permission, requestPermission: vi.fn().mockResolvedValue(permission) };
   vi.stubGlobal('window', { isSecureContext: true, Notification: notification });
@@ -15,7 +15,7 @@ describe('learning system notifications', () => {
   it('uses a persistent service-worker notification with the same encouragement', async () => {
     const { registration, notification } = platform();
     await showLearningNotification({ id: 7, sender: '甲', encouragement: '你当刚强壮胆！' });
-    expect(registration.showNotification).toHaveBeenCalledWith('甲 提醒你打卡', expect.objectContaining({ body: '你当刚强壮胆！', tag: 'learning-reminder-7' }));
+    expect(registration.active.postMessage).toHaveBeenCalledWith({ type: 'show-learning-notification', item: { id: 7, title: '甲 提醒你打卡', body: '你当刚强壮胆！' } });
     expect(notification.requestPermission).not.toHaveBeenCalled();
   });
   it('does not ask automatically and degrades safely on HTTP or denied permission', async () => {
