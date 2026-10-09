@@ -18,7 +18,6 @@ import {
 } from '@lucide/vue';
 import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
-import LearningReminderBanner from './ui/LearningReminderBanner.vue';
 import LearningNotificationPermission from './ui/LearningNotificationPermission.vue';
 import { useLearningRemindersStore } from '../stores/learningReminders';
 import { syncLearningPushSubscription, unsubscribeLearningPush } from '../runtime/learningNotifications';
@@ -101,13 +100,6 @@ watch([authenticated, () => user.value?.id, currentGroupID], (_current, previous
 }, { immediate: true });
 function navigate(tab) {
   setTab(tab);
-  if (tab === 'home') learningReminders.openLatest();
-}
-async function clearLearningReminders() {
-  try {
-    await learningReminders.clearAll();
-    showToast('学习提醒已清除');
-  } catch { showToast('清除失败，请重试'); }
 }
 async function openSystemReminder(event) {
   if (event.data?.type !== 'open-learning-reminder' || !authenticated.value) return;
@@ -454,7 +446,6 @@ async function refreshResources() {
 
   <!-- Cedar Main Layout Shell -->
   <div v-else class="cedar-app-shell">
-    <LearningReminderBanner />
     <AppSidebar
       :nav-items="navItems"
       :tab="tab"
@@ -463,11 +454,8 @@ async function refreshResources() {
       :role="roleLabel(user || {}) || '组员'"
       :unfinished-count="downloadManager.unfinishedCount"
       :feedback-unread="feedbackUnread.hasUnread"
-      :learning-unread="learningReminders.hasUnread"
       :admin-feedback-unread="feedbackUnread.adminIDs.length > 0"
       @navigate="navigate"
-      @learning-reminder="learningReminders.openLatest()"
-      @clear-learning="clearLearningReminders"
       @downloads="downloadManager.openPanel()"
       @logout="logout"
     />
@@ -639,12 +627,9 @@ async function refreshResources() {
         :can-admin="canAdmin"
         :more-open="showMobileMoreMenu"
         :feedback-unread="feedbackUnread.hasUnread"
-      :learning-unread="learningReminders.hasUnread"
         :show-groups="ministryGroupCount > 0"
         :entry-setting="settings.ministry?.show_entry"
         @navigate="navigate"
-        @learning-reminder="learningReminders.openLatest()"
-        @clear-learning="clearLearningReminders"
         @more="showMobileMoreMenu = true"
       />
     </div>

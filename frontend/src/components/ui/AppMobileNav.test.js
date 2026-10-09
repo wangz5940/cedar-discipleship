@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest';
 import AppMobileNav from './AppMobileNav.vue';
 
 describe('mobile learning navigation', () => {
-  it('shows learning unread independently of feedback and keeps it on the active learning page', async () => {
-    const html = await renderToString(createSSRApp(AppMobileNav, { tab: 'home', learningUnread: true, feedbackUnread: false }));
-    expect((html.match(/aria-label="有未读消息"/g) || []).length).toBe(1);
-    expect(html).toMatch(/<span>学习<span[^>]*class="unread-dot"/);
-    const read = await renderToString(createSSRApp(AppMobileNav, { tab: 'home', learningUnread: false }));
-    expect(read).not.toContain('aria-label="有未读消息"');
+  it('keeps learning navigation plain while preserving feedback reminders', async () => {
+    const html = await renderToString(createSSRApp(AppMobileNav, { tab: 'home', feedbackUnread: false }));
+    expect(html).not.toContain('unread-dot');
+    expect(html).not.toContain('长按');
+    expect(html).not.toContain('learning-reminder-trigger');
+    expect(html).toMatch(/aria-current="page"[^>]*aria-label="学习"/);
   });
   it.each(['courses', 'resources'])('keeps the course entry active on %s', async (tab) => {
     const html = await renderToString(createSSRApp(AppMobileNav, { tab }));

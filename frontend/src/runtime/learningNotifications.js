@@ -76,7 +76,7 @@ export async function showLearningNotification(item) {
     registration.active?.postMessage({ type: 'show-learning-notification', item: {
       id: item.id, title: `${item.sender} 提醒你打卡`, body: item.encouragement,
     } });
-  } catch { /* System notifications are optional; keep the in-app reminder. */ }
+  } catch { /* A notification failure must not interrupt learning. */ }
 }
 
 export async function closeLearningNotification(item) {
