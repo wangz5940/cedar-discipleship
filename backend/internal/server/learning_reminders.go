@@ -58,11 +58,15 @@ func (a *app) handleCreateLearningReminder(w http.ResponseWriter, r *http.Reques
 		writeError(w, 500, "reminder_failed")
 		return
 	}
-	if hub.Progress.Total == 0 || hub.Progress.Completed >= hub.Progress.Total {
+	if !u.IsSuperAdmin && (hub.Progress.Total == 0 || hub.Progress.Completed >= hub.Progress.Total) {
 		writeError(w, 409, "member_tasks_completed")
 		return
 	}
-	_, err = a.db.ExecContext(r.Context(), `INSERT INTO learning_reminders(group_id,sender_id,recipient_id,logical_date,created_at) VALUES(?,?,?,?,?)`, groupID, u.ID, req.UserID, date, now.UTC())
+	var dailyLimitSlot any = 1
+	if u.IsSuperAdmin {
+		dailyLimitSlot = nil
+	}
+	_, err = a.db.ExecContext(r.Context(), `INSERT INTO learning_reminders(group_id,sender_id,recipient_id,logical_date,created_at,daily_limit_slot) VALUES(?,?,?,?,?,?)`, groupID, u.ID, req.UserID, date, now.UTC(), dailyLimitSlot)
 	var duplicate *mysql.MySQLError
 	if errors.As(err, &duplicate) && duplicate.Number == 1062 {
 		writeError(w, 409, "already_reminded_today")
@@ -124,7 +128,7 @@ func (a *app) handleLearningReminders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var sentRows *sql.Rows
-	sentRows, err = a.db.QueryContext(r.Context(), `SELECT recipient_id FROM learning_reminders WHERE group_id=? AND sender_id=? AND logical_date=?`, groupID, u.ID, time.Now().In(a.location).Format("2006-01-02"))
+	sentRows, err = a.db.QueryContext(r.Context(), `SELECT DISTINCT recipient_id FROM learning_reminders WHERE group_id=? AND sender_id=? AND logical_date=?`, groupID, u.ID, time.Now().In(a.location).Format("2006-01-02"))
 	if err != nil {
 		writeError(w, 500, "reminder_failed")
 		return

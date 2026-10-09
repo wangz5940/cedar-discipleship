@@ -17,6 +17,7 @@ import (
 func TestLearningRemindersPersistenceAndBoundaries(t *testing.T) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "024_learning_reminders.sql")
+	testdb.Apply(t, db, "026_unlimited_superadmin_reminders.sql")
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at) VALUES(1,'reminder','Reminder',NOW(),NOW()),(2,'other','Other',NOW(),NOW());
  INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at) VALUES(1,'sender','Sender','sender',NOW(),NOW()),(2,'recipient','Recipient','recipient',NOW(),NOW()),(3,'other-sender','Other sender','other',NOW(),NOW()),(4,'outsider','Outsider','outside',NOW(),NOW());
  INSERT INTO group_members(group_id,user_id,member_name,joined_at,created_at,updated_at) VALUES(1,1,'Sender',NOW(),NOW(),NOW()),(1,2,'Recipient',NOW(),NOW(),NOW()),(1,3,'Other sender',NOW(),NOW(),NOW()),(2,4,'Outsider',NOW(),NOW(),NOW())`)
@@ -85,6 +86,7 @@ func TestLearningRemindersPersistenceAndBoundaries(t *testing.T) {
 		t.Fatal("mute lost unread")
 	}
 	testdb.Apply(t, db, "024_learning_reminders.sql")
+	testdb.Apply(t, db, "026_unlimited_superadmin_reminders.sql")
 	feed = call(2, "GET", "/reminders", "", 200)
 	if feed["muted"] != true {
 		t.Fatal("migration replay lost preference")
@@ -101,7 +103,10 @@ func TestLearningRemindersPersistenceAndBoundaries(t *testing.T) {
 	call(5, "POST", "/reminders", `{"user_id":5}`, 400)
 	call(5, "POST", "/reminders", `{"user_id":4}`, 403)
 	call(5, "POST", "/reminders", `{"user_id":2}`, 201)
-	call(5, "POST", "/reminders", `{"user_id":2}`, 409)
+	call(5, "POST", "/reminders", `{"user_id":2}`, 201)
+	testdb.Apply(t, db, "026_unlimited_superadmin_reminders.sql")
+	call(5, "POST", "/reminders", `{"user_id":2}`, 201)
+	call(1, "POST", "/reminders", `{"user_id":2}`, 409)
 	adminFeed := call(5, "GET", "/reminders", "", 200)
 	if len(adminFeed["items"].([]any)) != 0 || len(adminFeed["sent_ids"].([]any)) != 1 {
 		t.Fatal("admin must see their sent state without reading other members' reminders")
@@ -119,6 +124,6 @@ func TestLearningRemindersPersistenceAndBoundaries(t *testing.T) {
 	testdb.Exec(t, db, `UPDATE group_members SET status=0 WHERE group_id=2 AND user_id=4`)
 	call(5, "POST", "/reminders", `{"user_id":4}`, 403, 2)
 	testdb.Exec(t, db, `UPDATE group_settings SET settings='{"task_sections":{"daily":{"devotion":{"enabled":false},"scripture":{"enabled":false},"verse":{"enabled":false}}}}' WHERE group_id=1`)
-	call(5, "POST", "/reminders", `{"user_id":3}`, 409)
+	call(5, "POST", "/reminders", `{"user_id":3}`, 201)
 	call(2, "POST", "/reminders", `{"user_id":3}`, 409)
 }
