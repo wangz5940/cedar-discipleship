@@ -7,9 +7,11 @@ import LearningNotificationPermission from './LearningNotificationPermission.vue
 
 vi.mock('../../legacy-app', () => ({ api: vi.fn(), toast: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
-async function render(permission, member = true) {
+async function render(permission, member = true, support = {}) {
   const requestPermission = vi.fn();
-  vi.stubGlobal('window', { isSecureContext: true, Notification: {}, PushManager: function () {} });
+  const browser = { isSecureContext: true, Notification: {}, PushManager: function () {}, ...support };
+  for (const key of Object.keys(support)) if (support[key] === undefined) delete browser[key];
+  vi.stubGlobal('window', browser);
   vi.stubGlobal('Notification', { permission, requestPermission });
   vi.stubGlobal('navigator', { serviceWorker: { getRegistration: vi.fn().mockResolvedValue({ pushManager: { getSubscription: vi.fn().mockResolvedValue({}) } }) } });
   const pinia = createPinia(); setActivePinia(pinia);
@@ -19,6 +21,13 @@ async function render(permission, member = true) {
   return { html: context.teleports?.body || '', requestPermission };
 }
 describe('learning notification permission prompt', () => {
+  it('does not interrupt startup with browser capability or HTTPS guidance', async () => {
+    for (const support of [{ isSecureContext: false }, { PushManager: undefined }, { Notification: undefined }]) {
+      const result = await render('default', true, support);
+      expect(result.html).not.toContain('开启系统通知');
+      expect(result.requestPermission).not.toHaveBeenCalled();
+    }
+  });
   it('shows an allowance prompt for unapproved members without requesting OS permission automatically', async () => {
     const result = await render('default');
     expect(result.html).toContain('开启系统通知');

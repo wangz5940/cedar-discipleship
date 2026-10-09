@@ -1,6 +1,5 @@
 <script setup>
 import { ref, watch } from 'vue';
-import DeviceNotifications from './ui/DeviceNotifications.vue';
 import { storeToRefs } from 'pinia';
 import { Columns2, Layers3, LockKeyhole, Save, UserRound } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
@@ -83,7 +82,6 @@ async function changePassword() {
 
 <template>
   <section class="personal-settings">
-    <DeviceNotifications />
     <form class="personal-settings__form" @submit.prevent="submit">
       <section class="panel personal-settings__section">
         <header>

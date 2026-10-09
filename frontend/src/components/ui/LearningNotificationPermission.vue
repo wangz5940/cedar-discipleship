@@ -21,6 +21,7 @@ watch([scope, () => app.authenticated], ([key]) => {
   const account = key.split(':')[0];
   if (checked.has(account)) return;
   checked.add(account);
+  if (supportMessage.value) return;
   permission.value = canUseSystemNotifications() ? Notification.permission : 'unsupported';
   if (permission.value === 'granted') return;
   if (scope.value === key) open.value = true;
