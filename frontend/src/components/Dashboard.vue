@@ -228,13 +228,12 @@ async function exportRankingChart() {
                 <td v-for="item in member.taskStates" :key="item.title">
                   <button
                     v-if="member.isSelf"
-                    :class="[item.done ? 'taskdone' : 'quiet', item.done ? 'is-done' : 'is-pending']"
-                    class="daily-checkin"
+                    class="member-status-action"
                     type="button"
                     :title="memberTaskTitle(member, item)"
                     @click="toggleCheckin(item.taskForMember, member)"
                   >
-                    {{ item.done ? '✓ 已打卡' : '去打卡' }}
+                    <span :class="item.done ? 'check status-done' : 'status-pending'">{{ item.done ? '✓ 已打卡' : '未打卡' }}</span>
                   </button>
                   <span v-else-if="item.done" class="check status-done">✓ 已打卡</span>
                   <span v-else class="status-pending">未打卡</span>
@@ -250,6 +249,7 @@ async function exportRankingChart() {
         </div>
         <MobileCardCollection
           class="mobile-stack-content"
+          :class="{ 'member-detail-masonry': mobileViewMode !== 'stacked' }"
           :items="members"
           :item-key="(member) => member.user_id"
           :mode="mobileViewMode"
@@ -261,13 +261,13 @@ async function exportRankingChart() {
             <div class="member-stack-card">
               <header>
                 <button class="avatar member-avatar" type="button" :aria-label="`查看${member.name}打卡月历`" @click="openMemberCalendar(member)">{{ member.avatar }}</button>
-                <div><b>{{ member.name }}{{ member.isSelf ? '（我）' : '' }}</b><small>{{ member.taskStates.filter((state) => state.done).length }} / {{ member.taskStates.length }} 项完成</small></div>
+                <div><b>{{ member.name }}{{ member.isSelf ? '（我）' : '' }}</b></div>
                 <MemberReminderControl :member="member" :is-today="isToday" />
               </header>
               <div class="member-stack-tasks">
                 <div v-for="state in member.taskStates" :key="state.title">
                   <span :title="state.title">{{ state.shortLabel }}</span>
-                  <button v-if="member.isSelf" :class="[state.done ? 'taskdone' : 'quiet', state.done ? 'is-done' : 'is-pending']" type="button" @click="toggleCheckin(state.taskForMember, member)">{{ state.done ? '✓ 已打卡' : '去打卡' }}</button>
+                  <button v-if="member.isSelf" class="member-status-action" type="button" :aria-label="`${state.title}：${state.done ? '取消打卡' : '完成打卡'}`" @click="toggleCheckin(state.taskForMember, member)"><strong :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong></button>
                   <strong v-else :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong>
                 </div>
               </div>
@@ -488,12 +488,10 @@ async function exportRankingChart() {
 .daily-table th:first-child { min-width: 140px; }
 .member-cell { gap: 10px; }
 .member-avatar { width: 44px; height: 44px; border: 0; font-size: 12px; cursor: pointer; }
-.daily-checkin { min-height: 44px; padding: 4px 12px; font-size: 12px; }
-.daily-checkin.is-pending, .member-stack-tasks button.is-pending { border: 1px solid var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); font-weight: 700; white-space: nowrap; }
-.daily-checkin.is-done, .member-stack-tasks button.is-done { border: 1px solid var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; font-weight: 700; white-space: nowrap; }
 .status-pending, .status-done { display: inline-flex; align-items: center; padding: 4px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .status-pending { border: 1px solid var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); }
 .status-done { border: 1px solid var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; }
+.daily-table .member-status-action, .member-stack-tasks .member-status-action { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; }
 .numeric, .progress-count { font-variant-numeric: tabular-nums; }
 .progress-panel { margin-bottom: 32px; }
 .progress-label { font-weight: 500; }
@@ -525,10 +523,9 @@ async function exportRankingChart() {
 .member-stack-card, .matrix-stack-card { height: 100%; padding: 16px; overflow: hidden; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: var(--cd-shadow-card); }
 .member-stack-card header, .matrix-stack-card header { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .member-stack-card header > div, .matrix-stack-card header > div { display: grid; min-width: 0; gap: 2px; }
-.member-stack-card header small, .matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
+.matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
 .member-stack-tasks { display: grid; gap: 8px; margin-top: 14px; }
-.member-stack-tasks > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid var(--cd-border); font-size: 13px; }
-.member-stack-tasks button { min-height: 36px; padding: 4px 10px; }
+.member-stack-tasks > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; min-height: 45px; border-top: 1px solid var(--cd-border); font-size: 13px; }
 .matrix-stack-card header > strong { margin-left: auto; color: var(--cd-primary); font-size: 20px; white-space: nowrap; }
 .matrix-stack-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0 0; }
 .matrix-stack-card dl > div { padding: 10px; border-radius: 8px; background: var(--cd-surface-subtle); }
@@ -547,6 +544,13 @@ async function exportRankingChart() {
   .filter-chip, .sort-button, .export-row button { min-height: 44px; }
   .desktop-stack-content { display: none; }
   .mobile-stack-content { display: block; }
+  .member-detail-masonry .member-stack-card { container-type: inline-size; padding: 12px; }
+  .member-detail-masonry .member-stack-card header { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: start; }
+  .member-detail-masonry .member-stack-card header > div { grid-column: 1 / -1; grid-row: 2; gap: 3px; }
+  .member-detail-masonry .member-stack-card header b { overflow-wrap: anywhere; line-height: 1.4; }
+  .member-detail-masonry .member-stack-card :deep(.member-reminder-control) { grid-column: 2; grid-row: 1; justify-self: end; margin-left: 0; max-width: 100%; white-space: nowrap; }
+  .member-detail-masonry .member-stack-tasks { gap: 6px; margin-top: 10px; }
+  .member-detail-masonry .member-stack-tasks > div { gap: 6px; }
   .stats-center { min-width: 0; overflow: hidden; }
   .chart-head { align-items: flex-start; }
   .filter-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
@@ -567,5 +571,10 @@ async function exportRankingChart() {
   .responsive-table tfoot td:first-child { background: var(--cd-surface-subtle); }
   .tablewrap td:first-child .inline { max-width: 150px; }
   .tablewrap td:first-child b { white-space: normal; overflow-wrap: anywhere; }
+}
+@container (min-width: 240px) {
+  .member-detail-masonry .member-stack-card header { grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; }
+  .member-detail-masonry .member-stack-card header > div { grid-column: 2; grid-row: 1; }
+  .member-detail-masonry .member-stack-card :deep(.member-reminder-control) { grid-column: 3; }
 }
 </style>
