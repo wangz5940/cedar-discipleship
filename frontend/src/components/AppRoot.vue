@@ -20,6 +20,7 @@ import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
 import LearningReminderBanner from './ui/LearningReminderBanner.vue';
 import { useLearningRemindersStore } from '../stores/learningReminders';
+import { syncLearningPushSubscription, unsubscribeLearningPush } from '../runtime/learningNotifications';
 import { lazyPage } from '../ui/lazyPage';
 import { vDialogFocus } from '../ui/dialogFocus';
 import { useAppStateStore } from '../stores/appState';
@@ -88,9 +89,14 @@ watch(() => authenticated.value ? user.value?.id : 0, (id) => {
   feedbackUnread.setAccount(id);
   void feedbackUnread.refresh();
 }, { immediate: true });
-watch([authenticated, () => user.value?.id, currentGroupID], () => {
+watch([authenticated, () => user.value?.id, currentGroupID], (_current, previous) => {
   learningReminders.setScope(authenticated.value ? user.value?.id : 0, currentGroupID.value);
   void learningReminders.refresh();
+  if (authenticated.value && user.value?.id && currentGroupID.value) {
+    void syncLearningPushSubscription(api).catch(() => {});
+  } else if (!authenticated.value && previous?.[0]) {
+    void unsubscribeLearningPush().catch(() => {});
+  }
 }, { immediate: true });
 function navigate(tab) {
   setTab(tab);

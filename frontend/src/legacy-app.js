@@ -2941,6 +2941,11 @@ export async function removeMember(member) {
 }
 
 export async function logout(options = {}) {
+  try {
+    const { unsubscribeLearningPush } = await import('./runtime/learningNotifications');
+    if (options.remote !== false) await unsubscribeLearningPush(api);
+    else void unsubscribeLearningPush().catch(() => {});
+  } catch { /* Logout must remain available if push cleanup fails. */ }
   if (options.remote !== false) {
     const logID = createLogID();
     await fetch('/api/auth/logout', {

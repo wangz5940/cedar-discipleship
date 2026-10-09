@@ -1,21 +1,21 @@
 <script setup>
 import { Bell, BellOff } from '@lucide/vue';
 import { useLearningRemindersStore } from '../../stores/learningReminders';
-import { toast } from '../../legacy-app';
-import { canUseSystemNotifications, requestSystemNotifications } from '../../runtime/learningNotifications';
+import { api, toast } from '../../legacy-app';
+import { canUseSystemNotifications, hasLearningPushSubscription, requestSystemNotifications } from '../../runtime/learningNotifications';
 
 const props = defineProps({ member: { type: Object, required: true }, isToday: Boolean });
 const reminders = useLearningRemindersStore();
 async function act() {
   try {
     if (props.member.isSelf) {
-      if (canUseSystemNotifications() && Notification.permission === 'default') {
-        const permission = await requestSystemNotifications();
+      if (canUseSystemNotifications() && (Notification.permission === 'default' || (Notification.permission === 'granted' && !hasLearningPushSubscription()))) {
+        const permission = await requestSystemNotifications(api);
         await reminders.setMuted(false);
         toast(permission === 'granted' ? '已允许系统通知' : '仍可接收站内提醒，可在浏览器设置中允许系统通知');
         return;
       }
-      if (reminders.muted && canUseSystemNotifications()) await requestSystemNotifications();
+      if (reminders.muted && canUseSystemNotifications()) await requestSystemNotifications(api);
       await reminders.setMuted(!reminders.muted);
       toast(reminders.muted ? '已静音，未读提醒仍保留' : '已允许通知');
     } else {
