@@ -48,6 +48,10 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
+### 项目文档定稿
+
+定稿或更新设计、接口、使用、运维文档及 PR 描述时，阅读并遵守 [.agents/skills/final-solution-doc-cleanup/SKILL.md](.agents/skills/final-solution-doc-cleanup/SKILL.md)。直接描述最终决策、实际变化和验证结果，清理过时方案与讨论过程，保留必要的兼容、安全和审计信息。
+
 ## 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
@@ -75,6 +79,12 @@ For any change to existing code paths, routing, defaults, shared helpers, data c
 ```
 
 This skill is mandatory unless the task is provably isolated from existing behavior. Existing behavior is the default contract; change it only when the user explicitly requests that behavior change.
+
+### 已有 PR 冲突须人工确认
+
+- 本次改动若与已有 PR 的行为、实现或明确约定冲突，必须先明确提出相关 PR 编号或链接、冲突内容、受影响入口和预期行为变化，等待用户人工确认处理方向后才能继续处理该冲突。
+- 此要求同时适用于已合入和未合入的 PR，以及产品行为冲突和代码合并冲突；不得自行覆盖、撤销或重新解释已有 PR 的改动，也不得仅凭笼统的开发、合入或部署授权视为已确认冲突。
+- 用户已针对同一冲突明确确认处理方向时，按该确认执行，无需重复询问；确认前可继续不依赖冲突处理的只读排查和独立工作。
 
 ### 兼容验证证据
 

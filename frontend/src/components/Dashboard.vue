@@ -250,6 +250,7 @@ async function exportRankingChart() {
         </div>
         <MobileCardCollection
           class="mobile-stack-content"
+          :class="{ 'member-detail-masonry': mobileViewMode !== 'stacked' }"
           :items="members"
           :item-key="(member) => member.user_id"
           :mode="mobileViewMode"
@@ -261,7 +262,7 @@ async function exportRankingChart() {
             <div class="member-stack-card">
               <header>
                 <button class="avatar member-avatar" type="button" :aria-label="`查看${member.name}打卡月历`" @click="openMemberCalendar(member)">{{ member.avatar }}</button>
-                <div><b>{{ member.name }}{{ member.isSelf ? '（我）' : '' }}</b><small>{{ member.taskStates.filter((state) => state.done).length }} / {{ member.taskStates.length }} 项完成</small></div>
+                <div><b>{{ member.name }}{{ member.isSelf ? '（我）' : '' }}</b></div>
                 <MemberReminderControl :member="member" :is-today="isToday" />
               </header>
               <div class="member-stack-tasks">
@@ -525,7 +526,7 @@ async function exportRankingChart() {
 .member-stack-card, .matrix-stack-card { height: 100%; padding: 16px; overflow: hidden; border: 1px solid var(--cd-border); border-radius: var(--cd-radius-card); background: var(--cd-surface); box-shadow: var(--cd-shadow-card); }
 .member-stack-card header, .matrix-stack-card header { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .member-stack-card header > div, .matrix-stack-card header > div { display: grid; min-width: 0; gap: 2px; }
-.member-stack-card header small, .matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
+.matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
 .member-stack-tasks { display: grid; gap: 8px; margin-top: 14px; }
 .member-stack-tasks > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid var(--cd-border); font-size: 13px; }
 .member-stack-tasks button { min-height: 36px; padding: 4px 10px; }
@@ -547,6 +548,13 @@ async function exportRankingChart() {
   .filter-chip, .sort-button, .export-row button { min-height: 44px; }
   .desktop-stack-content { display: none; }
   .mobile-stack-content { display: block; }
+  .member-detail-masonry .member-stack-card { container-type: inline-size; padding: 12px; }
+  .member-detail-masonry .member-stack-card header { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: start; }
+  .member-detail-masonry .member-stack-card header > div { grid-column: 1 / -1; grid-row: 2; gap: 3px; }
+  .member-detail-masonry .member-stack-card header b { overflow-wrap: anywhere; line-height: 1.4; }
+  .member-detail-masonry .member-stack-card :deep(.member-reminder-control) { grid-column: 2; grid-row: 1; justify-self: end; margin-left: 0; max-width: 100%; white-space: nowrap; }
+  .member-detail-masonry .member-stack-tasks { gap: 6px; margin-top: 10px; }
+  .member-detail-masonry .member-stack-tasks > div { gap: 6px; }
   .stats-center { min-width: 0; overflow: hidden; }
   .chart-head { align-items: flex-start; }
   .filter-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
@@ -567,5 +575,10 @@ async function exportRankingChart() {
   .responsive-table tfoot td:first-child { background: var(--cd-surface-subtle); }
   .tablewrap td:first-child .inline { max-width: 150px; }
   .tablewrap td:first-child b { white-space: normal; overflow-wrap: anywhere; }
+}
+@container (min-width: 240px) {
+  .member-detail-masonry .member-stack-card header { grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; }
+  .member-detail-masonry .member-stack-card header > div { grid-column: 2; grid-row: 1; }
+  .member-detail-masonry .member-stack-card :deep(.member-reminder-control) { grid-column: 3; }
 }
 </style>
