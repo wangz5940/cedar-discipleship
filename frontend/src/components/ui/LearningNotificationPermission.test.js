@@ -9,7 +9,7 @@ vi.mock('../../legacy-app', () => ({ api: vi.fn(), toast: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 async function render(permission, member = true) {
   const requestPermission = vi.fn();
-  vi.stubGlobal('window', { isSecureContext: true, Notification: {} });
+  vi.stubGlobal('window', { isSecureContext: true, Notification: {}, PushManager: function () {} });
   vi.stubGlobal('Notification', { permission, requestPermission });
   vi.stubGlobal('navigator', { serviceWorker: { getRegistration: vi.fn().mockResolvedValue({ pushManager: { getSubscription: vi.fn().mockResolvedValue({}) } }) } });
   const pinia = createPinia(); setActivePinia(pinia);

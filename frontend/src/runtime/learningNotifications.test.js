@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { requestSystemNotifications, showLearningNotification, closeLearningNotification, syncLearningPushSubscription, unsubscribeLearningPush } from './learningNotifications';
+import { requestSystemNotifications, showLearningNotification, closeLearningNotification, syncLearningPushSubscription, unsubscribeLearningPush, notificationSupportMessage, notificationSetupErrorMessage, hasLearningPushSubscription } from './learningNotifications';
 
 afterEach(async () => { await unsubscribeLearningPush(); vi.unstubAllGlobals(); });
 function platform(permission = 'granted') {
@@ -60,5 +60,46 @@ describe('learning system notifications', () => {
     const api = vi.fn().mockResolvedValue({ public_key: 'AQID' });
     expect(await requestSystemNotifications(api)).toBe('granted');
     expect(registration.pushManager.subscribe).toHaveBeenCalledWith({ userVisibleOnly: true, applicationServerKey: new Uint8Array([1, 2, 3]) });
+  });
+});
+
+
+describe('notification enrollment failure diagnosis', () => {
+  it('does not mislabel a missing notification API as HTTPS failure', () => {
+    platform(); delete window.Notification;
+    expect(notificationSupportMessage()).toContain('通知接口');
+    expect(notificationSupportMessage()).not.toContain('HTTPS');
+    window.isSecureContext = false;
+    expect(notificationSupportMessage()).toContain('HTTPS');
+  });
+  it('reports unsupported push without claiming enrollment succeeded', async () => {
+    platform(); const api = vi.fn();
+    await expect(requestSystemNotifications(api)).rejects.toMatchObject({ notificationStage: 'unsupported' });
+    expect(hasLearningPushSubscription()).toBe(false);
+    expect(api).not.toHaveBeenCalled();
+  });
+  it('identifies browser subscription failure and retains the original cause without saving a device', async () => {
+    const { registration } = platform(); window.PushManager = function () {};
+    const cause = Object.assign(new Error('Registration failed - push service not available'), { name: 'AbortError' });
+    registration.pushManager = { getSubscription: vi.fn().mockResolvedValue(null), subscribe: vi.fn().mockRejectedValue(cause) };
+    const api = vi.fn().mockResolvedValue({ public_key: 'AQID' });
+    const error = await requestSystemNotifications(api).catch(value => value);
+    expect(error.notificationStage).toBe('subscribe'); expect(error.cause).toBe(cause);
+    expect(notificationSetupErrorMessage(error)).toContain('设备推送订阅失败');
+    expect(notificationSetupErrorMessage(error)).toContain('AbortError');
+    expect(api).toHaveBeenCalledTimes(1); expect(hasLearningPushSubscription()).toBe(false);
+  });
+  it('retains a created subscription on server binding failure and retries it', async () => {
+    const { registration } = platform(); window.PushManager = function () {};
+    const subscription = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test' }), unsubscribe: vi.fn() };
+    registration.pushManager = { getSubscription: vi.fn().mockResolvedValue(subscription), subscribe: vi.fn() };
+    const api = vi.fn().mockResolvedValueOnce({ public_key: 'AQID' }).mockRejectedValueOnce(new Error('offline'));
+    const error = await requestSystemNotifications(api).catch(value => value);
+    expect(error.notificationStage).toBe('bind'); expect(hasLearningPushSubscription()).toBe(false);
+    expect(notificationSetupErrorMessage(error)).toContain('服务器绑定');
+    expect(subscription.unsubscribe).not.toHaveBeenCalled();
+    api.mockResolvedValue({ public_key: 'AQID' });
+    expect(await syncLearningPushSubscription(api)).toBe(true);
+    expect(registration.pushManager.subscribe).not.toHaveBeenCalled();
   });
 });
