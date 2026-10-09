@@ -18,15 +18,51 @@ export function syncLearningPushSubscription(api) {
   return subscriptionOperation;
 }
 
+async function notificationStep(stage, action) {
+  try { return await action(); }
+  catch (cause) {
+    const error = new Error('notification_setup_failed', { cause });
+    error.notificationStage = stage;
+    throw error;
+  }
+}
+
+export function notificationSupportMessage() {
+  if (typeof window === 'undefined' || !window.isSecureContext) return '当前连接不安全，请使用网站的 HTTPS 地址。';
+  if (!('Notification' in window)) return '当前浏览器没有提供系统通知接口。iPhone 或 iPad 请从主屏幕打开；其他设备请使用支持网页通知的浏览器。';
+  if (!('serviceWorker' in navigator)) return '当前浏览器不支持通知后台服务，请使用支持网页推送的浏览器。';
+  if (!('PushManager' in window)) return '当前浏览器不支持后台消息推送，添加到桌面也无法开启此功能。';
+  return '';
+}
+
+export function notificationSetupErrorMessage(error) {
+  const stage = error?.notificationStage;
+  const detail = error?.cause?.name;
+  const suffix = ['AbortError', 'NotAllowedError', 'NotSupportedError', 'InvalidStateError', 'NetworkError', 'SecurityError', 'TypeError'].includes(detail) ? `（${detail}）` : '';
+  const messages = {
+    permission: '系统通知授权失败，请检查浏览器和手机通知权限',
+    config: '获取推送配置失败，请检查网络后重试',
+    worker: '通知后台服务启动失败，请刷新页面后重试',
+    subscribe: '设备推送订阅失败，请检查网络及浏览器推送服务',
+    bind: '服务器绑定通知设备失败，请重新登录后重试',
+    unsupported: notificationSupportMessage() || '当前设备无法开启后台推送。',
+  };
+  return stage ? `${messages[stage] || '通知设置失败，请重试'}${suffix}` : '通知偏好保存失败，请重试';
+}
+
 async function registerLearningPush(api) {
   if (!canUseSystemNotifications() || Notification.permission !== 'granted' || !('PushManager' in window)) return false;
-  const config = await api('/learning-reminders/push-key');
-  if (!config.public_key) return false;
-  await navigator.serviceWorker.register('/learning-notifications-sw.js');
-  const registration = await navigator.serviceWorker.ready;
-  const bytes = Uint8Array.from(atob(config.public_key.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
-  const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
-  await api('/learning-reminders/push-subscription', { method: 'PUT', body: JSON.stringify(subscription.toJSON()), retryAuth: false });
+  const bytes = await notificationStep('config', async () => {
+    const config = await api('/learning-reminders/push-key');
+    if (!config.public_key) throw new Error('push_key_unavailable');
+    return Uint8Array.from(atob(config.public_key.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
+  });
+  const registration = await notificationStep('worker', async () => {
+    await navigator.serviceWorker.register('/learning-notifications-sw.js');
+    return await navigator.serviceWorker.ready;
+  });
+  const subscription = await notificationStep('subscribe', async () => registration.pushManager.getSubscription().then(existing => existing || registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes })));
+  await notificationStep('bind', () => api('/learning-reminders/push-subscription', { method: 'PUT', body: JSON.stringify(subscription.toJSON()), retryAuth: false }));
   pushSubscriptionReady.value = true;
   return true;
 }
@@ -59,10 +95,14 @@ export function canUseSystemNotifications() {
 export async function requestSystemNotifications(api) {
   if (!canUseSystemNotifications()) return 'unsupported';
   // Permission must be requested directly from the member's button click.
-  const permission = await Notification.requestPermission();
+  const permission = await notificationStep('permission', () => Notification.requestPermission());
   if (permission === 'granted') {
-    await navigator.serviceWorker.register('/learning-notifications-sw.js');
-    if (api) await syncLearningPushSubscription(api);
+    if (api) {
+      const ready = await syncLearningPushSubscription(api);
+      if (!ready) { const error = new Error('push_unsupported'); error.notificationStage = 'unsupported'; throw error; }
+    } else {
+      await notificationStep('worker', () => navigator.serviceWorker.register('/learning-notifications-sw.js'));
+    }
   }
   return permission;
 }

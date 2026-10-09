@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { useAppStateStore } from '../../stores/appState';
 import { useLearningRemindersStore } from '../../stores/learningReminders';
 import { api, toast } from '../../legacy-app';
-import { canUseSystemNotifications, hasLearningPushSubscription, requestSystemNotifications } from '../../runtime/learningNotifications';
+import { canUseSystemNotifications, hasLearningPushSubscription, notificationSupportMessage, notificationSetupErrorMessage, requestSystemNotifications } from '../../runtime/learningNotifications';
 
 const props = defineProps({ member: { type: Object, required: true }, isToday: Boolean });
 const reminders = useLearningRemindersStore();
@@ -14,10 +14,16 @@ const alreadySent = computed(() => !unlimited.value && reminders.sentIDs.include
 async function act() {
   try {
     if (props.member.isSelf) {
+      if (!reminders.muted && hasLearningPushSubscription()) {
+        await reminders.setMuted(true); toast('已静音'); return;
+      }
+      const supportMessage = notificationSupportMessage();
+      if (supportMessage) { toast(supportMessage); return; }
+      if (Notification.permission === 'denied') { toast('通知权限已关闭，请在浏览器或手机系统设置中允许本站通知'); return; }
       if (canUseSystemNotifications() && (Notification.permission === 'default' || (Notification.permission === 'granted' && !hasLearningPushSubscription()))) {
         const permission = await requestSystemNotifications(api);
-        await reminders.setMuted(false);
-        toast(permission === 'granted' ? '已允许系统通知' : '仍可接收站内提醒，可在浏览器设置中允许系统通知');
+        if (permission === 'granted') await reminders.setMuted(false);
+        toast(permission === 'granted' ? '已允许系统通知' : '尚未允许系统通知，请在浏览器设置中开启');
         return;
       }
       if (reminders.muted && canUseSystemNotifications()) await requestSystemNotifications(api);
@@ -28,6 +34,7 @@ async function act() {
       toast('已提醒对方今天打卡');
     }
   } catch (error) {
+    if (props.member.isSelf) { toast(notificationSetupErrorMessage(error)); return; }
     if (error.message === 'already_reminded_today') await reminders.refresh();
     toast(({ already_reminded_today: '今天已经提醒过这位成员', member_tasks_completed: '对方今天已全部完成', group_membership_required: '只能提醒同组成员' })[error.message] || '提醒设置失败，请重试');
   }

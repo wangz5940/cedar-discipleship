@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
+import { installPwaSupport } from './runtime/pwaInstall';
 import { installVersionRefresh } from './runtime/appVersion';
 import { installPagePinchGuard } from '../public/page-pinch-guard.js';
 import {
@@ -17,6 +18,7 @@ import './study.css';
 import './styles/cedar-room.css';
 
 installVersionRefresh();
+installPwaSupport();
 installPagePinchGuard();
 installAutomaticFeedbackReporting();
 

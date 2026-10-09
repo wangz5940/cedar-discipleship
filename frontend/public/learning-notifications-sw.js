@@ -1,5 +1,9 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+// Keep navigation network-only; no account pages or API responses are cached.
+self.addEventListener('fetch', event => {
+  if (event.request.mode === 'navigate' && event.request.method === 'GET') event.respondWith(fetch(event.request));
+});
 let notificationWork = Promise.resolve();
 const shownNotifications = new Set();
 function enqueueNotification(action) {

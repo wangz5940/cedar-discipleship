@@ -10,15 +10,26 @@ function worker(history = new Map()) {
   const registration = { showNotification: vi.fn(), getNotifications: vi.fn().mockResolvedValue([notification]) };
   const self = { location: { origin: 'https://example.org' }, addEventListener: (name, callback) => { handlers[name] = callback; }, registration, clients: { matchAll: vi.fn().mockResolvedValue([client]), openWindow: vi.fn() } };
   const caches = { open: vi.fn().mockResolvedValue({ match: key => history.get(key), put: (key, value) => history.set(key, value) }) };
-  runInNewContext(source, { self, URL, caches, Response });
+  const fetchRequest = vi.fn().mockResolvedValue(new Response('online'));
+  runInNewContext(source, { self, URL, caches, Response, fetch: fetchRequest });
   async function fire(type, event) {
     let work;
     handlers[type]({ ...event, waitUntil: promise => { work = promise; } });
     await work;
   }
-  return { registration, client, notification, fire, self };
+  return { registration, client, notification, fire, self, fetchRequest };
 }
 describe('background learning push worker', () => {
+  it('keeps installed-app navigation network-only and leaves API requests untouched', async () => {
+    const current = worker(); const respondWith = vi.fn();
+    const request = { mode: 'navigate', method: 'GET', url: 'https://example.org/' };
+    await current.fire('fetch', { request, respondWith });
+    expect(current.fetchRequest).toHaveBeenCalledWith(request);
+    expect(await (await respondWith.mock.calls[0][0]).text()).toBe('online');
+    respondWith.mockClear(); current.fetchRequest.mockClear();
+    await current.fire('fetch', { request: { mode: 'cors', method: 'GET', url: 'https://example.org/api/me' }, respondWith });
+    expect(respondWith).not.toHaveBeenCalled(); expect(current.fetchRequest).not.toHaveBeenCalled();
+  });
   it('displays a push without an active page and does not repeat after worker restart', async () => {
     const history = new Map(); const first = worker(history);
     await first.fire('push', { data: { json: () => item } });
