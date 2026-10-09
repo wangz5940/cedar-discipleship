@@ -228,12 +228,13 @@ async function exportRankingChart() {
                 <td v-for="item in member.taskStates" :key="item.title">
                   <button
                     v-if="member.isSelf"
-                    class="member-status-action"
+                    :class="[item.done ? 'taskdone' : 'quiet', item.done ? 'is-done' : 'is-pending']"
+                    class="daily-checkin"
                     type="button"
                     :title="memberTaskTitle(member, item)"
                     @click="toggleCheckin(item.taskForMember, member)"
                   >
-                    <span :class="item.done ? 'check status-done' : 'status-pending'">{{ item.done ? '✓ 已打卡' : '未打卡' }}</span>
+                    {{ item.done ? '✓ 已打卡' : '去打卡' }}
                   </button>
                   <span v-else-if="item.done" class="check status-done">✓ 已打卡</span>
                   <span v-else class="status-pending">未打卡</span>
@@ -267,7 +268,7 @@ async function exportRankingChart() {
               <div class="member-stack-tasks">
                 <div v-for="state in member.taskStates" :key="state.title">
                   <span :title="state.title">{{ state.shortLabel }}</span>
-                  <button v-if="member.isSelf" class="member-status-action" type="button" :aria-label="`${state.title}：${state.done ? '取消打卡' : '完成打卡'}`" @click="toggleCheckin(state.taskForMember, member)"><strong :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong></button>
+                  <button v-if="member.isSelf" :class="[state.done ? 'taskdone' : 'quiet', state.done ? 'is-done' : 'is-pending']" type="button" @click="toggleCheckin(state.taskForMember, member)">{{ state.done ? '✓ 已打卡' : '去打卡' }}</button>
                   <strong v-else :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong>
                 </div>
               </div>
@@ -488,10 +489,12 @@ async function exportRankingChart() {
 .daily-table th:first-child { min-width: 140px; }
 .member-cell { gap: 10px; }
 .member-avatar { width: 44px; height: 44px; border: 0; font-size: 12px; cursor: pointer; }
+.daily-checkin { min-height: 44px; padding: 4px 12px; font-size: 12px; }
+.daily-checkin.is-pending, .member-stack-tasks button.is-pending { border: 1px solid var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); font-weight: 700; white-space: nowrap; }
+.daily-checkin.is-done, .member-stack-tasks button.is-done { border: 1px solid var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; font-weight: 700; white-space: nowrap; }
 .status-pending, .status-done { display: inline-flex; align-items: center; padding: 4px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .status-pending { border: 1px solid var(--cd-status-border); background: var(--cd-status-soft); color: var(--cd-status); }
 .status-done { border: 1px solid var(--cd-status-strong); background: var(--cd-status-strong); color: #fff; }
-.daily-table .member-status-action, .member-stack-tasks .member-status-action { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; }
 .numeric, .progress-count { font-variant-numeric: tabular-nums; }
 .progress-panel { margin-bottom: 32px; }
 .progress-label { font-weight: 500; }
@@ -525,7 +528,8 @@ async function exportRankingChart() {
 .member-stack-card header > div, .matrix-stack-card header > div { display: grid; min-width: 0; gap: 2px; }
 .matrix-stack-card header small { color: var(--cd-muted); font-size: 11px; }
 .member-stack-tasks { display: grid; gap: 8px; margin-top: 14px; }
-.member-stack-tasks > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; min-height: 45px; border-top: 1px solid var(--cd-border); font-size: 13px; }
+.member-stack-tasks > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid var(--cd-border); font-size: 13px; }
+.member-stack-tasks button { min-height: 36px; padding: 4px 10px; }
 .matrix-stack-card header > strong { margin-left: auto; color: var(--cd-primary); font-size: 20px; white-space: nowrap; }
 .matrix-stack-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0 0; }
 .matrix-stack-card dl > div { padding: 10px; border-radius: 8px; background: var(--cd-surface-subtle); }
