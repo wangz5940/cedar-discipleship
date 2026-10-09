@@ -29,6 +29,9 @@ func (c *pushTestClient) Do(r *http.Request) (*http.Response, error) {
 func TestLearningPushPersistenceAndIsolation(t *testing.T) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "024_learning_reminders.sql")
+	testdb.Apply(t, db, "026_unlimited_superadmin_reminders.sql")
+	testdb.Apply(t, db, "027_apple_reminder_resume.sql")
+	testdb.Apply(t, db, "027_apple_reminder_resume.sql")
 	testdb.Apply(t, db, "025_learning_web_push.sql")
 	testdb.Apply(t, db, "025_learning_web_push.sql") // Startup replays migrations; restarting must remain safe.
 	a := &app{db: db}
@@ -97,6 +100,45 @@ func TestLearningPushPersistenceAndIsolation(t *testing.T) {
 	if client.calls != 1 {
 		t.Fatal("muted recipient received push")
 	}
+	resume := httptest.NewRequest("PUT", "/preference", strings.NewReader(`{"muted":false}`))
+	resume = resume.WithContext(context.WithValue(resume.Context(), currentUserKey, currentUser{ID: 2, CurrentGroupID: 1}))
+	w := httptest.NewRecorder()
+	a.handleLearningReminderPreference(w, resume)
+	if w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if err = a.deliverLearningPush(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 1 {
+		t.Fatal("Apple backlog replayed after unmuting")
+	}
+	testdb.Exec(t, db, `INSERT INTO learning_reminders(group_id,sender_id,recipient_id,logical_date,created_at,daily_limit_slot) VALUES(1,1,2,UTC_DATE(),UTC_TIMESTAMP(3)+INTERVAL 1 SECOND,NULL)`)
+	// Re-saving an already unmuted preference must not suppress a newer reminder.
+	resumeAgain := httptest.NewRequest("PUT", "/preference", strings.NewReader(`{"muted":false}`))
+	resumeAgain = resumeAgain.WithContext(context.WithValue(resumeAgain.Context(), currentUserKey, currentUser{ID: 2, CurrentGroupID: 1}))
+	a.handleLearningReminderPreference(httptest.NewRecorder(), resumeAgain)
+	if err = a.deliverLearningPush(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 2 {
+		t.Fatal("new Apple reminder suppressed after unmuting")
+	}
+	testdb.Exec(t, db, `DELETE FROM learning_push_deliveries WHERE reminder_id=(SELECT MAX(id) FROM learning_reminders); DELETE FROM learning_reminders WHERE daily_limit_slot IS NULL`)
+	client.calls = 1
+	var unread int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM learning_reminders WHERE sender_id=3 AND read_at IS NULL`).Scan(&unread); err != nil || unread != 1 {
+		t.Fatal("unmuting changed unread history", err)
+	}
+	testdb.Exec(t, db, `UPDATE learning_push_subscriptions SET subscription=JSON_SET(subscription,'$.endpoint','https://updates.push.services.mozilla.com/test-device')`)
+	if err = a.deliverLearningPush(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 2 {
+		t.Fatal("desktop delivery changed")
+	}
+	testdb.Exec(t, db, `DELETE FROM learning_push_deliveries WHERE reminder_id=(SELECT MAX(id) FROM learning_reminders); UPDATE learning_reminder_preferences SET apple_push_after_id=0; UPDATE learning_push_subscriptions SET subscription=JSON_SET(subscription,'$.endpoint','https://web.push.apple.com/test-device')`)
+	client.calls = 1
 	testdb.Exec(t, db, `UPDATE learning_reminder_preferences SET muted=FALSE; UPDATE learning_reminders SET read_at=UTC_TIMESTAMP(3) WHERE sender_id=3`)
 	if err = a.deliverLearningPush(context.Background(), client); err != nil {
 		t.Fatal(err)

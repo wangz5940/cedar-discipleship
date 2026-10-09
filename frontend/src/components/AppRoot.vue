@@ -19,8 +19,9 @@ import {
 import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
 import LearningNotificationPermission from './ui/LearningNotificationPermission.vue';
+import AndroidReminderBanner from './ui/AndroidReminderBanner.vue';
 import { useLearningRemindersStore } from '../stores/learningReminders';
-import { syncLearningPushSubscription, unsubscribeLearningPush } from '../runtime/learningNotifications';
+import { syncLearningPushSubscription, unsubscribeLearningPush, usesInAppReminders } from '../runtime/learningNotifications';
 import { lazyPage } from '../ui/lazyPage';
 import { vDialogFocus } from '../ui/dialogFocus';
 import { useAppStateStore } from '../stores/appState';
@@ -93,7 +94,8 @@ watch([authenticated, () => user.value?.id, currentGroupID], (_current, previous
   learningReminders.setScope(authenticated.value ? user.value?.id : 0, currentGroupID.value);
   void learningReminders.refresh();
   if (authenticated.value && user.value?.id && currentGroupID.value) {
-    void syncLearningPushSubscription(api).catch(() => {});
+    if (usesInAppReminders()) void unsubscribeLearningPush(api).catch(() => {});
+    else void syncLearningPushSubscription(api).catch(() => {});
   } else if (!authenticated.value && previous?.[0]) {
     void unsubscribeLearningPush().catch(() => {});
   }
@@ -381,6 +383,7 @@ async function refreshResources() {
 
 <template>
   <LearningNotificationPermission />
+  <AndroidReminderBanner />
   <!-- Cedar Login Screen -->
   <div v-if="!authenticated" class="cd-login-screen">
     <div class="cd-login-container">

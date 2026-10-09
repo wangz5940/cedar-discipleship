@@ -4,7 +4,7 @@ import AppOverlay from './AppOverlay.vue';
 import { useAppStateStore } from '../../stores/appState';
 import { useLearningRemindersStore } from '../../stores/learningReminders';
 import { api, toast } from '../../legacy-app';
-import { canUseSystemNotifications, notificationSupportMessage, notificationSetupErrorMessage, requestSystemNotifications } from '../../runtime/learningNotifications';
+import { canUseSystemNotifications, notificationSupportMessage, notificationSetupErrorMessage, requestSystemNotifications, usesInAppReminders } from '../../runtime/learningNotifications';
 
 const app = useAppStateStore();
 const reminders = useLearningRemindersStore();
@@ -21,7 +21,7 @@ watch([scope, () => app.authenticated], ([key]) => {
   const account = key.split(':')[0];
   if (checked.has(account)) return;
   checked.add(account);
-  if (supportMessage.value) return;
+  if (usesInAppReminders() || supportMessage.value) return;
   permission.value = canUseSystemNotifications() ? Notification.permission : 'unsupported';
   if (permission.value === 'granted') return;
   if (scope.value === key) open.value = true;

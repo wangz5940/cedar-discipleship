@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { useAppStateStore } from '../../stores/appState';
 import { useLearningRemindersStore } from '../../stores/learningReminders';
 import { api, toast } from '../../legacy-app';
-import { canUseSystemNotifications, hasLearningPushSubscription, notificationSupportMessage, notificationSetupErrorMessage, requestSystemNotifications } from '../../runtime/learningNotifications';
+import { canUseSystemNotifications, hasLearningPushSubscription, notificationSupportMessage, notificationSetupErrorMessage, requestSystemNotifications, usesInAppReminders } from '../../runtime/learningNotifications';
 
 const props = defineProps({ member: { type: Object, required: true }, isToday: Boolean });
 const reminders = useLearningRemindersStore();
@@ -14,6 +14,11 @@ const alreadySent = computed(() => !unlimited.value && reminders.sentIDs.include
 async function act() {
   try {
     if (props.member.isSelf) {
+      if (usesInAppReminders()) {
+        await reminders.setMuted(!reminders.muted);
+        toast(reminders.muted ? '已静音' : '已允许站内提醒');
+        return;
+      }
       if (!reminders.muted && hasLearningPushSubscription()) {
         await reminders.setMuted(true); toast('已静音'); return;
       }

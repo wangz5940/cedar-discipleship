@@ -12,6 +12,28 @@ function platform(permission = 'granted') {
   return { registration, serviceWorker, notification };
 }
 describe('learning system notifications', () => {
+  it('suppresses Apple backlog while preserving new and desktop reminders', async () => {
+    const { registration } = platform(); navigator.userAgent = 'iPhone';
+    await showLearningNotification({ id: 7, apple_push_eligible: false });
+    expect(registration.active.postMessage).not.toHaveBeenCalled();
+    await showLearningNotification({ id: 8, apple_push_eligible: true });
+    expect(registration.active.postMessage).toHaveBeenCalledOnce();
+    navigator.userAgent = 'Windows';
+    await showLearningNotification({ id: 7, apple_push_eligible: false });
+    expect(registration.active.postMessage).toHaveBeenCalledTimes(2);
+  });
+  it('does not request OS permission or register push on Android even when supported', async () => {
+    const { notification, serviceWorker } = platform('default');
+    navigator.userAgent = 'Mozilla/5.0 (Linux; Android 13)';
+    window.PushManager = function () {};
+    const api = vi.fn();
+    expect(await requestSystemNotifications(api)).toBe('unsupported');
+    expect(await syncLearningPushSubscription(api)).toBe(false);
+    await showLearningNotification({ id: 7 });
+    expect(api).not.toHaveBeenCalled();
+    expect(notification.requestPermission).not.toHaveBeenCalled();
+    expect(serviceWorker.register).not.toHaveBeenCalled();
+  });
   it('uses a persistent service-worker notification with the same encouragement', async () => {
     const { registration, notification } = platform();
     await showLearningNotification({ id: 7, sender: '甲', encouragement: '你当刚强壮胆！' });
