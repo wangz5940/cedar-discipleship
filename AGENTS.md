@@ -48,6 +48,10 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
+### 项目文档定稿
+
+定稿或更新设计、接口、使用、运维文档及 PR 描述时，阅读并遵守 [.agents/skills/final-solution-doc-cleanup/SKILL.md](.agents/skills/final-solution-doc-cleanup/SKILL.md)。直接描述最终决策、实际变化和验证结果，清理过时方案与讨论过程，保留必要的兼容、安全和审计信息。
+
 ## 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
