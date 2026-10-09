@@ -1,4 +1,4 @@
-FROM golang:1.27-bookworm AS builder
+FROM golang:1.27.2-bookworm AS builder
 
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG GOSUMDB=sum.golang.org
