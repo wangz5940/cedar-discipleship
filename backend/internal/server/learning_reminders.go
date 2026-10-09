@@ -33,6 +33,9 @@ func (a *app) handleCreateLearningReminder(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	for _, id := range []uint64{u.ID, req.UserID} {
+		if id == u.ID && u.IsSuperAdmin {
+			continue
+		}
 		member, err := a.learningReminderMember(r, groupID, id)
 		if err != nil {
 			writeError(w, 500, "reminder_failed")
@@ -83,7 +86,7 @@ func (a *app) handleLearningReminders(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "reminder_failed")
 		return
 	}
-	if !member {
+	if !member && !u.IsSuperAdmin {
 		writeError(w, 403, "group_membership_required")
 		return
 	}
