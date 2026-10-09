@@ -19,6 +19,7 @@ import {
 import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
 import LearningReminderBanner from './ui/LearningReminderBanner.vue';
+import LearningNotificationPermission from './ui/LearningNotificationPermission.vue';
 import { useLearningRemindersStore } from '../stores/learningReminders';
 import { syncLearningPushSubscription, unsubscribeLearningPush } from '../runtime/learningNotifications';
 import { lazyPage } from '../ui/lazyPage';
@@ -108,12 +109,33 @@ async function clearLearningReminders() {
     showToast('学习提醒已清除');
   } catch { showToast('清除失败，请重试'); }
 }
-function openSystemReminder(event) {
-  if (event.data?.type === 'open-learning-reminder') {
-    navigate('home');
-    void learningReminders.refresh();
-  }
+async function openSystemReminder(event) {
+  if (event.data?.type !== 'open-learning-reminder' || !authenticated.value) return;
+  const id = Number(event.data.id);
+  const groupID = Number(event.data.group_id);
+  try {
+    if (groupID && groupID !== Number(currentGroupID.value)) {
+      if (!groups.value.some(group => Number(group.id) === groupID)) return;
+      await switchGroup(groupID);
+    }
+    setTab('home');
+    if (Number.isSafeInteger(id) && id > 0) await learningReminders.read({ id });
+    await learningReminders.refresh();
+  } catch { showToast('提醒读取失败，未读状态已保留'); }
 }
+let pendingSystemClick = true;
+watch([authenticated, currentGroupID], () => {
+  if (!authenticated.value || !currentGroupID.value || !pendingSystemClick) return;
+  pendingSystemClick = false;
+  const target = new URL(window.location.href);
+  const id = Number(target.searchParams.get('learning_reminder'));
+  const groupID = Number(target.searchParams.get('learning_group'));
+  if (!Number.isSafeInteger(id) || id <= 0) return;
+  target.searchParams.delete('learning_reminder');
+  target.searchParams.delete('learning_group');
+  window.history.replaceState(window.history.state, '', target.href);
+  void openSystemReminder({ data: { type: 'open-learning-reminder', id, group_id: groupID } });
+}, { immediate: true });
 let feedbackUnreadTimer;
 function refreshFeedbackReminders() {
   void learningReminders.refresh();
@@ -366,6 +388,7 @@ async function refreshResources() {
 </script>
 
 <template>
+  <LearningNotificationPermission />
   <!-- Cedar Login Screen -->
   <div v-if="!authenticated" class="cd-login-screen">
     <div class="cd-login-container">
