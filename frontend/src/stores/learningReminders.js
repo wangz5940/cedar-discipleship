@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from '../legacy-app';
-import { encouragement, closeLearningNotification, showLearningNotification } from '../runtime/learningNotifications';
+import { encouragement, closeLearningNotification, showLearningNotification, usesInAppReminders } from '../runtime/learningNotifications';
 
 export const useLearningRemindersStore = defineStore('learningReminders', {
   state: () => ({ scope: '', items: [], pending: [], offeredIDs: [], sentIDs: [], muted: false, banner: null, seenIDs: [], busyIDs: [], savingPreference: false, clearing: false, request: 0 }),
@@ -31,7 +31,7 @@ export const useLearningRemindersStore = defineStore('learningReminders', {
         this.sentIDs = data.sent_ids || [];
         this.muted = Boolean(data.muted);
         const deliveries = data.deliveries || this.items;
-        this.pending = this.pending.filter(item => deliveries.some(record => record.id === item.id));
+        this.pending = this.pending.filter(item => deliveries.some(record => record.id === item.id)).map(item => ({ ...item, apple_push_eligible: deliveries.find(record => record.id === item.id)?.apple_push_eligible }));
         for (const item of deliveries) {
           if (!this.seenIDs.includes(item.id) && !this.pending.some(record => record.id === item.id)) {
             this.pending.push({ ...item, encouragement: this.items.find(record => record.id === item.id)?.encouragement || encouragement() });
@@ -44,8 +44,9 @@ export const useLearningRemindersStore = defineStore('learningReminders', {
         try { localStorage.setItem(`learning-reminders-offered:${scope}`, JSON.stringify(this.offeredIDs)); } catch { /* Keep the session's automatic-display state. */ }
         if (fresh.length && !this.muted) {
           this.banner = fresh[0];
-          fresh.forEach(item => { void showLearningNotification(item); });
+          if (!usesInAppReminders()) fresh.forEach(item => { void showLearningNotification(item); });
         }
+        if (usesInAppReminders() && !this.muted && !this.banner && this.pending.length) this.banner = this.pending[0];
       } catch { /* Reminder failures must not interrupt learning or clear unread state. */ }
     },
     async send(userID) {

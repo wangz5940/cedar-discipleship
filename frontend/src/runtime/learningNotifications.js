@@ -13,6 +13,10 @@ let subscriptionOperation = Promise.resolve();
 
 export function hasLearningPushSubscription() { return pushSubscriptionReady.value; }
 
+export function usesInAppReminders() {
+  return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+}
+
 export function syncLearningPushSubscription(api) {
   subscriptionOperation = subscriptionOperation.catch(() => {}).then(() => registerLearningPush(api));
   return subscriptionOperation;
@@ -74,7 +78,7 @@ export function unsubscribeLearningPush(api) {
 
 async function removeLearningPush(api) {
   pushSubscriptionReady.value = false;
-  if (!canUseSystemNotifications()) return;
+  if (!canUseSystemNotifications() && !(usesInAppReminders() && typeof window !== 'undefined' && window.isSecureContext && 'serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.getRegistration('/');
   const subscription = await registration?.pushManager?.getSubscription();
   if (subscription) {
@@ -89,7 +93,7 @@ export function encouragement() {
 }
 
 export function canUseSystemNotifications() {
-  return typeof window !== 'undefined' && window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator;
+  return !usesInAppReminders() && typeof window !== 'undefined' && window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator;
 }
 
 export async function requestSystemNotifications(api) {
@@ -108,6 +112,9 @@ export async function requestSystemNotifications(api) {
 }
 
 export async function showLearningNotification(item) {
+  const device = typeof navigator === 'undefined' ? {} : navigator;
+  const apple = /iPhone|iPad|iPod/.test(device.userAgent || '') || (/Macintosh/.test(device.userAgent || '') && device.maxTouchPoints > 1);
+  if (apple && item.apple_push_eligible === false) return;
   if (!canUseSystemNotifications() || Notification.permission !== 'granted') return;
   if (pushSubscriptionReady.value) return; // The server push owns the system alert.
   try {

@@ -95,7 +95,8 @@ func (a *app) handleLearningReminders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	muted := false
-	err = a.db.QueryRowContext(r.Context(), `SELECT muted FROM learning_reminder_preferences WHERE group_id=? AND user_id=?`, groupID, u.ID).Scan(&muted)
+	var applePushAfterID uint64
+	err = a.db.QueryRowContext(r.Context(), `SELECT muted,apple_push_after_id FROM learning_reminder_preferences WHERE group_id=? AND user_id=?`, groupID, u.ID).Scan(&muted, &applePushAfterID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		writeError(w, 500, "reminder_failed")
 		return
@@ -117,7 +118,7 @@ func (a *app) handleLearningReminders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 500, "reminder_failed")
 			return
 		}
-		item := map[string]any{"id": id, "date": date.Format("2006-01-02"), "sender": sender}
+		item := map[string]any{"id": id, "date": date.Format("2006-01-02"), "sender": sender, "apple_push_eligible": id > applePushAfterID}
 		deliveries = append(deliveries, item)
 		if !read && len(items) < 100 {
 			items = append(items, item)
@@ -235,7 +236,7 @@ func (a *app) handleLearningReminderPreference(w http.ResponseWriter, r *http.Re
 		writeError(w, 403, "group_membership_required")
 		return
 	}
-	_, err = a.db.ExecContext(r.Context(), `INSERT INTO learning_reminder_preferences(group_id,user_id,muted) VALUES(?,?,?) ON DUPLICATE KEY UPDATE muted=VALUES(muted)`, groupID, u.ID, *req.Muted)
+	_, err = a.db.ExecContext(r.Context(), `INSERT INTO learning_reminder_preferences(group_id,user_id,muted) VALUES(?,?,?) ON DUPLICATE KEY UPDATE apple_push_after_id=IF(muted=TRUE AND VALUES(muted)=FALSE,(SELECT COALESCE(MAX(id),0) FROM learning_reminders WHERE group_id=? AND recipient_id=?),apple_push_after_id),muted=VALUES(muted)`, groupID, u.ID, *req.Muted, groupID, u.ID)
 	if err != nil {
 		writeError(w, 500, "reminder_failed")
 		return

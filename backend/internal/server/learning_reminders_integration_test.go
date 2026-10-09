@@ -17,6 +17,8 @@ import (
 func TestLearningRemindersPersistenceAndBoundaries(t *testing.T) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "024_learning_reminders.sql")
+	testdb.Apply(t, db, "027_apple_reminder_resume.sql")
+	testdb.Apply(t, db, "027_apple_reminder_resume.sql")
 	testdb.Apply(t, db, "026_unlimited_superadmin_reminders.sql")
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at) VALUES(1,'reminder','Reminder',NOW(),NOW()),(2,'other','Other',NOW(),NOW());
  INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at) VALUES(1,'sender','Sender','sender',NOW(),NOW()),(2,'recipient','Recipient','recipient',NOW(),NOW()),(3,'other-sender','Other sender','other',NOW(),NOW()),(4,'outsider','Outsider','outside',NOW(),NOW());
@@ -86,6 +88,8 @@ func TestLearningRemindersPersistenceAndBoundaries(t *testing.T) {
 		t.Fatal("mute lost unread")
 	}
 	testdb.Apply(t, db, "024_learning_reminders.sql")
+	testdb.Apply(t, db, "027_apple_reminder_resume.sql")
+	testdb.Apply(t, db, "027_apple_reminder_resume.sql")
 	testdb.Apply(t, db, "026_unlimited_superadmin_reminders.sql")
 	feed = call(2, "GET", "/reminders", "", 200)
 	if feed["muted"] != true {

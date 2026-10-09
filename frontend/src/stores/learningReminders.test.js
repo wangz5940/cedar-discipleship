@@ -1,12 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 vi.mock('../legacy-app', () => ({ api: vi.fn() }));
-vi.mock('../runtime/learningNotifications', () => ({ encouragement: () => '你当刚强壮胆', closeLearningNotification: vi.fn(), showLearningNotification: vi.fn() }));
-import { showLearningNotification } from '../runtime/learningNotifications';
+vi.mock('../runtime/learningNotifications', () => ({ encouragement: () => '你当刚强壮胆', closeLearningNotification: vi.fn(), showLearningNotification: vi.fn(), usesInAppReminders: vi.fn() }));
+import { showLearningNotification, usesInAppReminders } from '../runtime/learningNotifications';
 import { api } from '../legacy-app';
 import { useLearningRemindersStore } from './learningReminders';
 
 describe('learning reminder state', () => {
+  it('offers unread Android reminders in the page without requesting a system alert', async () => {
+    usesInAppReminders.mockReturnValue(true);
+    const store = useLearningRemindersStore(); store.setScope(1, 2);
+    store.offeredIDs = [8];
+    api.mockResolvedValue({ items: [{ id: 8, sender: '甲' }], muted: false });
+    await store.refresh();
+    expect(store.banner.id).toBe(8);
+    expect(showLearningNotification).not.toHaveBeenCalled();
+    expect(store.seenIDs).toEqual([]);
+  });
   beforeEach(() => {
     setActivePinia(createPinia()); vi.resetAllMocks();
     const saved = new Map();

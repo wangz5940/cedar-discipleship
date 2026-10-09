@@ -55,8 +55,21 @@ self.addEventListener('notificationclick', event => {
       });
     }
     try {
-      const notifications = await self.registration.getNotifications({ tag: event.notification.tag });
-      notifications.forEach(notification => notification.close());
+      const apple = /iPhone|iPad|iPod/.test(self.navigator?.userAgent || '') || (/Macintosh/.test(self.navigator?.userAgent || '') && self.navigator?.maxTouchPoints > 1);
+      const notifications = await self.registration.getNotifications(apple ? {} : { tag: event.notification.tag });
+      await enqueueNotification(async () => {
+        const history = await notificationHistory();
+        for (const notification of notifications) {
+          if (apple && !notification.tag?.startsWith('learning-reminder-')) continue;
+          notification.close();
+          const dismissedID = notification.data?.id || notification.tag?.replace('learning-reminder-', '');
+          if (dismissedID) {
+            shownNotifications.add(String(dismissedID));
+            try { await history?.put(historyKey(dismissedID), new Response('dismissed')); }
+            catch { /* Preserve in-memory suppression when storage is unavailable. */ }
+          }
+        }
+      });
     } catch { /* Notification cleanup must not block navigation. */ }
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = windows.find(client => new URL(client.url).origin === self.location.origin);
