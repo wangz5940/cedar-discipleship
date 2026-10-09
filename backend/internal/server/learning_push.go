@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -45,9 +45,11 @@ func validLearningPushSubscription(s webpush.Subscription) bool {
 	if err != nil {
 		return false
 	}
-	x, _ := elliptic.Unmarshal(elliptic.P256(), key)
+	if _, err = ecdh.P256().NewPublicKey(key); err != nil {
+		return false
+	}
 	auth, err := base64.RawURLEncoding.DecodeString(s.Keys.Auth)
-	return x != nil && err == nil && len(auth) == 16
+	return err == nil && len(auth) == 16
 }
 
 func (a *app) handleLearningPushKey(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +183,7 @@ func (a *app) deliverLearningPush(ctx context.Context, client webpush.HTTPClient
 		}
 		_ = response.Body.Close()
 		if response.StatusCode == 404 || response.StatusCode == 410 {
-			_, err = a.db.ExecContext(ctx, `DELETE FROM learning_push_subscriptions WHERE id=?`, item.subscriptionID)
+			_, err = a.db.ExecContext(ctx, `DELETE FROM learning_push_subscriptions WHERE id=? AND group_id=? AND user_id=(SELECT recipient_id FROM learning_reminders WHERE id=?) AND subscription=CAST(? AS JSON)`, item.subscriptionID, item.groupID, item.id, item.data)
 		} else if response.StatusCode >= 200 && response.StatusCode < 300 {
 			_, err = a.db.ExecContext(ctx, `UPDATE learning_push_deliveries SET finished=TRUE WHERE reminder_id=? AND subscription_id=?`, item.id, item.subscriptionID)
 			log.Printf("learning push accepted reminder=%d", item.id)
