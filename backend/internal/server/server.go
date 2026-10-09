@@ -52,6 +52,7 @@ type app struct {
 	resourceRoot  string
 	migrationsDir string
 	location      *time.Location
+	learningPush  learningPushKeys
 	tokenTTL      time.Duration
 	refreshTTL    time.Duration
 	loginLimiter  *loginLimiter
@@ -196,6 +197,9 @@ func Run() error {
 	if err := a.runMigrations(); err != nil {
 		return err
 	}
+	if err := a.initLearningPush(); err != nil {
+		return fmt.Errorf("initialize learning push: %w", err)
+	}
 	if err := a.ensureFuturePartitions(time.Now().In(loc), 2); err != nil {
 		log.Printf("partition maintenance failed: %v", err)
 	}
@@ -228,6 +232,7 @@ func Run() error {
 	var workers sync.WaitGroup
 	workers.Go(func() { fleet.Run(notificationContext) })
 	workers.Go(func() { a.automaticFeedback.run(notificationContext) })
+	workers.Go(func() { a.runLearningPush(notificationContext) })
 	defer func() {
 		stopNotifications()
 		workers.Wait()
@@ -368,6 +373,9 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/app/bootstrap", a.auth(a.handleBootstrap))
 	mux.HandleFunc("GET /api/today", a.auth(a.handleToday))
 	mux.HandleFunc("GET /api/learning-reminders", a.auth(a.handleLearningReminders))
+	mux.HandleFunc("GET /api/learning-reminders/push-key", a.auth(a.handleLearningPushKey))
+	mux.HandleFunc("PUT /api/learning-reminders/push-subscription", a.auth(a.handleLearningPushSubscribe))
+	mux.HandleFunc("DELETE /api/learning-reminders/push-subscription", a.auth(a.handleLearningPushUnsubscribe))
 	mux.HandleFunc("POST /api/learning-reminders", a.auth(a.handleCreateLearningReminder))
 	mux.HandleFunc("POST /api/learning-reminders/{id}/read", a.auth(a.handleReadLearningReminder))
 	mux.HandleFunc("POST /api/learning-reminders/read-all", a.auth(a.handleReadAllLearningReminders))

@@ -5,6 +5,7 @@ go 1.25.0
 require github.com/go-sql-driver/mysql v1.8.1
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/pdfcpu/pdfcpu v0.9.1
 	github.com/xuri/excelize/v2 v2.11.0
 )
@@ -12,6 +13,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/hhrutter/lzw v1.0.0 // indirect
 	github.com/hhrutter/tiff v1.0.2 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect

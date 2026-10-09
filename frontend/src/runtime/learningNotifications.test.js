@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { requestSystemNotifications, showLearningNotification, closeLearningNotification } from './learningNotifications';
+import { requestSystemNotifications, showLearningNotification, closeLearningNotification, syncLearningPushSubscription, unsubscribeLearningPush } from './learningNotifications';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(async () => { await unsubscribeLearningPush(); vi.unstubAllGlobals(); });
 function platform(permission = 'granted') {
   const registration = { showNotification: vi.fn().mockResolvedValue(), getNotifications: vi.fn().mockResolvedValue([]) };
   const serviceWorker = { register: vi.fn().mockResolvedValue(registration), ready: Promise.resolve(registration), getRegistration: vi.fn().mockResolvedValue(registration) };
@@ -37,5 +37,28 @@ describe('learning system notifications', () => {
     await closeLearningNotification({ id: 7 });
     expect(registration.getNotifications).toHaveBeenCalledWith({ tag: 'learning-reminder-7' });
     expect(close).toHaveBeenCalledOnce();
+  });
+  it('enrols the device with the authenticated account and avoids duplicate foreground alerts', async () => {
+    const { registration, notification } = platform();
+    window.PushManager = function () {};
+    const subscription = { endpoint: 'https://web.push.apple.com/device', toJSON: () => ({ endpoint: 'https://web.push.apple.com/device', keys: { auth: 'a', p256dh: 'b' } }), unsubscribe: vi.fn() };
+    registration.pushManager = { getSubscription: vi.fn().mockResolvedValue(subscription), subscribe: vi.fn() };
+    const api = vi.fn().mockResolvedValue({ public_key: 'AQID' });
+    expect(await syncLearningPushSubscription(api)).toBe(true);
+    expect(api).toHaveBeenCalledWith('/learning-reminders/push-subscription', expect.objectContaining({ method: 'PUT', body: JSON.stringify(subscription.toJSON()) }));
+    expect(notification.requestPermission).not.toHaveBeenCalled();
+    await showLearningNotification({ id: 7 });
+    expect(registration.showNotification).not.toHaveBeenCalled();
+    await unsubscribeLearningPush(api);
+    expect(api).toHaveBeenCalledWith('/learning-reminders/push-subscription', expect.objectContaining({ method: 'DELETE', body: JSON.stringify({ endpoint: subscription.endpoint }) }));
+    expect(subscription.unsubscribe).toHaveBeenCalledOnce();
+  });
+  it('creates a PushSubscription after a user grants permission', async () => {
+    const { registration } = platform(); window.PushManager = function () {};
+    const subscription = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/device' }), unsubscribe: vi.fn() };
+    registration.pushManager = { getSubscription: vi.fn().mockResolvedValue(null), subscribe: vi.fn().mockResolvedValue(subscription) };
+    const api = vi.fn().mockResolvedValue({ public_key: 'AQID' });
+    expect(await requestSystemNotifications(api)).toBe('granted');
+    expect(registration.pushManager.subscribe).toHaveBeenCalledWith({ userVisibleOnly: true, applicationServerKey: new Uint8Array([1, 2, 3]) });
   });
 });
