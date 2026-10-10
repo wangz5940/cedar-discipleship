@@ -17,7 +17,7 @@ import (
 
 func TestDailyDevotionReminderSchedule(t *testing.T) {
 	db := testdb.Open(t)
-	for _, name := range []string{"025_learning_web_push.sql", "026_unlimited_superadmin_reminders.sql", "027_apple_reminder_resume.sql", "028_daily_devotion_reminders.sql", "028_daily_devotion_reminders.sql"} {
+	for _, name := range []string{"025_learning_web_push.sql", "026_unlimited_superadmin_reminders.sql", "027_apple_reminder_resume.sql", "028_daily_devotion_reminders.sql", "028_daily_devotion_reminders.sql", "029_devotion_reminder_slots.sql", "029_devotion_reminder_slots.sql"} {
 		testdb.Apply(t, db, name)
 	}
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at) VALUES(1,'daily','Daily',NOW(),NOW()),(2,'off','Off',NOW(),NOW());
@@ -95,11 +95,44 @@ func TestDailyDevotionReminderSchedule(t *testing.T) {
 	if client.calls != 1 {
 		t.Fatal("system push repeated")
 	}
-	run(morning.Add(24*time.Hour + time.Minute))
+	evening := morning.Add(11 * time.Hour)
+	run(evening.Add(-time.Second))
 	count(1)
-	run(morning.Add(24 * time.Hour))
+	run(evening)
 	count(3)
+	if err := a.deliverLearningPush(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 2 {
+		t.Fatalf("evening push blocked by morning delivery: calls=%d", client.calls)
+	}
+	if err := a.deliverLearningPush(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 2 {
+		t.Fatal("evening push repeated")
+	}
+	run(evening.Add(5 * time.Second))
+	count(3)
+	run(evening.Add(time.Minute))
+	count(3)
+	run(morning.Add(24*time.Hour + time.Minute))
+	count(3)
+	run(morning.Add(24 * time.Hour))
+	count(5)
 	testdb.Exec(t, db, `UPDATE group_settings SET settings='{"checkin_notifications":{"daily_enabled":true}}' WHERE group_id=2;UPDATE group_members SET status=0 WHERE group_id=2`)
 	run(morning.Add(48 * time.Hour))
-	count(5)
+	count(7)
+}
+
+func TestDevotionReminderSlotMigrationPreservesMorning(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO daily_devotion_reminder_runs(group_id,logical_date) VALUES(1,'2026-10-10')`)
+	testdb.Apply(t, db, "029_devotion_reminder_slots.sql")
+	testdb.Apply(t, db, "029_devotion_reminder_slots.sql")
+	testdb.Exec(t, db, `INSERT IGNORE INTO daily_devotion_reminder_runs(group_id,logical_date,reminder_hour) VALUES(1,'2026-10-10',7),(1,'2026-10-10',18),(1,'2026-10-10',18)`)
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM daily_devotion_reminder_runs WHERE group_id=1 AND logical_date='2026-10-10'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("migration lost morning or duplicated evening: count=%d error=%v", count, err)
+	}
 }
