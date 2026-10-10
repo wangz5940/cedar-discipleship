@@ -130,6 +130,9 @@ func TestCheckinSourceSnapshot(t *testing.T) {
 				})
 			}
 			if tt.want != "" {
+				if strings.HasPrefix(tt.taskType, "daily_") {
+					steps = append(steps, queryStep{contains: []string{"SELECT settings FROM group_settings WHERE group_id=?"}, args: []any{int64(1)}, columns: 1})
+				}
 				args := []any{int64(1), "2026-09-09", "2026-09-09", int64(42)}
 				fragments := []string{
 					"c.group_id=?", "c.logical_date BETWEEN ? AND ?", "c.id<=?",

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"agp/backend/internal/learning"
 )
 
 type CheckinSource struct {
@@ -155,6 +157,22 @@ func (s *CheckinSource) periodSnapshot(ctx context.Context, event Event, start, 
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("parse notification period: %w", err)
 	}
+	separateDaily, dailyVerse := false, false
+	if daily {
+		var raw sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT settings FROM group_settings WHERE group_id=?`, event.GroupID).Scan(&raw)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return Snapshot{}, fmt.Errorf("load daily notification format: %w", err)
+		}
+		var settings map[string]any
+		if raw.Valid && strings.TrimSpace(raw.String) != "" {
+			if err := json.Unmarshal([]byte(raw.String), &settings); err != nil {
+				return Snapshot{}, fmt.Errorf("decode daily notification format: %w", err)
+			}
+		}
+		dailyVerse = learning.DailyTaskTypeEnabledOnDate(settings, "daily_verse", start)
+		separateDaily = dailyVerse || learning.SeparateDailyCheckins(settings)
+	}
 	where := "c.task_type IN ('daily_devotion','daily_scripture','daily_verse')"
 	period := "c.logical_date BETWEEN ? AND ?"
 	args := []any{event.GroupID, start, end}
@@ -242,7 +260,7 @@ func (s *CheckinSource) periodSnapshot(ctx context.Context, event Event, start, 
 		periodID = fmt.Sprintf("week:%d", weekID)
 	}
 	return Snapshot{
-		Text:            FormatCheckins(entries, event.RecordID, daily),
+		Text:            formatCheckins(entries, event.RecordID, daily, separateDaily, dailyVerse),
 		ExpiresAt:       endDate.AddDate(0, 0, 1),
 		Topic:           topic,
 		Version:         topic + ":" + end,

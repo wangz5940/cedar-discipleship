@@ -75,3 +75,39 @@ func TestCheckinSummariesDoNotRegressAfterFullSnapshot(t *testing.T) {
 		t.Fatalf("cancellation/recheckin messages=%#v", sender.messages)
 	}
 }
+
+func TestDailyNotificationFormatStaysStableBeforeAndAfterVerseCheckin(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at)
+ VALUES (1,'one','喜悦','one',NOW(),NOW()),(2,'two','合聪','two',NOW(),NOW());
+ INSERT INTO group_members(group_id,user_id,member_name,status,joined_at,created_at,updated_at)
+ VALUES (1,1,'喜悦',1,NOW(),NOW(),NOW()),(1,2,'合聪',1,NOW(),NOW(),NOW());
+ INSERT INTO group_settings(group_id,settings,created_at,updated_at)
+ VALUES (1,'{"task_sections":{"daily":{"verse":{"enabled":true,"plans":[{"date":"2026-10-10","verse_ref":"约3:16"}]}}}}',NOW(),NOW());
+ INSERT INTO checkin_records(id,group_id,user_id,task_type,logical_date,checkin_time,source,created_by,created_at,updated_at)
+ VALUES (1,1,1,'daily_devotion','2026-10-10','2026-10-10 08:30:00','web',1,NOW(),NOW()),
+ (2,1,2,'daily_devotion','2026-10-10','2026-10-10 08:35:00','web',2,NOW(),NOW())`)
+	source := NewCheckinSource(db, time.UTC)
+	before, err := source.Snapshot(t.Context(), Event{GroupID: 1, RecordID: 2, LogicalDate: "2026-10-10"})
+	if err != nil || before.Text != "每日任务\n1 喜悦 灵修\n2 合聪 【新】灵修" {
+		t.Fatalf("before verse: %q err=%v", before.Text, err)
+	}
+	testdb.Exec(t, db, `INSERT INTO checkin_records(id,group_id,user_id,task_type,logical_date,checkin_time,source,created_by,created_at,updated_at)
+ VALUES (3,1,2,'daily_verse','2026-10-10','2026-10-10 08:40:00','web',2,NOW(),NOW()),
+ (4,1,1,'daily_verse','2026-10-10','2026-10-10 10:44:00','web',1,NOW(),NOW())`)
+	for _, tc := range []struct {
+		name string
+		id   uint64
+		want string
+	}{
+		{"first verse", 3, "每日任务\n1 喜悦 灵修\n2 合聪 灵修 【新】背经"},
+		{"second verse", 4, "每日任务\n1 喜悦 灵修 【新】背经\n2 合聪 灵修 背经"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot, err := source.Snapshot(t.Context(), Event{GroupID: 1, RecordID: tc.id, LogicalDate: "2026-10-10"})
+			if err != nil || snapshot.Text != tc.want {
+				t.Fatalf("snapshot=%q err=%v", snapshot.Text, err)
+			}
+		})
+	}
+}
