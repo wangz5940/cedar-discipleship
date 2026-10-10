@@ -6,6 +6,27 @@ import Dashboard from './Dashboard.vue';
 import { useDashboardStore } from '../stores/dashboard';
 
 describe('dashboard statistics', () => {
+  it('shows status without check-in actions for self and other members', async () => {
+    const pinia = createPinia();
+    useDashboardStore(pinia).setSnapshot({
+      visible: true,
+      members: [true, false].map((isSelf, index) => ({
+        user_id: index + 1, name: isSelf ? '自己' : '其他成员', avatar: '成', isSelf,
+        taskStates: [true, false].map((done) => ({ title: done ? '灵修' : '背经', shortLabel: done ? '灵修' : '背经', done })),
+      })),
+    });
+    const context = {};
+    await renderToString(createSSRApp(Dashboard).use(pinia), context);
+    const html = context.teleports['#vue-dashboard'];
+    expect(html).toContain('✓ 已打卡');
+    expect(html).toContain('未打卡');
+    expect(html).not.toContain('去打卡');
+    expect(html).not.toContain('点击打卡或取消');
+    expect(html).not.toContain('daily-checkin');
+    expect(html).toContain('查看 自己 打卡月历');
+    expect(html).toContain('查看 其他成员 打卡月历');
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
