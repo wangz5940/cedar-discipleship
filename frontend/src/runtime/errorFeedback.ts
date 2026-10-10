@@ -247,7 +247,7 @@ export async function reportAutomaticFeedback(
     const requestMethod = limited(context.requestMethod || error.requestMethod || '', 16).toUpperCase();
     const errorLogID = validLogID(context.logID)
       ? context.logID
-      : validLogID(error.logID) ? error.logID : latestLogID();
+      : validLogID(error.logID) ? error.logID : '';
     const errorCode = limited(context.errorCode || error.code, 128);
     const errorName = limited(error.name || 'Error', 128);
     const errorType = normalizeErrorType(errorCode || errorName);
@@ -279,7 +279,8 @@ export async function reportAutomaticFeedback(
 
     const diagnostics = {
       ...collectFeedbackDiagnostics(actionContext),
-      recent_log_id: errorLogID,
+      recent_log_id: errorLogID || latestLogID(),
+      error_log_id_source: errorLogID ? 'request' : 'unavailable',
       error_name: errorName,
       error_message: errorMessage,
       error_stack: rawError instanceof Error ? limited(rawError.stack, 4096) : '',
@@ -289,6 +290,9 @@ export async function reportAutomaticFeedback(
       request_started_at: limited(context.requestDiagnostics?.request_started_at, 64),
       request_duration_ms: limited(context.requestDiagnostics?.request_duration_ms, 32),
       request_visibility: limited(context.requestDiagnostics?.request_visibility, 32),
+      request_network_online: limited(context.requestDiagnostics?.request_network_online, 8),
+      request_visibility_end: limited(context.requestDiagnostics?.request_visibility_end, 32),
+      request_network_online_end: limited(context.requestDiagnostics?.request_network_online_end, 8),
       response_received: limited(context.requestDiagnostics?.response_received, 8),
       response_log_id: limited(context.requestDiagnostics?.response_log_id, 32),
       response_content_type: limited(context.requestDiagnostics?.response_content_type, 128),

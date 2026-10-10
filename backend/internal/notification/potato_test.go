@@ -2,14 +2,18 @@ package notification
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -302,5 +306,43 @@ func TestPotatoIdentityStopsAfterEmptySuccessResponses(t *testing.T) {
 	}
 	if got := requests.Load(); got != potatoReadAttempts {
 		t.Fatalf("requests = %d, want %d", got, potatoReadAttempts)
+	}
+}
+
+type failingTransport struct{ err error }
+
+func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, f.err }
+
+func TestPotatoTransportDiagnosticsNeverExposeToken(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"canceled", context.Canceled, "canceled"},
+		{"timeout", context.DeadlineExceeded, "timeout"},
+		{"dns", &net.DNSError{Err: "lookup failed", Name: "private.example"}, "dns"},
+		{"certificate", x509.UnknownAuthorityError{}, "tls_certificate"},
+		{"refused", syscall.ECONNREFUSED, "connection_refused"},
+		{"reset", syscall.ECONNRESET, "connection_reset"},
+		{"closed", io.EOF, "connection_closed"},
+		{"other", errors.New("123:secret unknown failure"), "network_other"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewPotatoClient("123:secret")
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.client.Transport = failingTransport{err: &url.Error{Op: "Post", URL: client.endpoint, Err: tt.err}}
+			err = client.SendText(t.Context(), Target{}, "test")
+			var failure *deliveryError
+			if !errors.As(err, &failure) || failure.Error() != "transport_failed" || !failure.retry || failure.reason != tt.want {
+				t.Fatalf("failure=%+v", failure)
+			}
+			if strings.Contains(failure.Error()+failure.reason, "123:secret") {
+				t.Fatal("token leaked")
+			}
+		})
 	}
 }

@@ -3,15 +3,18 @@ package notification
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -63,6 +66,7 @@ func ParseTargets(token, value string) (map[uint64]Target, error) {
 
 type deliveryError struct {
 	code       string
+	reason     string
 	retry      bool
 	retryAfter time.Duration
 }
@@ -236,7 +240,7 @@ func (c *PotatoClient) SendText(ctx context.Context, target Target, text string)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		// net/http errors include the token-bearing URL. Never return them to logs.
-		return &deliveryError{code: "transport_failed", retry: true}
+		return &deliveryError{code: "transport_failed", reason: transportFailureReason(err), retry: true}
 	}
 	defer resp.Body.Close()
 	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024+1))
@@ -287,4 +291,41 @@ func retryAfter(value string, now time.Time) time.Duration {
 		return date.Sub(now)
 	}
 	return 0
+}
+
+// Return only a fixed category: net/http error strings may contain bot tokens.
+func transportFailureReason(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return "dns"
+	}
+	var cert x509.UnknownAuthorityError
+	if errors.As(err, &cert) {
+		return "tls_certificate"
+	}
+	var invalidCert x509.CertificateInvalidError
+	if errors.As(err, &invalidCert) {
+		return "tls_certificate"
+	}
+	var hostname x509.HostnameError
+	if errors.As(err, &hostname) {
+		return "tls_certificate"
+	}
+	var network net.Error
+	if errors.As(err, &network) && network.Timeout() {
+		return "timeout"
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return "connection_refused"
+	}
+	if errors.Is(err, syscall.ECONNRESET) {
+		return "connection_reset"
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return "connection_closed"
+	}
+	return "network_other"
 }

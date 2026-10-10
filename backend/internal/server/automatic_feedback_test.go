@@ -119,16 +119,16 @@ func TestBackendFeedbackRetriesAndStopsWithWorker(t *testing.T) {
 	go func() { defer close(done); reporter.run(ctx) }()
 	defer func() { cancel(); <-done }()
 	event := notificationdomain.Event{GroupID: 7, LogicalDate: "2026-10-05"}
-	source.ReportNotificationFailure(event, "http_400")
+	source.ReportNotificationFailure(event, "transport_failed", "timeout")
 	select {
 	case input := <-creator.saved:
-		if input.GroupID != 7 || input.Diagnostics["error_code"] != "notification_delivery_failed" {
+		if input.GroupID != 7 || input.Diagnostics["error_code"] != "notification_delivery_failed" || input.Diagnostics["transport_reason"] != "timeout" {
 			t.Fatalf("saved input=%+v", input)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("transient failure was not retried")
 	}
-	source.ReportNotificationFailure(event, "http_400")
+	source.ReportNotificationFailure(event, "transport_failed", "timeout")
 	if len(reporter.queue) != 0 {
 		t.Fatal("successful report was not deduplicated")
 	}
@@ -181,7 +181,7 @@ func TestNotificationMutedFeedbackShowsReasonAndPreservesErrorCode(t *testing.T)
 		t.Run(code, func(t *testing.T) {
 			reporter := newAutomaticFeedbackReporter(nil)
 			source := feedbackNotificationSource{reporter: reporter}
-			source.ReportNotificationFailure(notificationdomain.Event{GroupID: 7, LogicalDate: "2026-10-08"}, code)
+			source.ReportNotificationFailure(notificationdomain.Event{GroupID: 7, LogicalDate: "2026-10-08"}, code, "")
 			if len(reporter.queue) != 1 {
 				t.Fatal("notification failure was not reported")
 			}
