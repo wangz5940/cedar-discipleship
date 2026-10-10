@@ -397,21 +397,23 @@ func TestQueueFailurePolicies(t *testing.T) {
 
 type observingSource struct {
 	*fakeSource
-	events []Event
-	codes  []string
-	panics bool
+	events  []Event
+	codes   []string
+	reasons []string
+	panics  bool
 }
 
-func (s *observingSource) ReportNotificationFailure(event Event, code string) {
+func (s *observingSource) ReportNotificationFailure(event Event, code, reason string) {
 	s.events = append(s.events, event)
 	s.codes = append(s.codes, code)
+	s.reasons = append(s.reasons, reason)
 	if s.panics {
 		panic("observer failed")
 	}
 }
 
 func TestQueueReportsOnlyTerminalFailureWithoutChangingDelivery(t *testing.T) {
-	for _, name := range []string{"permanent", "exhausted", "observer panic", "success", "disabled"} {
+	for _, name := range []string{"permanent", "exhausted", "observer panic", "transport", "success", "disabled"} {
 		t.Run(name, func(t *testing.T) {
 			queue, source, sender, event, now := queueFixture(t)
 			observer := &observingSource{fakeSource: source, panics: name == "observer panic"}
@@ -421,6 +423,9 @@ func TestQueueReportsOnlyTerminalFailureWithoutChangingDelivery(t *testing.T) {
 				source.disabled = true
 			} else if name != "success" {
 				sender.err = &deliveryError{code: "http_400", retry: name == "exhausted"}
+			}
+			if name == "transport" {
+				sender.err = &deliveryError{code: "transport_failed", reason: "timeout"}
 			}
 			if err := queue.Enqueue(event); err != nil {
 				t.Fatal(err)
@@ -440,9 +445,16 @@ func TestQueueReportsOnlyTerminalFailureWithoutChangingDelivery(t *testing.T) {
 				}
 				return
 			}
+			if name == "transport" && (len(observer.reasons) != 1 || observer.reasons[0] != "timeout") {
+				t.Fatalf("transport reason lost: %v", observer.reasons)
+			}
+			expectedCode := "http_400"
+			if name == "transport" {
+				expectedCode = "transport_failed"
+			}
 			if len(observer.events) != 1 || observer.events[0].RecordID != event.RecordID ||
 				observer.events[0].GroupID != event.GroupID || observer.events[0].LogID != event.LogID ||
-				!observer.events[0].OccurredAt.Equal(event.OccurredAt) || observer.codes[0] != "http_400" ||
+				!observer.events[0].OccurredAt.Equal(event.OccurredAt) || observer.codes[0] != expectedCode ||
 				stateFiles(t, queue, "failed") != 1 {
 				t.Fatalf("events=%+v codes=%v failed=%d", observer.events, observer.codes, stateFiles(t, queue, "failed"))
 			}

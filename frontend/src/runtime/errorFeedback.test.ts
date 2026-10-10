@@ -7,11 +7,14 @@ import {
   shouldReportAPIError,
 } from './errorFeedback';
 
+import { clearLatestLogID, recordResponseLogID } from './logID';
+
 const errorLogID = '0123456789abcdef0123456789abcdef';
 
 describe('automatic error feedback', () => {
   beforeEach(() => {
     resetAutomaticFeedbackStateForTest();
+    clearLatestLogID();
     setAccessToken('access-token');
     vi.stubGlobal('document', { cookie: 'agp_csrf=csrf-value', visibilityState: 'visible' });
     vi.stubGlobal('window', {
@@ -83,6 +86,23 @@ describe('automatic error feedback', () => {
       network_online: 'true',
       visibility_state: 'visible',
       client_time: expect.stringMatching(/Z$/),
+    });
+  });
+
+  it('keeps a recent successful request separate from an untraceable runtime error', async () => {
+    recordResponseLogID(errorLogID);
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ settings: { enabled: true } }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(reportAutomaticFeedback('Script error.', { actionContext: 'runtime_error' })).resolves.toBe(true);
+    const form = fetch.mock.calls[1][1].body;
+    expect(form.has('error_log_id')).toBe(false);
+    expect(JSON.parse(form.get('diagnostics'))).toMatchObject({
+      recent_log_id: errorLogID,
+      error_log_id_source: 'unavailable',
+      error_stack_source: 'unavailable',
     });
   });
 

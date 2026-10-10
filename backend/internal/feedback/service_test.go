@@ -177,6 +177,9 @@ func TestBrowserDiagnosticsContract(t *testing.T) {
 			"page_title": "打卡", "script_sources": "https://cedar.example.test/assets/index.js",
 			"error_stack_source": "unavailable", "request_started_at": "2026-10-08T02:10:08.000Z",
 			"request_duration_ms": "1151", "request_visibility": "visible",
+			"error_log_id_source": "unavailable", "request_network_online": "true",
+			"request_visibility_end": "hidden", "request_network_online_end": "false",
+			"transport_reason":  "timeout",
 			"response_received": "true", "response_log_id": "0123456789abcdef0123456789abcdef",
 			"response_content_type": "text/html",
 		}}

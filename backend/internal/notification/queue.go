@@ -28,7 +28,7 @@ type TextSender interface {
 // FailureReporter observes terminal failures without changing delivery state.
 // Implementations must enqueue work without blocking the notification queue.
 type FailureReporter interface {
-	ReportNotificationFailure(Event, string)
+	ReportNotificationFailure(Event, string, string)
 }
 
 type Queue struct {
@@ -62,6 +62,7 @@ type job struct {
 	NextTry          time.Time `json:"next_try"`
 	Status           string    `json:"status"`
 	ErrorCode        string    `json:"error_code,omitempty"`
+	ErrorReason      string    `json:"error_reason,omitempty"`
 	Topic            string    `json:"topic,omitempty"`
 	ContentVersion   string    `json:"content_version,omitempty"`
 	PeriodID         string    `json:"period_id,omitempty"`
@@ -488,14 +489,17 @@ func (q *Queue) process(ctx context.Context, path string, item *job, now time.Ti
 	if err == nil {
 		item.NextPart++
 		item.ErrorCode = ""
+		item.ErrorReason = ""
 		if item.NextPart == len(item.Messages) {
 			item.Status = "sent"
 		}
 	} else {
 		item.Status, item.ErrorCode = "failed", "send_failed"
+		item.ErrorReason = ""
 		var failure *deliveryError
 		if errors.As(err, &failure) {
 			item.ErrorCode = failure.code
+			item.ErrorReason = failure.reason
 			if failure.code == "potato_3023" && q.unbindMuted != nil {
 				if err := q.unbindMuted(item.Target, item.Event.GroupID, targetVersion); err != nil {
 					slog.ErrorContext(ctx, "muted notification binding removal failed",
@@ -605,7 +609,7 @@ func (q *Queue) finish(ctx context.Context, path string, item *job, start time.T
 		"record_id", item.Event.RecordID, "group_id", item.Event.GroupID,
 		"initial", item.Event.Initial,
 		"attempt", item.Attempts, "next_part", item.NextPart, "status", item.Status,
-		"error_code", item.ErrorCode, "duration_ms", time.Since(start).Milliseconds(),
+		"error_code", item.ErrorCode, "transport_reason", item.ErrorReason, "duration_ms", time.Since(start).Milliseconds(),
 	}
 	if item.ErrorCode != "" {
 		slog.WarnContext(ctx, "checkin notification delivery", attrs...)
@@ -633,20 +637,20 @@ func (q *Queue) finish(ctx context.Context, path string, item *job, start time.T
 	}
 	if item.Status != "pending" {
 		if item.Status == "failed" {
-			q.reportFailure(item.Event, item.ErrorCode)
+			q.reportFailure(item.Event, item.ErrorCode, item.ErrorReason)
 		}
 		q.finalize(ctx, path, item)
 	}
 }
 
-func (q *Queue) reportFailure(event Event, code string) {
+func (q *Queue) reportFailure(event Event, code, reason string) {
 	defer func() {
 		if recover() != nil {
 			slog.Error("notification failure observer panicked")
 		}
 	}()
 	if reporter, ok := q.source.(FailureReporter); ok {
-		reporter.ReportNotificationFailure(event, code)
+		reporter.ReportNotificationFailure(event, code, reason)
 	}
 }
 
@@ -730,6 +734,7 @@ func resetInitialJob(item *job, now time.Time) {
 	item.NextTry = time.Time{}
 	item.Status = "pending"
 	item.ErrorCode = ""
+	item.ErrorReason = ""
 	item.Topic = ""
 	item.ContentVersion = ""
 	item.PeriodID = ""
