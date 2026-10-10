@@ -29,7 +29,6 @@ import {
   resetStatsRangeToHistory,
   shiftSelectedDate,
   toast as showToast,
-  toggleCheckin,
 } from '../legacy-app';
 
 const store = useDashboardStore();
@@ -148,10 +147,6 @@ function chooseDate(date) {
   datePickerOpen.value = false;
 }
 
-function memberTaskTitle(member, state) {
-  return member.isSelf ? `${state.title}：点击打卡或取消` : `${state.title}：${state.done ? '已完成' : '未完成'}`;
-}
-
 async function exportRankingChart() {
   await exportRankingPNG({
     title: '门训数据统计中心',
@@ -226,17 +221,7 @@ async function exportRankingChart() {
                   </div>
                 </td>
                 <td v-for="item in member.taskStates" :key="item.title">
-                  <button
-                    v-if="member.isSelf"
-                    :class="[item.done ? 'taskdone' : 'quiet', item.done ? 'is-done' : 'is-pending']"
-                    class="daily-checkin"
-                    type="button"
-                    :title="memberTaskTitle(member, item)"
-                    @click="toggleCheckin(item.taskForMember, member)"
-                  >
-                    {{ item.done ? '✓ 已打卡' : '去打卡' }}
-                  </button>
-                  <span v-else-if="item.done" class="check status-done">✓ 已打卡</span>
+                  <span v-if="item.done" class="check status-done">✓ 已打卡</span>
                   <span v-else class="status-pending">未打卡</span>
                 </td>
                 <td>
@@ -268,8 +253,7 @@ async function exportRankingChart() {
               <div class="member-stack-tasks">
                 <div v-for="state in member.taskStates" :key="state.title">
                   <span :title="state.title">{{ state.shortLabel }}</span>
-                  <button v-if="member.isSelf" :class="[state.done ? 'taskdone' : 'quiet', state.done ? 'is-done' : 'is-pending']" type="button" @click="toggleCheckin(state.taskForMember, member)">{{ state.done ? '✓ 已打卡' : '去打卡' }}</button>
-                  <strong v-else :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong>
+                  <strong :class="state.done ? 'check status-done' : 'status-pending'">{{ state.done ? '✓ 已打卡' : '未打卡' }}</strong>
                 </div>
               </div>
             </div>
