@@ -101,7 +101,7 @@ func (a *app) handleLearningReminders(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "reminder_failed")
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT r.id,r.logical_date,COALESCE(NULLIF(gm.member_name,''),u.display_name),r.read_at IS NOT NULL FROM learning_reminders r JOIN users u ON u.id=r.sender_id LEFT JOIN group_members gm ON gm.group_id=r.group_id AND gm.user_id=r.sender_id WHERE r.group_id=? AND r.recipient_id=? AND (r.read_at IS NULL OR r.logical_date=?) ORDER BY (r.read_at IS NULL) DESC,r.id DESC LIMIT 200`, groupID, u.ID, time.Now().In(a.location).Format("2006-01-02"))
+	rows, err := a.db.QueryContext(r.Context(), `SELECT r.id,r.logical_date,CASE WHEN r.sender_id=r.recipient_id THEN '每日灵修' ELSE COALESCE(NULLIF(gm.member_name,''),u.display_name) END,r.read_at IS NOT NULL FROM learning_reminders r JOIN users u ON u.id=r.sender_id LEFT JOIN group_members gm ON gm.group_id=r.group_id AND gm.user_id=r.sender_id WHERE r.group_id=? AND r.recipient_id=? AND (r.read_at IS NULL OR r.logical_date=?) ORDER BY (r.read_at IS NULL) DESC,r.id DESC LIMIT 200`, groupID, u.ID, time.Now().In(a.location).Format("2006-01-02"))
 	if err != nil {
 		writeError(w, 500, "reminder_failed")
 		return
