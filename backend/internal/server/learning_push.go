@@ -116,7 +116,10 @@ func (a *app) runLearningPush(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case now := <-ticker.C:
+			if err := a.enqueueDailyDevotionReminders(ctx, now); err != nil && ctx.Err() == nil {
+				log.Print("daily devotion reminder scheduling failed")
+			}
 			if err := a.deliverLearningPush(ctx, client); err != nil && ctx.Err() == nil {
 				log.Print("learning push queue processing failed")
 			}
@@ -131,7 +134,7 @@ func (a *app) deliverLearningPush(ctx context.Context, client webpush.HTTPClient
 	if err != nil {
 		return err
 	}
-	rows, err := a.db.QueryContext(ctx, `SELECT d.reminder_id,d.subscription_id,d.attempts,s.subscription,COALESCE(NULLIF(gm.member_name,''),u.display_name),r.group_id FROM learning_push_deliveries d JOIN learning_reminders r ON r.id=d.reminder_id JOIN learning_push_subscriptions s ON s.id=d.subscription_id AND s.user_id=r.recipient_id AND s.group_id=r.group_id JOIN group_members recipient ON recipient.group_id=r.group_id AND recipient.user_id=r.recipient_id AND recipient.status=1 JOIN users u ON u.id=r.sender_id LEFT JOIN group_members gm ON gm.group_id=r.group_id AND gm.user_id=r.sender_id LEFT JOIN learning_reminder_preferences p ON p.group_id=r.group_id AND p.user_id=r.recipient_id WHERE d.finished=FALSE AND d.attempts<3 AND d.next_attempt_at<=UTC_TIMESTAMP(3) AND r.read_at IS NULL AND r.created_at>UTC_TIMESTAMP()-INTERVAL 1 DAY AND COALESCE(p.muted,FALSE)=FALSE AND (r.id>COALESCE(p.apple_push_after_id,0) OR JSON_UNQUOTE(JSON_EXTRACT(s.subscription,'$.endpoint')) NOT LIKE 'https://%.push.apple.com/%') ORDER BY d.reminder_id DESC LIMIT 20`)
+	rows, err := a.db.QueryContext(ctx, `SELECT d.reminder_id,d.subscription_id,d.attempts,s.subscription,CASE WHEN r.sender_id=r.recipient_id THEN '每日灵修' ELSE COALESCE(NULLIF(gm.member_name,''),u.display_name) END,r.group_id FROM learning_push_deliveries d JOIN learning_reminders r ON r.id=d.reminder_id JOIN learning_push_subscriptions s ON s.id=d.subscription_id AND s.user_id=r.recipient_id AND s.group_id=r.group_id JOIN group_members recipient ON recipient.group_id=r.group_id AND recipient.user_id=r.recipient_id AND recipient.status=1 JOIN users u ON u.id=r.sender_id LEFT JOIN group_members gm ON gm.group_id=r.group_id AND gm.user_id=r.sender_id LEFT JOIN learning_reminder_preferences p ON p.group_id=r.group_id AND p.user_id=r.recipient_id LEFT JOIN group_settings gs ON gs.group_id=r.group_id WHERE d.finished=FALSE AND d.attempts<3 AND d.next_attempt_at<=UTC_TIMESTAMP(3) AND r.read_at IS NULL AND r.created_at>UTC_TIMESTAMP()-INTERVAL 1 DAY AND COALESCE(p.muted,FALSE)=FALSE AND (r.sender_id<>r.recipient_id OR (COALESCE(JSON_UNQUOTE(JSON_EXTRACT(gs.settings,'$.checkin_notifications.daily_enabled')),'true')='true' AND r.logical_date=DATE(UTC_TIMESTAMP()+INTERVAL 8 HOUR))) AND (r.id>COALESCE(p.apple_push_after_id,0) OR JSON_UNQUOTE(JSON_EXTRACT(s.subscription,'$.endpoint')) NOT LIKE 'https://%.push.apple.com/%') ORDER BY d.reminder_id DESC LIMIT 20`)
 	if err != nil {
 		return err
 	}
