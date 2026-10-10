@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-// The narrow sending window prevents a restart or unmute from replaying missed mornings.
+// The narrow sending window prevents a restart or unmute from replaying missed reminder slots.
 func devotionReminderDue(now time.Time) bool {
 	at := now.In(time.FixedZone("Asia/Shanghai", 8*60*60))
-	return at.Hour() == 7 && at.Minute() == 30
+	return (at.Hour() == 7 || at.Hour() == 18) && at.Minute() == 30
 }
 
 func (a *app) enqueueDailyDevotionReminders(ctx context.Context, now time.Time) error {
@@ -50,7 +50,7 @@ func (a *app) enqueueGroupDevotionReminder(ctx context.Context, groupID uint64, 
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT IGNORE INTO daily_devotion_reminder_runs(group_id,logical_date) VALUES(?,?)`, groupID, date)
+	result, err := tx.ExecContext(ctx, `INSERT IGNORE INTO daily_devotion_reminder_runs(group_id,logical_date,reminder_hour) VALUES(?,?,?)`, groupID, date, now.In(time.FixedZone("Asia/Shanghai", 8*60*60)).Hour())
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (a *app) enqueueGroupDevotionReminder(ctx context.Context, groupID uint64, 
 		return nil
 	}
 	// Manual reminders forbid self-reminding; self-sent rows identify this system reminder.
-	// Muted members are skipped permanently for this morning, without affecting historical messages.
+	// Muted members are skipped permanently for this slot, without affecting historical messages.
 	_, err = tx.ExecContext(ctx, `INSERT INTO learning_reminders(group_id,sender_id,recipient_id,logical_date,created_at,daily_limit_slot)
         SELECT m.group_id,m.user_id,m.user_id,?,?,NULL FROM group_members m
         JOIN users u ON u.id=m.user_id AND u.status=1
