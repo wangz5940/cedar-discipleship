@@ -88,6 +88,7 @@ func TestSnapshotIncludesRecordsBeforeBotJoined(t *testing.T) {
 			args:     []any{int64(1), int64(4), "2026-09-09"}, columns: 4,
 			rows: [][]driver.Value{{"daily_devotion", date, date.Add(time.Hour), nil}},
 		},
+		{contains: []string{"SELECT settings FROM group_settings WHERE group_id=?"}, args: []any{int64(1)}, columns: 1},
 		{
 			contains: []string{"c.logical_date BETWEEN ? AND ?", "c.id<=?", "c.deleted_at IS NULL"},
 			args:     []any{int64(1), "2026-09-09", "2026-09-09", int64(4)}, columns: 9,

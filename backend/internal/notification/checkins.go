@@ -39,6 +39,10 @@ type Snapshot struct {
 
 // Entries arrive in first-checkin order, independent of member names.
 func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
+	return formatCheckins(entries, recordID, daily, false, false)
+}
+
+func formatCheckins(entries []Entry, recordID uint64, daily, separateDaily, dailyVerse bool) string {
 	type content struct {
 		key, label string
 		isNew      bool
@@ -50,7 +54,6 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 	var members []member
 	positions := make(map[uint64]int)
 	found := false
-	separateDaily := false
 	for _, entry := range entries {
 		separateDaily = separateDaily || entry.TaskType == "daily_scripture" || entry.TaskType == "daily_verse"
 	}
@@ -126,6 +129,9 @@ func FormatCheckins(entries []Entry, recordID uint64, daily bool) string {
 	title := "本周任务"
 	if daily {
 		title = "每日灵修"
+		if dailyVerse {
+			title = "每日任务"
+		}
 		for _, entry := range entries {
 			if entry.TaskType == "daily_verse" {
 				title = "每日任务"

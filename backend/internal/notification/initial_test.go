@@ -279,6 +279,7 @@ func TestInitialSnapshot(t *testing.T) {
 	end := start.AddDate(0, 0, 6)
 	tests := []struct {
 		name, kind  string
+		settings    string
 		rows        [][]driver.Value
 		noWeek      bool
 		dbError     bool
@@ -294,6 +295,29 @@ func TestInitialSnapshot(t *testing.T) {
 				{int64(2), int64(2), "李四", "daily_devotion", "", "", "", "", ""},
 			},
 			want: "每日灵修\n1 张三\n2 李四", wantVersion: "daily:2026-09-09", wantCovered: 2,
+		},
+		{
+			name: "verse configured before first verse checkin", kind: "daily",
+			settings: `{"task_sections":{"daily":{"verse":{"enabled":true,"plans":[{"date":"2026-09-09","verse_ref":"约3:16"}]}}}}`,
+			rows:     [][]driver.Value{{int64(1), int64(1), "张三", "daily_devotion", "", "", "", "", ""}},
+			want:     "每日任务\n1 张三 灵修", wantVersion: "daily:2026-09-09", wantCovered: 1,
+		},
+		{
+			name: "verse configured without checkins", kind: "daily",
+			settings: `{"task_sections":{"daily":{"verse":{"enabled":true,"plans":[{"date":"2026-09-09","verse_ref":"约3:16"}]}}}}`,
+			want:     "每日任务\n暂无打卡记录", wantVersion: "daily:2026-09-09",
+		},
+		{
+			name: "verse configured for another date", kind: "daily",
+			settings: `{"task_sections":{"daily":{"verse":{"enabled":true,"plans":[{"date":"2026-09-10","verse_ref":"约3:16"}]}}}}`,
+			rows:     [][]driver.Value{{int64(1), int64(1), "张三", "daily_devotion", "", "", "", "", ""}},
+			want:     "每日灵修\n1 张三", wantVersion: "daily:2026-09-09", wantCovered: 1,
+		},
+		{
+			name: "separate scripture before first scripture checkin", kind: "daily",
+			settings: `{"task_sections":{"daily":{"checkin_mode":"separate"}}}`,
+			rows:     [][]driver.Value{{int64(1), int64(1), "张三", "daily_devotion", "", "", "", "", ""}},
+			want:     "每日灵修\n1 张三 灵修", wantVersion: "daily:2026-09-09", wantCovered: 1,
 		},
 		{
 			name: "weekly groups books and video", kind: "weekly",
@@ -338,6 +362,9 @@ func TestInitialSnapshot(t *testing.T) {
 				from, to = "2026-09-07", "2026-09-13"
 			}
 			if !tt.noWeek {
+				if tt.kind == "daily" {
+					steps = append(steps, queryStep{contains: []string{"SELECT settings FROM group_settings WHERE group_id=?"}, args: []any{int64(1)}, columns: 1, rows: [][]driver.Value{{tt.settings}}})
+				}
 				args := []any{int64(1), from, to, now.UTC().Format("2006-01-02 15:04:05.000")}
 				fragments := []string{
 					"c.group_id=?", "c.logical_date BETWEEN ? AND ?", "c.checkin_time<=?",
