@@ -17,6 +17,7 @@ import {
   dailyDevotionPlanMode,
   dailyDevotionPlans,
   nextDailyDevotionPlan,
+  resolveEffectiveSchedule,
   removeDailyDevotionPlan,
   upsertDailyDevotionPlan,
 } from '../runtime/dailySchedule';
@@ -40,6 +41,7 @@ import LearningConfigSection from './ui/LearningConfigSection.vue';
 import ConfiguredPlanList from './ui/ConfiguredPlanList.vue';
 import {
   api,
+  getDailyDevotionPlan,
   addWeekBinding,
   applyBindingSelection,
   applyOutlineSelection,
@@ -331,6 +333,27 @@ async function deleteVersePlan() {
 const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const devotionPlanMode = computed(() => dailyDevotionPlanMode(devotion.value));
 const configuredDailyPlans = computed(() => dailyDevotionPlans(devotion.value));
+const devotionPreview = computed(() => {
+  void devotion.value;
+  return getDailyDevotionPlan(dailyPlanDate.value);
+});
+const effectiveDevotionMode = computed(() => dailyDevotionPlanMode(resolveEffectiveSchedule(devotion.value, dailyPlanDate.value, ['numbered_start_date', 'start_date'])));
+const devotionHistoryOptions = computed(() => {
+  const dates = new Set([dailyPlanDate.value, ...configuredDailyPlans.value.map(plan => plan.date)]);
+  for (const config of [...(Array.isArray(devotion.value.schedule_history) ? devotion.value.schedule_history : []), devotion.value]) {
+    const start = config.numbered_start_date || config.start_date;
+    if (start) dates.add(start);
+  }
+  return [...dates].filter(Boolean).map(date => {
+    const plan = getDailyDevotionPlan(date);
+    const mode = dailyDevotionPlanMode(resolveEffectiveSchedule(devotion.value, date, ['numbered_start_date', 'start_date']));
+    const file = resourceForURL(plan?.url)?.title || plan?.title || '';
+    const position = plan?.pageRange ? `${plan.pageRange}页` : (plan?.section ? `第${plan.section}篇` : '');
+    return { date, title: plan ? `${mode === 'custom' ? '按日自定义' : '连续计划'} · ${file} ${position}`.trim() : '当天没有生效的灵修计划' };
+  });
+});
+const devotionPreviewFile = computed(() => resourceForURL(devotionPreview.value?.url)?.title || devotionPreview.value?.url || '未绑定资源');
+
 const selectedDailyPlan = computed(() => {
   const existing = dailyDevotionPlanForDate(
     { ...devotion.value, plan_mode: 'custom' },
@@ -1025,6 +1048,8 @@ async function runLocalBackupImport() {
                         <label class="admin-toggle"><input type="checkbox" :disabled="!canEditLearning || notificationSaving" :checked="daily.checkin_mode === 'separate'" @change="setLearningToggle(['task_sections','daily','checkin_mode'], $event.target.checked ? 'separate' : 'combined')" /><span>灵修与读经分别签到</span></label>
                         <label class="admin-toggle"><input type="checkbox" :disabled="!canEditLearning || notificationSaving" :checked="devotion.enabled !== false" @change="setLearningToggle(['task_sections','daily','devotion','enabled'], $event.target.checked)" /><span>显示灵修</span></label>
                       </div>
+                      <ConfiguredPlanList :key="currentGroupID" :plans="devotionHistoryOptions" :selected-date="dailyPlanDate" title="选择灵修计划" @select="selectDailyPlanDate" />
+                      <label class="admin-field"><span class="admin-field-label">查看日期</span><DateField :model-value="dailyPlanDate" label="灵修查看日期" @change="selectDailyPlanDate" /></label>
                       <div class="admin-field devotion-plan-mode-field">
                         <span class="admin-field-label">灵修计划方式</span>
                         <div class="segmented-control daily-plan-mode" role="group" aria-label="灵修计划方式">
@@ -1057,10 +1082,6 @@ async function runLocalBackupImport() {
                           新增一天
                         </button>
                         <label class="admin-field">
-                          <span class="admin-field-label">计划日期</span>
-                          <DateField :model-value="dailyPlanDate" label="计划日期" @change="selectDailyPlanDate" />
-                        </label>
-                        <label class="admin-field">
                           <span class="admin-field-label">当天灵修文件</span>
                           <select :value="selectedDailyPlanPath" @change="updateDailyPlanFile($event.target.value)">
                             <option value="">未绑定资源</option>
@@ -1079,9 +1100,18 @@ async function runLocalBackupImport() {
                           <button :disabled="!canEditLearning" type="button" @click="saveDailyPlan">保存当天计划</button>
                           <button class="danger" :disabled="!canEditLearning || !selectedDailyPlanExists" type="button" @click="deleteDailyPlan">删除当天计划</button>
                         </div>
-                        <ConfiguredPlanList :key="currentGroupID" :plans="configuredDailyPlans" :selected-date="dailyPlanDate" title="已配置日期" @select="selectDailyPlanDate">
-                          <template #default="{ plan }">{{ plan.title || toChineseMonthDay(plan.date) }}</template>
-                        </ConfiguredPlanList>
+                      </div>
+                      <div class="devotion-plan-preview" aria-label="所选日期最终灵修计划">
+                        <strong>{{ dailyPlanDate }} · 最终计划</strong>
+                        <template v-if="devotionPreview">
+                          <span>{{ effectiveDevotionMode === 'custom' ? '按日自定义' : '连续计划' }} · {{ devotionPreview.title }}</span>
+                          <span>{{ devotionPreviewFile }}</span>
+                          <span v-if="devotionPreview.pageRange">第 {{ devotionPreview.pageRange }} 页</span>
+                          <span v-else-if="devotionPreview.section">第 {{ devotionPreview.section }} 篇</span>
+                          <span v-else>按日期标题定位</span>
+                        </template>
+                        <span v-else>{{ devotion.enabled === false ? '灵修已关闭' : '当天没有生效的灵修计划' }}</span>
+                        <small>按当前配置预览，修改后需保存生效。</small>
                       </div>
                     </div>
                   </LearningConfigSection>
@@ -1112,6 +1142,7 @@ async function runLocalBackupImport() {
                     <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning || notificationSaving" @change="setLearningToggle(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
                     <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /><button class="secondary" type="button" :disabled="!canEditLearning || !versePlanDate || verseSaving" @click="addVerseDay">新增一天</button></div>
                     <div v-if="versePlanEnd !== versePlanDate" class="admin-field"><span class="admin-field-label">已有计划结束日期</span><DateField v-model="versePlanEnd" label="已有背经结束日期" :min="versePlanDate" /></div>
+                    <ConfiguredPlanList :key="currentGroupID" :plans="versePlans" :selected-date="versePlanDate" title="选择背经计划" :option-label="plan => dailyVerseTitle(plan.recite_text) || plan.verse_ref" @select="versePlanDate = $event" />
                     <p v-if="verseCompletionMode === 'weekly'" class="muted">此历史范围计划仍按整周一次完成，已有记录保留。</p>
                     <div v-for="(source, index) in verseSources" :key="index" class="verse-source-card">
                       <div class="verse-source-heading"><strong>{{ source.verse_ref }}</strong><button class="secondary" type="button" :disabled="!canEditLearning" :aria-label="`移除每日背经${source.verse_ref}`" @click="verseSources.splice(index, 1)"><Trash2 :size="18" /></button></div>
@@ -1121,9 +1152,6 @@ async function runLocalBackupImport() {
                       <button class="primary" :disabled="!canEditLearning || !verseText.trim() || verseSaving" type="button" @click="saveVersePlan">保存每日背经</button>
                       <button class="danger" :disabled="!canEditLearning || !versePlans.some(plan => plan.date === versePlanDate)" type="button" @click="deleteVersePlan">删除所选背经</button>
                     </div>
-                    <ConfiguredPlanList :key="currentGroupID" :plans="versePlans" :selected-date="versePlanDate" title="已配置背经" @select="versePlanDate = $event">
-                      <template #default="{ plan }">{{ dailyVerseTitle(plan.recite_text) || plan.verse_ref }}</template>
-                    </ConfiguredPlanList>
                   </div>
                   <div v-if="weekDraft" v-show="verseConfigMode === 'weekly'" class="form-stack admin-form-grid">
                     <label class="admin-field"><span class="admin-field-label">选择周</span><select aria-label="背经所在周" :value="weekDraft.id || 0" @change="selectWeekDraft(Number($event.target.value || 0))"><option v-for="week in weeks" :key="week.id" :value="week.id">{{ weekOptionText(week) }}</option><option v-if="!weekDraft.id" value="0">新建周任务</option></select></label>
@@ -1312,6 +1340,8 @@ async function runLocalBackupImport() {
 </template>
 
 <style scoped>
+.devotion-plan-preview { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: var(--cd-radius-card); overflow-wrap: anywhere; }
+.devotion-plan-preview small { color: var(--muted); }
 .admin-wrapper { min-width: 0; }
 .admin-tabs { margin-bottom: 24px; }
 .admin-wrapper .admin-tabs {

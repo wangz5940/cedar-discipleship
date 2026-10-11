@@ -76,7 +76,7 @@ function addDay() {
 <template>
   <LearningConfigSection title="个人每日书籍" :storage-key="`personal-settings:${scope}:books`" default-open>
     <form class="personal-books" @submit.prevent="save">
-      <p class="muted">仅供自己在当前小组学习，独立打卡，不计入小组统计和排行。</p>
+      <ConfiguredPlanList :key="scope" :plans="plans" :selected-date="date" title="选择个人书籍计划" :option-label="plan => `${plan.title}${plan.completed ? ' · 已完成' : ''}`" @select="date = $event" />
       <div class="personal-books__date">
         <label><span>计划日期</span><DateField v-model="date" label="个人书籍计划日期" /></label>
         <button class="secondary" type="button" :disabled="saving || !date" @click="addDay">新增一天</button>
@@ -96,9 +96,6 @@ function addDay() {
         <button class="primary" type="submit" :disabled="saving || !date">{{ saving ? '保存中' : '保存当天计划' }}</button>
         <button class="danger" type="button" :disabled="saving || !exists" @click="remove">删除当天计划</button>
       </div>
-      <ConfiguredPlanList :key="scope" :plans="plans" :selected-date="date" title="已配置日期" @select="date = $event">
-        <template #default="{ plan }">{{ plan.title }}{{ plan.completed ? ' · 已完成' : '' }}</template>
-      </ConfiguredPlanList>
     </form>
   </LearningConfigSection>
 </template>

@@ -2231,7 +2231,7 @@ function configuredAssetForURL(value) {
   }) || null;
 }
 
-function getDailyDevotionPlan(date = state.selectedDate) {
+export function getDailyDevotionPlan(date = state.selectedDate) {
   const daily = taskSectionsConfig().daily || {};
   const devotion = dailyDevotionConfig(date);
   if (daily.devotion?.enabled === false || devotion.enabled === false) return null;

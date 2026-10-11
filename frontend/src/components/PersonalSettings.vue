@@ -15,6 +15,7 @@ import PersonalDailyBooks from './PersonalDailyBooks.vue';
 
 const app = useAppStateStore();
 const { user, currentGroupID } = storeToRefs(app);
+const activeTab = ref('basic');
 const memberName = ref('');
 const mobileViewMode = ref('masonry');
 const saving = ref(false);
@@ -85,7 +86,11 @@ async function changePassword() {
 
 <template>
   <section class="personal-settings">
-    <form class="personal-settings__form" @submit.prevent="submit">
+    <div class="segmented-control" role="tablist" aria-label="个人设置分栏">
+      <button id="personal-basic-tab" role="tab" :aria-selected="activeTab === 'basic'" aria-controls="personal-basic-panel" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本设置</button>
+      <button id="personal-learning-tab" role="tab" :aria-selected="activeTab === 'learning'" aria-controls="personal-learning-panel" :class="{ active: activeTab === 'learning' }" @click="activeTab = 'learning'">个人学习管理</button>
+    </div>
+    <form v-show="activeTab === 'basic'" id="personal-basic-panel" role="tabpanel" aria-labelledby="personal-basic-tab" class="personal-settings__form" @submit.prevent="submit">
       <LearningConfigSection title="名称设置" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:name`" default-open>
         <div class="personal-settings__fields">
           <label>
@@ -150,7 +155,7 @@ async function changePassword() {
         {{ saving ? '保存中' : '保存设置' }}
       </button>
     </form>
-    <PersonalDailyBooks />
+    <div v-show="activeTab === 'learning'" id="personal-learning-panel" role="tabpanel" aria-labelledby="personal-learning-tab"><PersonalDailyBooks /></div>
   </section>
 </template>
 
