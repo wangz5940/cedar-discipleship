@@ -74,7 +74,7 @@ import {
   buildTaskCompletionMatrix,
   taskShortLabel,
 } from './runtime/checkins';
-import { normalizeMobileViewMode } from './runtime/personalSettings';
+import { normalizeMobileViewMode, personalBookErrorMessage } from './runtime/personalSettings';
 import { bindStudyAccount } from '../public/study-memory.js';
 import { loadStudyAccess } from '../public/study-access.js';
 import {
@@ -117,6 +117,7 @@ const state = shallowReactive({
   members: [],
   weeks: [],
   assets: [],
+  personalBooks: [],
   resourceLibrary: null,
   adminDataGroupID: 0,
   adminLoading: false,
@@ -194,6 +195,7 @@ function appSnapshot() {
     weekDraft: displayedWeekDraft.value,
     weeks: state.weeks,
     resourceLibrary: librarySections(),
+    personalBooks: state.personalBooks,
     calendar: state.calendar,
   };
 }
@@ -206,12 +208,16 @@ function checkinSnapshot() {
   if (!state.token || !state.user || !state.user.current_group_id || state.tab !== 'home') {
     return { visible: false };
   }
-  const tasks = currentTaskOptions();
+  const groupTasks = currentTaskOptions();
+  const personalTasks = personalBookTasks();
+  const tasks = [...groupTasks, ...personalTasks];
   const hubProgress = state.todayHub?.progress || {};
   const hubTaskCount = Array.isArray(state.todayHub?.tasks) ? state.todayHub.tasks.length : 0;
-  const useHubProgress = hubTaskCount === tasks.length;
-  const completed = useHubProgress && Number.isFinite(Number(hubProgress.completed)) ? Number(hubProgress.completed) : tasks.filter((task) => task.ownRecord).length;
-  const total = useHubProgress && Number.isFinite(Number(hubProgress.total)) ? Number(hubProgress.total) : tasks.length;
+  const useHubProgress = hubTaskCount === groupTasks.length;
+  const groupCompleted = useHubProgress && Number.isFinite(Number(hubProgress.completed)) ? Number(hubProgress.completed) : groupTasks.filter((task) => task.ownRecord).length;
+  const completed = groupCompleted + personalTasks.filter((task) => task.completed).length;
+  const groupTotal = useHubProgress && Number.isFinite(Number(hubProgress.total)) ? Number(hubProgress.total) : groupTasks.length;
+  const total = groupTotal + personalTasks.length;
   return {
     visible: true,
     selectedDate: state.selectedDate,
@@ -664,6 +670,7 @@ async function loadAll(options = {}) {
       state.homeStatsCheckedAt = 0;
       state.members = [];
       state.checkins = [];
+      state.personalBooks = [];
       state.weeks = [];
       state.assets = [];
       state.resourceLibrary = null;
@@ -691,7 +698,7 @@ async function loadAll(options = {}) {
     const rankingContext = statisticsContextKey();
     const loadRanking = state.tab === 'dashboard';
     const rankingID = loadRanking ? ++rankingRequestID : rankingRequestID;
-    const [checkins, weeks, assets, todayHub, taskCompletions, library, monthlyRanking] = await Promise.all([
+    const [checkins, weeks, assets, todayHub, taskCompletions, library, monthlyRanking, personalBooks] = await Promise.all([
       api(`/checkins?from=${checkinFrom}&to=${checkinTo}&page_size=1000`),
       api('/study-weeks'),
       api('/assets').catch(() => ({ assets: [] })),
@@ -701,8 +708,13 @@ async function loadAll(options = {}) {
       loadRanking
         ? api(`/dashboard/monthly-ranking?from=${state.statsFrom || 'all'}&to=${state.statsTo}`)
         : Promise.resolve(state.monthlyRanking),
+      api('/personal-books').catch((error) => {
+        if (isCurrent() && error.status !== 403) toast(personalBookErrorMessage(error));
+        return { plans: [] };
+      }),
     ]);
     if (!isCurrent()) return;
+    state.personalBooks = personalBooks.plans || [];
     state.bootstrap = bootstrap;
     state.learningConfig = bootstrap.learning_config || null;
     state.members = bootstrap.members || [];
@@ -779,6 +791,7 @@ export async function switchGroup(groupID) {
   state.dashboardCompletions = [];
   state.members = [];
   state.checkins = [];
+  state.personalBooks = [];
   state.weeks = [];
   state.assets = [];
   state.calendar = null;
@@ -921,6 +934,7 @@ export async function setSelectedDate(date) {
   state.bootstrap = null;
   state.todayHub = null;
   state.checkins = [];
+  state.personalBooks = [];
   state.dashboardCompletions = [];
   render();
   await loadAll();
@@ -1666,6 +1680,14 @@ export async function toggleCheckin(task, member) {
     toast('禁止打卡未来日期内容');
     return;
   }
+  if (task.type === 'personal_book') {
+    try {
+      await api(`/personal-books/${task.logicalDate}/completion`, { method: task.completed ? 'DELETE' : 'PUT' });
+      await loadAll();
+      toast(task.completed ? '已取消个人书籍完成记录' : '个人书籍已完成');
+    } catch (error) { toast(personalBookErrorMessage(error)); }
+    return;
+  }
   const logID = createLogID();
   const logicalDate = state.selectedDate;
   try {
@@ -1706,6 +1728,32 @@ export async function toggleCheckin(task, member) {
   } catch (error) {
     toast(error.message);
   }
+}
+
+export async function refreshPersonalBooks() {
+  const generation = sessionGeneration;
+  const groupID = state.user?.current_group_id;
+  const result = await api('/personal-books');
+  if (generation !== sessionGeneration || groupID !== state.user?.current_group_id) return;
+  state.personalBooks = result.plans || [];
+  render();
+}
+
+function personalBookTasks() {
+  return state.personalBooks.filter((plan) => plan.date === state.selectedDate).map((plan) => {
+    const link = {
+      label: plan.title, title: plan.title, url: plan.path, type: plan.type,
+      ...(plan.type === 'markdown' ? { section: String(plan.section), sectionTitle: plan.title, selectionMode: 'numbered' } : {}),
+      ...(plan.type === 'pdf' ? { pageRange: `${plan.page_start}-${plan.page_end}` } : {}),
+    };
+    return {
+      type: 'personal_book', title: plan.title, detail: plan.title, icon: '书籍',
+      summary: '个人每日书籍 · 不计入小组统计', logicalDate: plan.date,
+      contentURL: plan.path, contentLinks: [link], completed: plan.completed,
+      ownRecord: plan.completed ? { logical_date: plan.date } : null,
+      status: plan.completed ? 'done' : 'pending',
+    };
+  });
 }
 
 export function currentTaskOptions() {
@@ -2965,6 +3013,7 @@ export async function logout(options = {}) {
   state.resourceLibrary = null;
   state.token = '';
   state.user = null;
+  state.personalBooks = [];
   state.bootstrap = null;
   state.todayHub = null;
   state.monthlyRanking = null;

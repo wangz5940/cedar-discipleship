@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Columns2, Layers3, LockKeyhole, Save, UserRound } from '@lucide/vue';
+import { Columns2, Layers3, LockKeyhole, Save } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import {
   changeOwnPassword,
@@ -9,6 +9,9 @@ import {
   toast as showToast,
 } from '../legacy-app';
 import { normalizeMobileViewMode } from '../runtime/personalSettings';
+
+import LearningConfigSection from './ui/LearningConfigSection.vue';
+import PersonalDailyBooks from './PersonalDailyBooks.vue';
 
 const app = useAppStateStore();
 const { user, currentGroupID } = storeToRefs(app);
@@ -83,11 +86,7 @@ async function changePassword() {
 <template>
   <section class="personal-settings">
     <form class="personal-settings__form" @submit.prevent="submit">
-      <section class="panel personal-settings__section">
-        <header>
-          <UserRound :size="20" />
-          <h2>名称设置</h2>
-        </header>
+      <LearningConfigSection title="名称设置" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:name`" default-open>
         <div class="personal-settings__fields">
           <label>
             <span>本组名称</span>
@@ -98,13 +97,9 @@ async function changePassword() {
             <input :value="user?.username || ''" disabled />
           </label>
         </div>
-      </section>
+      </LearningConfigSection>
 
-      <section class="panel personal-settings__section">
-        <header>
-          <Columns2 :size="20" />
-          <h2>移动端卡片显示</h2>
-        </header>
+      <LearningConfigSection title="移动端卡片显示" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:layout`" default-open>
         <div class="personal-settings__layout-options" role="radiogroup" aria-label="移动端卡片显示方式">
           <button
             type="button"
@@ -127,14 +122,10 @@ async function changePassword() {
             <span>垂直堆叠卡片轮播</span>
           </button>
         </div>
-      </section>
+      </LearningConfigSection>
 
-      <section class="panel personal-settings__section" @keydown.enter.stop.prevent="changePassword">
-        <header>
-          <LockKeyhole :size="20" />
-          <h2>修改密码</h2>
-        </header>
-        <div class="personal-settings__password-fields">
+      <LearningConfigSection title="修改密码" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:password`" default-open>
+        <div class="personal-settings__password-fields" @keydown.enter.stop.prevent="changePassword">
           <label>
             <span>当前密码</span>
             <input v-model="currentPassword" type="password" autocomplete="current-password" />
@@ -152,22 +143,20 @@ async function changePassword() {
           <LockKeyhole :size="17" />
           {{ changingPassword ? '修改中' : '修改密码' }}
         </button>
-      </section>
+      </LearningConfigSection>
 
       <button class="primary personal-settings__save" type="submit" :disabled="saving">
         <Save :size="17" />
         {{ saving ? '保存中' : '保存设置' }}
       </button>
     </form>
+    <PersonalDailyBooks />
   </section>
 </template>
 
 <style scoped>
-.personal-settings { width: min(760px, 100%); margin: 0 auto; }
+.personal-settings { display: grid; gap: 16px; width: min(760px, 100%); margin: 0 auto; }
 .personal-settings__form { display: grid; gap: 16px; }
-.personal-settings__section { display: grid; gap: 18px; }
-.personal-settings__section > header { display: flex; align-items: center; gap: 10px; color: var(--cd-primary); }
-.personal-settings__section h2 { margin: 0; color: var(--cd-text); font-size: 18px; }
 .personal-settings__fields,
 .personal-settings__password-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .personal-settings__fields label,
@@ -188,7 +177,7 @@ async function changePassword() {
   background: var(--cd-primary-soft);
   color: var(--cd-primary);
 }
-.personal-settings__password-save { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
+.personal-settings__password-save { display: flex; margin: 18px 0 0 auto; align-items: center; gap: 7px; min-width: 132px; }
 .personal-settings__save { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
 @media (max-width: 600px) {
   .personal-settings__fields,

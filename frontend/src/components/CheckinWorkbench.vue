@@ -109,6 +109,7 @@ function taskTypeLabel(task) {
     case 'daily_devotion': return singleScriptureLink(task) ? '每日读经' : '每日灵修';
     case 'daily_scripture': return '每日读经';
     case 'weekly_book': return '本周书籍';
+    case 'personal_book': return '个人每日书籍';
     case 'weekly_video': return '本周任务';
     case 'daily_verse': return '每日背经';
     case 'weekly_verse': return '每周背经';
