@@ -27,6 +27,7 @@ export const useAppStateStore = defineStore('appState', {
     weeks: [],
     resourceLibrary: [],
     calendar: null,
+    personalBooks: [],
   }),
   actions: {
     setSnapshot(snapshot) {
@@ -55,6 +56,7 @@ export const useAppStateStore = defineStore('appState', {
         weeks: Array.isArray(snapshot?.weeks) ? snapshot.weeks : [],
         resourceLibrary: Array.isArray(snapshot?.resourceLibrary) ? snapshot.resourceLibrary : [],
         calendar: snapshot?.calendar || null,
+        personalBooks: Array.isArray(snapshot?.personalBooks) ? snapshot.personalBooks : [],
       });
     },
   },

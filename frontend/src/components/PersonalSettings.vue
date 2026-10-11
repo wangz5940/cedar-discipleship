@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Columns2, Layers3, LockKeyhole, Save, UserRound } from '@lucide/vue';
+import { Columns2, Layers3, LockKeyhole, Save } from '@lucide/vue';
 import { useAppStateStore } from '../stores/appState';
 import {
   changeOwnPassword,
@@ -10,8 +10,12 @@ import {
 } from '../legacy-app';
 import { normalizeMobileViewMode } from '../runtime/personalSettings';
 
+import LearningConfigSection from './ui/LearningConfigSection.vue';
+import PersonalDailyBooks from './PersonalDailyBooks.vue';
+
 const app = useAppStateStore();
 const { user, currentGroupID } = storeToRefs(app);
+const activeTab = ref('basic');
 const memberName = ref('');
 const mobileViewMode = ref('masonry');
 const saving = ref(false);
@@ -81,30 +85,26 @@ async function changePassword() {
 </script>
 
 <template>
-  <section class="personal-settings">
-    <form class="personal-settings__form" @submit.prevent="submit">
-      <section class="panel personal-settings__section">
-        <header>
-          <UserRound :size="20" />
-          <h2>名称设置</h2>
-        </header>
+  <section class="personal-settings settings-surface">
+    <div class="toolbar admin-tabs" role="tablist" aria-label="个人设置分栏">
+      <button id="personal-basic-tab" role="tab" :aria-selected="activeTab === 'basic'" aria-controls="personal-basic-panel" :class="activeTab === 'basic' ? 'primary' : 'quiet'" @click="activeTab = 'basic'">基本设置</button>
+      <button id="personal-learning-tab" role="tab" :aria-selected="activeTab === 'learning'" aria-controls="personal-learning-panel" :class="activeTab === 'learning' ? 'primary' : 'quiet'" @click="activeTab = 'learning'">个人学习管理</button>
+    </div>
+    <form v-show="activeTab === 'basic'" id="personal-basic-panel" role="tabpanel" aria-labelledby="personal-basic-tab" class="personal-settings__form" @submit.prevent="submit">
+      <LearningConfigSection title="名称设置" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:name`" default-open>
         <div class="personal-settings__fields">
           <label>
-            <span>本组名称</span>
+            <span class="admin-field-label">本组名称</span>
             <input v-model.trim="memberName" maxlength="128" autocomplete="name" required />
           </label>
           <label>
-            <span>登录账号</span>
+            <span class="admin-field-label">登录账号</span>
             <input :value="user?.username || ''" disabled />
           </label>
         </div>
-      </section>
+      </LearningConfigSection>
 
-      <section class="panel personal-settings__section">
-        <header>
-          <Columns2 :size="20" />
-          <h2>移动端卡片显示</h2>
-        </header>
+      <LearningConfigSection title="移动端卡片显示" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:layout`" default-open>
         <div class="personal-settings__layout-options" role="radiogroup" aria-label="移动端卡片显示方式">
           <button
             type="button"
@@ -127,24 +127,20 @@ async function changePassword() {
             <span>垂直堆叠卡片轮播</span>
           </button>
         </div>
-      </section>
+      </LearningConfigSection>
 
-      <section class="panel personal-settings__section" @keydown.enter.stop.prevent="changePassword">
-        <header>
-          <LockKeyhole :size="20" />
-          <h2>修改密码</h2>
-        </header>
-        <div class="personal-settings__password-fields">
+      <LearningConfigSection title="修改密码" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:password`" default-open>
+        <div class="personal-settings__password-fields" @keydown.enter.stop.prevent="changePassword">
           <label>
-            <span>当前密码</span>
+            <span class="admin-field-label">当前密码</span>
             <input v-model="currentPassword" type="password" autocomplete="current-password" />
           </label>
           <label>
-            <span>新密码</span>
+            <span class="admin-field-label">新密码</span>
             <input v-model="newPassword" type="password" autocomplete="new-password" minlength="8" />
           </label>
           <label>
-            <span>确认新密码</span>
+            <span class="admin-field-label">确认新密码</span>
             <input v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" />
           </label>
         </div>
@@ -152,26 +148,24 @@ async function changePassword() {
           <LockKeyhole :size="17" />
           {{ changingPassword ? '修改中' : '修改密码' }}
         </button>
-      </section>
+      </LearningConfigSection>
 
       <button class="primary personal-settings__save" type="submit" :disabled="saving">
         <Save :size="17" />
         {{ saving ? '保存中' : '保存设置' }}
       </button>
     </form>
+    <div v-show="activeTab === 'learning'" id="personal-learning-panel" role="tabpanel" aria-labelledby="personal-learning-tab"><PersonalDailyBooks /></div>
   </section>
 </template>
 
 <style scoped>
-.personal-settings { width: min(760px, 100%); margin: 0 auto; }
+.personal-settings { display: grid; gap: 16px; width: min(760px, 100%); margin: 0 auto; }
 .personal-settings__form { display: grid; gap: 16px; }
-.personal-settings__section { display: grid; gap: 18px; }
-.personal-settings__section > header { display: flex; align-items: center; gap: 10px; color: var(--cd-primary); }
-.personal-settings__section h2 { margin: 0; color: var(--cd-text); font-size: 18px; }
 .personal-settings__fields,
 .personal-settings__password-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .personal-settings__fields label,
-.personal-settings__password-fields label { display: grid; gap: 7px; color: var(--cd-muted); font-size: 13px; font-weight: 600; }
+.personal-settings__password-fields label { display: grid; gap: 8px; min-width: 0; }
 .personal-settings__layout-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .personal-settings__layout-options button {
   display: grid;
@@ -188,7 +182,7 @@ async function changePassword() {
   background: var(--cd-primary-soft);
   color: var(--cd-primary);
 }
-.personal-settings__password-save { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
+.personal-settings__password-save { display: flex; margin: 18px 0 0 auto; align-items: center; gap: 7px; min-width: 132px; }
 .personal-settings__save { display: inline-flex; justify-self: end; align-items: center; gap: 7px; min-width: 132px; }
 @media (max-width: 600px) {
   .personal-settings__fields,

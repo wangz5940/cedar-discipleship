@@ -5,6 +5,7 @@ import { ChevronDown } from '@lucide/vue';
 const props = defineProps({
   title: { type: String, required: true },
   storageKey: { type: String, required: true },
+  defaultOpen: { type: Boolean, default: false },
 });
 const accordion = inject('learningConfigAccordion', null);
 const localOpen = ref(false);
@@ -15,9 +16,10 @@ const contentID = useId();
 watch(() => props.storageKey, (key) => {
   if (accordion) return;
   try {
-    localOpen.value = localStorage.getItem(key) === 'open';
+    const saved = localStorage.getItem(key);
+    localOpen.value = saved === null ? props.defaultOpen : saved === 'open';
   } catch {
-    localOpen.value = false;
+    localOpen.value = props.defaultOpen;
   }
 }, { immediate: true });
 

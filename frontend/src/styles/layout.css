@@ -845,6 +845,7 @@ tr:last-child td {
 .resource-title { overflow-wrap: anywhere; line-height: 1.6; }
 .cd-resource-card .tile { align-self: start; }
 .admin-wrapper, .admin-grid, .admin-form-grid, .ministry-layout { min-width: 0; }
+.settings-surface :where(.card, .empty) { border-radius: var(--cd-radius-card); }
 .admin-tabs {
   width: min(100%, 960px);
   display: grid;
