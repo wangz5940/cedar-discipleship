@@ -78,19 +78,19 @@ function addDay() {
     <form class="personal-books" @submit.prevent="save">
       <ConfiguredPlanList :key="scope" :plans="plans" :selected-date="date" title="选择个人书籍计划" :option-label="plan => `${plan.title}${plan.completed ? ' · 已完成' : ''}`" @select="date = $event" />
       <div class="personal-books__date">
-        <label><span>计划日期</span><DateField v-model="date" label="个人书籍计划日期" /></label>
+        <label><span class="admin-field-label">计划日期</span><DateField v-model="date" label="个人书籍计划日期" /></label>
         <button class="secondary" type="button" :disabled="saving || !date" @click="addDay">新增一天</button>
       </div>
-      <label><span>当天文件</span><select :value="draft.path" required :disabled="saving" @change="selectFile">
+      <label><span class="admin-field-label">当天文件</span><select :value="draft.path" required :disabled="saving" @change="selectFile">
         <option value="">选择书籍文件</option>
         <option v-if="selectedMissing" :value="draft.path">当前已配置文件</option>
         <option v-for="file in files" :key="file.id" :value="filePath(file)">{{ file.title || file.original_name }}（{{ inferDailyDevotionContentType({}, file) === 'pdf' ? 'PDF' : 'Markdown' }}）</option>
       </select></label>
       <p v-if="!files.length" class="muted">暂无可选 PDF 或 Markdown 书籍，请先由管理员添加到资料库。</p>
-      <label v-if="draft.type === 'markdown'"><span>当天篇号</span><input v-model.number="draft.section" type="number" min="1" step="1" required :disabled="saving" /></label>
+      <label v-if="draft.type === 'markdown'"><span class="admin-field-label">当天篇号</span><input v-model.number="draft.section" type="number" min="1" step="1" required :disabled="saving" /></label>
       <div v-if="draft.type === 'pdf'" class="admin-page-range">
-        <label><span>开始页</span><input v-model.number="draft.page_start" type="number" min="1" step="1" required :disabled="saving" /></label>
-        <label><span>结束页</span><input v-model.number="draft.page_end" type="number" :min="draft.page_start || 1" step="1" required :disabled="saving" /></label>
+        <label><span class="admin-field-label">开始页</span><input v-model.number="draft.page_start" type="number" min="1" step="1" required :disabled="saving" /></label>
+        <label><span class="admin-field-label">结束页</span><input v-model.number="draft.page_end" type="number" :min="draft.page_start || 1" step="1" required :disabled="saving" /></label>
       </div>
       <div class="personal-books__actions">
         <button class="primary" type="submit" :disabled="saving || !date">{{ saving ? '保存中' : '保存当天计划' }}</button>
@@ -102,7 +102,7 @@ function addDay() {
 <style scoped>
 .personal-books { display: grid; gap: 14px; }
 .personal-books p { margin: 0; }
-.personal-books label { display: grid; min-width: 0; gap: 7px; }
+.personal-books label { display: grid; min-width: 0; gap: 8px; }
 .personal-books__date { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: end; }
 .personal-books__actions { display: flex; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 600px) {

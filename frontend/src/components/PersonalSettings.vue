@@ -85,20 +85,20 @@ async function changePassword() {
 </script>
 
 <template>
-  <section class="personal-settings">
-    <div class="segmented-control" role="tablist" aria-label="个人设置分栏">
-      <button id="personal-basic-tab" role="tab" :aria-selected="activeTab === 'basic'" aria-controls="personal-basic-panel" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本设置</button>
-      <button id="personal-learning-tab" role="tab" :aria-selected="activeTab === 'learning'" aria-controls="personal-learning-panel" :class="{ active: activeTab === 'learning' }" @click="activeTab = 'learning'">个人学习管理</button>
+  <section class="personal-settings settings-surface">
+    <div class="toolbar admin-tabs" role="tablist" aria-label="个人设置分栏">
+      <button id="personal-basic-tab" role="tab" :aria-selected="activeTab === 'basic'" aria-controls="personal-basic-panel" :class="activeTab === 'basic' ? 'primary' : 'quiet'" @click="activeTab = 'basic'">基本设置</button>
+      <button id="personal-learning-tab" role="tab" :aria-selected="activeTab === 'learning'" aria-controls="personal-learning-panel" :class="activeTab === 'learning' ? 'primary' : 'quiet'" @click="activeTab = 'learning'">个人学习管理</button>
     </div>
     <form v-show="activeTab === 'basic'" id="personal-basic-panel" role="tabpanel" aria-labelledby="personal-basic-tab" class="personal-settings__form" @submit.prevent="submit">
       <LearningConfigSection title="名称设置" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:name`" default-open>
         <div class="personal-settings__fields">
           <label>
-            <span>本组名称</span>
+            <span class="admin-field-label">本组名称</span>
             <input v-model.trim="memberName" maxlength="128" autocomplete="name" required />
           </label>
           <label>
-            <span>登录账号</span>
+            <span class="admin-field-label">登录账号</span>
             <input :value="user?.username || ''" disabled />
           </label>
         </div>
@@ -132,15 +132,15 @@ async function changePassword() {
       <LearningConfigSection title="修改密码" :storage-key="`personal-settings:${user?.id}:${currentGroupID}:password`" default-open>
         <div class="personal-settings__password-fields" @keydown.enter.stop.prevent="changePassword">
           <label>
-            <span>当前密码</span>
+            <span class="admin-field-label">当前密码</span>
             <input v-model="currentPassword" type="password" autocomplete="current-password" />
           </label>
           <label>
-            <span>新密码</span>
+            <span class="admin-field-label">新密码</span>
             <input v-model="newPassword" type="password" autocomplete="new-password" minlength="8" />
           </label>
           <label>
-            <span>确认新密码</span>
+            <span class="admin-field-label">确认新密码</span>
             <input v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" />
           </label>
         </div>
@@ -165,7 +165,7 @@ async function changePassword() {
 .personal-settings__fields,
 .personal-settings__password-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .personal-settings__fields label,
-.personal-settings__password-fields label { display: grid; gap: 7px; color: var(--cd-muted); font-size: 13px; font-weight: 600; }
+.personal-settings__password-fields label { display: grid; gap: 8px; min-width: 0; }
 .personal-settings__layout-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .personal-settings__layout-options button {
   display: grid;

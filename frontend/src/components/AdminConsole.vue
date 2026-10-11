@@ -333,11 +333,6 @@ async function deleteVersePlan() {
 const checkinNotifications = computed(() => settings.value.checkin_notifications || {});
 const devotionPlanMode = computed(() => dailyDevotionPlanMode(devotion.value));
 const configuredDailyPlans = computed(() => dailyDevotionPlans(devotion.value));
-const devotionPreview = computed(() => {
-  void devotion.value;
-  return getDailyDevotionPlan(dailyPlanDate.value);
-});
-const effectiveDevotionMode = computed(() => dailyDevotionPlanMode(resolveEffectiveSchedule(devotion.value, dailyPlanDate.value, ['numbered_start_date', 'start_date'])));
 const devotionHistoryOptions = computed(() => {
   const dates = new Set([dailyPlanDate.value, ...configuredDailyPlans.value.map(plan => plan.date)]);
   for (const config of [...(Array.isArray(devotion.value.schedule_history) ? devotion.value.schedule_history : []), devotion.value]) {
@@ -352,7 +347,6 @@ const devotionHistoryOptions = computed(() => {
     return { date, title: plan ? `${mode === 'custom' ? '按日自定义' : '连续计划'} · ${file} ${position}`.trim() : '当天没有生效的灵修计划' };
   });
 });
-const devotionPreviewFile = computed(() => resourceForURL(devotionPreview.value?.url)?.title || devotionPreview.value?.url || '未绑定资源');
 
 const selectedDailyPlan = computed(() => {
   const existing = dailyDevotionPlanForDate(
@@ -821,7 +815,7 @@ async function runLocalBackupImport() {
       <button class="primary" type="button" :disabled="verseSaving || !verseText.trim()" @click="saveAndAddVerseDay">{{ verseSaving ? '保存中…' : '保存并新增' }}</button>
     </template>
   </AppOverlay>
-  <div class="admin-wrapper">
+  <div class="admin-wrapper settings-surface">
     <!-- Secondary Nav Toolbar -->
     <div class="toolbar admin-tabs" role="tablist" aria-label="管理工作台功能" @keydown="navigateTabs">
       <button
@@ -1101,18 +1095,6 @@ async function runLocalBackupImport() {
                           <button class="danger" :disabled="!canEditLearning || !selectedDailyPlanExists" type="button" @click="deleteDailyPlan">删除当天计划</button>
                         </div>
                       </div>
-                      <div class="devotion-plan-preview" aria-label="所选日期最终灵修计划">
-                        <strong>{{ dailyPlanDate }} · 最终计划</strong>
-                        <template v-if="devotionPreview">
-                          <span>{{ effectiveDevotionMode === 'custom' ? '按日自定义' : '连续计划' }} · {{ devotionPreview.title }}</span>
-                          <span>{{ devotionPreviewFile }}</span>
-                          <span v-if="devotionPreview.pageRange">第 {{ devotionPreview.pageRange }} 页</span>
-                          <span v-else-if="devotionPreview.section">第 {{ devotionPreview.section }} 篇</span>
-                          <span v-else>按日期标题定位</span>
-                        </template>
-                        <span v-else>{{ devotion.enabled === false ? '灵修已关闭' : '当天没有生效的灵修计划' }}</span>
-                        <small>按当前配置预览，修改后需保存生效。</small>
-                      </div>
                     </div>
                   </LearningConfigSection>
                   <LearningConfigSection title="每日读经配置" :storage-key="learningSectionKey('scripture')">
@@ -1139,10 +1121,10 @@ async function runLocalBackupImport() {
                     <button :class="verseConfigMode === 'weekly' ? 'primary' : 'secondary'" :aria-pressed="verseConfigMode === 'weekly'" type="button" @click="verseConfigMode = 'weekly'">每周背经</button>
                   </div>
                   <div v-show="verseConfigMode === 'daily'" class="form-stack admin-form-grid">
-                    <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning || notificationSaving" @change="setLearningToggle(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
-                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /><button class="secondary" type="button" :disabled="!canEditLearning || !versePlanDate || verseSaving" @click="addVerseDay">新增一天</button></div>
-                    <div v-if="versePlanEnd !== versePlanDate" class="admin-field"><span class="admin-field-label">已有计划结束日期</span><DateField v-model="versePlanEnd" label="已有背经结束日期" :min="versePlanDate" /></div>
                     <ConfiguredPlanList :key="currentGroupID" :plans="versePlans" :selected-date="versePlanDate" title="选择背经计划" :option-label="plan => dailyVerseTitle(plan.recite_text) || plan.verse_ref" @select="versePlanDate = $event" />
+                    <div class="admin-field"><span class="admin-field-label">背经日期</span><DateField v-model="versePlanDate" label="背经日期" /><button class="secondary" type="button" :disabled="!canEditLearning || !versePlanDate || verseSaving" @click="addVerseDay">新增一天</button></div>
+                    <label class="admin-toggle learning-toggle-card"><input type="checkbox" :checked="dailyVerse.enabled === true" :disabled="!canEditLearning || notificationSaving" @change="setLearningToggle(['task_sections','daily','verse','enabled'], $event.target.checked)" /><span>显示每日背经</span></label>
+                    <div v-if="versePlanEnd !== versePlanDate" class="admin-field"><span class="admin-field-label">已有计划结束日期</span><DateField v-model="versePlanEnd" label="已有背经结束日期" :min="versePlanDate" /></div>
                     <p v-if="verseCompletionMode === 'weekly'" class="muted">此历史范围计划仍按整周一次完成，已有记录保留。</p>
                     <div v-for="(source, index) in verseSources" :key="index" class="verse-source-card">
                       <div class="verse-source-heading"><strong>{{ source.verse_ref }}</strong><button class="secondary" type="button" :disabled="!canEditLearning" :aria-label="`移除每日背经${source.verse_ref}`" @click="verseSources.splice(index, 1)"><Trash2 :size="18" /></button></div>
@@ -1340,8 +1322,6 @@ async function runLocalBackupImport() {
 </template>
 
 <style scoped>
-.devotion-plan-preview { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: var(--cd-radius-card); overflow-wrap: anywhere; }
-.devotion-plan-preview small { color: var(--muted); }
 .admin-wrapper { min-width: 0; }
 .admin-tabs { margin-bottom: 24px; }
 .admin-wrapper .admin-tabs {
