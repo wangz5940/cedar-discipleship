@@ -4,7 +4,7 @@ import { useAppStateStore } from '../stores/appState';
 import { api, refreshPersonalBooks, toast } from '../legacy-app';
 import { personalBookErrorMessage } from '../runtime/personalSettings';
 import { formatLocalDate } from '../runtime/date';
-import { inferDailyDevotionContentType } from '../runtime/content';
+import { applyPdfPageRangeToTitle, inferDailyDevotionContentType } from '../runtime/content';
 import LearningConfigSection from './ui/LearningConfigSection.vue';
 import DateField from './ui/DateField.vue';
 import ConfiguredPlanList from './ui/ConfiguredPlanList.vue';
@@ -34,7 +34,12 @@ function selectFile(event) {
 async function save() {
   if (saving.value) return;
   const plan = { ...draft.value, date: date.value };
-  if (!plan.title.trim() || !plan.path) { toast('请选择书籍并填写当天标题'); return; }
+  const file = files.value.find((item) => filePath(item) === plan.path);
+  if (!plan.path) { toast('请选择书籍文件'); return; }
+  const bookTitle = file?.title || file?.original_name || plan.title || '个人书籍';
+  plan.title = plan.type === 'pdf'
+    ? applyPdfPageRangeToTitle(bookTitle, plan.page_start, plan.page_end)
+    : `${bookTitle} 第${plan.section}篇`;
   saving.value = true;
   const originalScope = scope.value;
   try {
@@ -82,9 +87,8 @@ function addDay() {
         <option v-for="file in files" :key="file.id" :value="filePath(file)">{{ file.title || file.original_name }}（{{ inferDailyDevotionContentType({}, file) === 'pdf' ? 'PDF' : 'Markdown' }}）</option>
       </select></label>
       <p v-if="!files.length" class="muted">暂无可选 PDF 或 Markdown 书籍，请先由管理员添加到资料库。</p>
-      <label><span>当天标题</span><input v-model="draft.title" required maxlength="255" :disabled="saving" /></label>
       <label v-if="draft.type === 'markdown'"><span>当天篇号</span><input v-model.number="draft.section" type="number" min="1" step="1" required :disabled="saving" /></label>
-      <div v-if="draft.type === 'pdf'" class="personal-books__pages">
+      <div v-if="draft.type === 'pdf'" class="admin-page-range">
         <label><span>开始页</span><input v-model.number="draft.page_start" type="number" min="1" step="1" required :disabled="saving" /></label>
         <label><span>结束页</span><input v-model.number="draft.page_end" type="number" :min="draft.page_start || 1" step="1" required :disabled="saving" /></label>
       </div>
@@ -102,10 +106,10 @@ function addDay() {
 .personal-books { display: grid; gap: 14px; }
 .personal-books p { margin: 0; }
 .personal-books label { display: grid; min-width: 0; gap: 7px; }
-.personal-books__date, .personal-books__pages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: end; }
+.personal-books__date { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: end; }
 .personal-books__actions { display: flex; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 600px) {
-  .personal-books__date, .personal-books__pages { grid-template-columns: 1fr; }
+  .personal-books__date { grid-template-columns: 1fr; }
   .personal-books__actions button { flex: 1; min-height: 48px; }
 }
 </style>

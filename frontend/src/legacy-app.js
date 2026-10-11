@@ -2806,7 +2806,7 @@ export async function saveWeekDraft() {
   const payload = {
     start_date: draft.start,
     end_date: draft.end,
-    title: String(draft.title || '').trim(),
+    title: '',
     verse_ref: draft.verse_ref,
     recite_text: draft.recite_text,
     book_enabled: enabledFlag(draft.book_enabled),
