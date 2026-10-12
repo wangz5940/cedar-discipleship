@@ -340,7 +340,15 @@ func (s *Service) AdminList(ctx context.Context, status Status, source Source, l
 	result := make([]AdminView, 0, len(items))
 	for _, item := range items {
 		view := toAdminView(item)
-		view.Diagnostics = nil
+		summary := make(map[string]string)
+		if item.Source == SourceAutomatic {
+			for _, key := range []string{"error_name", "error_code", "error_message"} {
+				if value := view.Diagnostics[key]; value != "" {
+					summary[key] = value
+				}
+			}
+		}
+		view.Diagnostics = summary
 		result = append(result, view)
 	}
 	return result, nil

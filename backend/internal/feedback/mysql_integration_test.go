@@ -51,7 +51,7 @@ func TestSystemFeedbackStoresNullAuthorAndRemainsAdminOnly(t *testing.T) {
 	}
 }
 
-func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
+func TestMySQLRepositoryScopesFeedbackAndPreservesClosedDiagnostics(t *testing.T) {
 	db := testdb.Open(t)
 	testdb.Apply(t, db, "018_feedback_workflow.sql")
 	testdb.Exec(t, db, `INSERT INTO study_groups(id,code,name,created_at,updated_at)
@@ -105,7 +105,10 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 
 	automaticCreated, err := service.CreateAutomatic(t.Context(), CreateInput{
 		UserID: 11, GroupID: 1, Message: "自动反馈",
-		Diagnostics: map[string]string{"error_code": "network_request_failed"},
+		Diagnostics: map[string]string{
+			"error_code": "network_request_failed", "error_name": "TypeError",
+			"error_message": "load failed", "error_stack": "original stack", "page": "home",
+		},
 	}, time.Now())
 	if err != nil || automaticCreated.Feedback == nil {
 		t.Fatalf("automatic create=%+v err=%v", automaticCreated, err)
@@ -136,6 +139,16 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 	if err != nil || len(adminItems) != 3 {
 		t.Fatalf("admin items = %#v, err = %v", adminItems, err)
 	}
+	for _, item := range adminItems {
+		if item.ID == automaticCreated.Feedback.ID {
+			if len(item.Diagnostics) != 3 || item.Diagnostics["error_code"] != "network_request_failed" ||
+				item.Diagnostics["error_name"] != "TypeError" || item.Diagnostics["error_message"] != "load failed" {
+				t.Fatalf("automatic list summary = %#v", item.Diagnostics)
+			}
+		} else if len(item.Diagnostics) != 0 {
+			t.Fatalf("manual list exposed diagnostics = %#v", item.Diagnostics)
+		}
+	}
 	adminManual, err := service.AdminList(t.Context(), "", SourceManual, 100)
 	if err != nil || len(adminManual) != 2 {
 		t.Fatalf("admin manual items = %#v, err = %v", adminManual, err)
@@ -157,8 +170,17 @@ func TestMySQLRepositoryScopesFeedbackAndClearsClosedDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(adminDetail.Diagnostics) != 0 {
+	if adminDetail.Diagnostics["page"] != "home" || adminDetail.Status != StatusClosed ||
+		adminDetail.LogID != "0123456789abcdef0123456789abcdef" ||
+		len(adminDetail.Replies) != 1 || adminDetail.Replies[0].Message != "已收到" {
 		t.Fatalf("closed diagnostics = %#v", adminDetail)
+	}
+	ownerDetail, err := service.OwnDetail(t.Context(), 11, created.ID)
+	if err != nil || ownerDetail.Status != StatusClosed || len(ownerDetail.Replies) != 1 {
+		t.Fatalf("closed owner detail = %#v, err = %v", ownerDetail, err)
+	}
+	if _, err := service.OwnDetail(t.Context(), 12, created.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("closed feedback exposed to another user: %v", err)
 	}
 }
 

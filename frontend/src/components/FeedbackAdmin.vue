@@ -13,6 +13,7 @@ import {
 import { api, fetchWithAuth, toast } from '../legacy-app';
 import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
+import FeedbackStatus from './ui/FeedbackStatus.vue';
 import { createLogID } from '../runtime/logID';
 
 const unread = useFeedbackUnreadStore();
@@ -76,15 +77,37 @@ const technicalDiagnostics = computed(() => Object.fromEntries(
   Object.entries(selected.value?.diagnostics || {})
     .filter(([key]) => !semanticDiagnosticKeys.has(key)),
 ));
+const selectedError = computed(() => {
+  const item = selected.value || {};
+  const d = item.diagnostics || {};
+  const correlated = d.error_log_id_source === 'request' || d.environment === 'server';
+  return {
+    summary: errorSummary(item),
+    version: d.app_version || '未记录',
+    location: [d.page_title || d.page, d.business_action || d.action_context].filter(Boolean).join(' · '),
+    request: [d.request_method, d.request_path, d.http_status && `HTTP ${d.http_status}`].filter(Boolean).join(' '),
+    logID: correlated ? item.log_id || d.response_log_id || '未记录' : '未关联失败请求',
+    evidence: !Object.keys(d).length
+      ? '诊断快照缺失，无法从本条记录定位原始错误。'
+      : d.error_message === 'Script error.' && !d.error_stack && !d.script_url
+        ? '浏览器未提供原始堆栈和脚本位置，当前证据不足以定位错误。'
+        : '',
+  };
+});
 
-function statusLabel(status) {
-  return statuses.find(([value]) => value === status)?.[1] || status;
+function errorSummary(item) {
+  const diagnostics = item.diagnostics || {};
+  return [...new Set([
+    diagnostics.error_name, diagnostics.error_code, diagnostics.error_message,
+  ].filter(Boolean))].join(' · ');
 }
 
 function diagnosticLabel(key) {
   return {
     app_version: '应用版本',
     page: '页面',
+    page_origin: '站点来源',
+    environment: '运行环境',
     action_context: '操作位置',
     recent_log_id: '最近 Log ID',
     error_log_id_source: '错误关联来源',
@@ -391,11 +414,12 @@ onBeforeUnmount(closeItem);
               <span class="feedback-admin__list-main">
                 <strong>#{{ item.id }} · {{ item.member_name || item.display_name || item.legacy_name || item.username || '历史用户' }}<UnreadDot v-if="unread.adminIDs.includes(item.id)" /></strong>
                 <span>{{ item.message }}</span>
+                <span v-if="item.source === 'automatic' && errorSummary(item)" class="feedback-admin__error-preview">{{ errorSummary(item) }}</span>
                 <small class="muted">
                   {{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ item.group_name ? `${item.group_name} · ` : '' }}{{ formatDate(item.updated_at) }}
                 </small>
               </span>
-              <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
+              <FeedbackStatus :status="item.status" />
               <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
             </button>
 
@@ -417,6 +441,18 @@ onBeforeUnmount(closeItem);
                 </header>
 
                 <p class="feedback-admin__message">{{ selected.message }}</p>
+                <section v-if="selected.source === 'automatic'" class="feedback-admin__error" aria-label="关键错误">
+                  <h3>关键错误</h3>
+                  <p class="feedback-admin__error-summary">{{ selectedError.summary || '未记录原始错误' }}</p>
+                  <p v-if="selectedError.evidence" class="muted">{{ selectedError.evidence }}</p>
+                  <dl>
+                    <dt>发生位置</dt><dd>{{ selectedError.location || '未记录' }}</dd>
+                    <dt>应用版本</dt><dd>{{ selectedError.version }}</dd>
+                    <template v-if="selectedError.request"><dt>失败请求</dt><dd>{{ selectedError.request }}</dd></template>
+                    <dt>错误 Log ID</dt><dd class="feedback-admin__log-id">{{ selectedError.logID }}</dd>
+                    <template v-if="selected.diagnostics?.recent_log_id && selectedError.logID === '未关联失败请求'"><dt>最近请求参考</dt><dd class="feedback-admin__log-id">{{ selected.diagnostics.recent_log_id }}（不代表错误关联）</dd></template>
+                  </dl>
+                </section>
                 <section v-if="selected.source === 'automatic'" class="feedback-admin__context" aria-label="自动反馈业务概览">
                   <h3>业务概览</h3>
                   <dl>
@@ -450,12 +486,12 @@ onBeforeUnmount(closeItem);
                     </button>
                   </header>
                   <dl>
-                    <dt>Log ID</dt><dd class="feedback-admin__log-id">{{ selected.log_id || '未记录' }}</dd>
+                    <dt>{{ selected.source === 'automatic' && selectedError.logID === '未关联失败请求' ? '反馈 Log ID' : 'Log ID' }}</dt><dd class="feedback-admin__log-id">{{ selected.log_id || '未记录' }}</dd>
                     <dt>账号</dt><dd>{{ selected.username || '历史记录未绑定账号' }}<template v-if="selected.user_id"> (#{{ selected.user_id }})</template></dd>
                     <dt>小组</dt><dd>{{ selected.group_name || '无' }}<template v-if="selected.group_id"> (#{{ selected.group_id }})</template></dd>
                     <template v-if="Object.keys(technicalDiagnostics).length">
                       <template v-for="(value, key) in technicalDiagnostics" :key="key">
-                        <dt>{{ diagnosticLabel(key) }}</dt><dd>{{ value }}</dd>
+                        <dt>{{ diagnosticLabel(key) }}</dt><dd :class="{ 'feedback-admin__stack': key === 'error_stack' }">{{ value }}</dd>
                       </template>
                     </template>
                     <template v-else>
@@ -512,10 +548,17 @@ onBeforeUnmount(closeItem);
 .feedback-admin__list > button svg.expanded { transform: rotate(90deg); }
 .feedback-admin__list-main { display: grid; min-width: 0; gap: 3px; }
 .feedback-admin__list-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feedback-admin__list-main .feedback-admin__error-preview { white-space: normal; overflow-wrap: anywhere; color: var(--cd-danger); font-size: 13px; }
 .feedback-admin__detail { min-width: 0; margin: -1px 0 14px; border-top: 2px solid var(--cd-primary); }
 .feedback-admin__detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .feedback-admin__detail-head h3, .feedback-admin__detail-head p { margin: 0; }
 .feedback-admin__message { margin: 18px 0; white-space: pre-wrap; line-height: 1.7; }
+.feedback-admin__error { margin: 18px 0; padding: 14px 0; border-top: 1px solid var(--cd-border); border-bottom: 1px solid var(--cd-border); }
+.feedback-admin__error h3 { margin: 0; font-size: 16px; }
+.feedback-admin__error-summary { color: var(--cd-danger); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 600; }
+.feedback-admin__error dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 7px 12px; margin-bottom: 0; }
+.feedback-admin__error dt { color: var(--cd-muted); }
+.feedback-admin__error dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .feedback-admin__context { margin: 18px 0; padding: 14px 0; border-top: 1px solid var(--cd-border); border-bottom: 1px solid var(--cd-border); }
 .feedback-admin__context h3 { margin: 0 0 10px; font-size: 16px; }
 .feedback-admin__context dl { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 6px 12px; margin: 0; }
@@ -531,6 +574,7 @@ onBeforeUnmount(closeItem);
 .feedback-admin__metadata dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 7px 12px; }
 .feedback-admin__metadata dt { color: var(--cd-muted); }
 .feedback-admin__metadata dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.feedback-admin__stack { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.6; }
 .feedback-admin__log-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .feedback-admin__replies article { padding: 12px 0; border-bottom: 1px solid var(--cd-border); }
 .feedback-admin__replies article > div { display: flex; justify-content: space-between; gap: 12px; }
@@ -538,16 +582,13 @@ onBeforeUnmount(closeItem);
 .feedback-admin__reply label { display: grid; gap: 8px; }
 .feedback-admin__reply label > span { display: flex; align-items: center; gap: 7px; font-weight: 650; }
 .feedback-admin__reply button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; }
-.status-pending { color: var(--cd-warning); }
-.status-processing, .status-needs_info { color: var(--cd-primary); }
-.status-resolved { color: var(--cd-success); }
 @media (max-width: 600px) {
   .feedback-admin__title { align-items: stretch; flex-direction: column; }
   .feedback-admin__title .inline { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
   .feedback-admin__automation { align-items: flex-start; flex-direction: column; gap: 8px; }
-  .feedback-admin__metadata dl { grid-template-columns: 1fr; gap: 3px; }
+  .feedback-admin__metadata dl, .feedback-admin__error dl { grid-template-columns: 1fr; gap: 3px; }
   .feedback-admin__context dl { grid-template-columns: 64px minmax(0, 1fr); }
-  .feedback-admin__metadata dd { margin-bottom: 7px; }
+  .feedback-admin__metadata dd, .feedback-admin__error dd { margin-bottom: 7px; }
   .feedback-admin__reply button { width: 100%; min-height: 48px; }
 }
 </style>

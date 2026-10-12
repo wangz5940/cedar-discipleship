@@ -13,6 +13,7 @@ import { api, fetchWithAuth, toast } from '../legacy-app';
 import { collectFeedbackDiagnostics } from '../runtime/feedbackDiagnostics';
 import { useFeedbackUnreadStore } from '../stores/feedbackUnread';
 import UnreadDot from './ui/UnreadDot.vue';
+import FeedbackStatus from './ui/FeedbackStatus.vue';
 import { createLogID } from '../runtime/logID';
 
 const unread = useFeedbackUnreadStore();
@@ -58,18 +59,6 @@ const diagnosticRows = computed(() => {
     .filter(([, value]) => value)
     .map(([key, value]) => ({ key, label: labels[key] || key, value }));
 });
-
-const statusLabels = {
-  pending: '待处理',
-  processing: '处理中',
-  needs_info: '待补充',
-  resolved: '已解决',
-  closed: '已关闭',
-};
-
-function statusLabel(status) {
-  return statusLabels[status] || status;
-}
 
 function formatDate(value) {
   if (!value) return '';
@@ -278,7 +267,7 @@ onBeforeUnmount(releaseObjectURLs);
 
         <details class="feedback-privacy">
           <summary><ShieldCheck :size="16" /> 查看收集内容与隐私说明</summary>
-          <p>提交反馈时会自动附带以下诊断信息，仅超级管理员可见；不包含密码、令牌、Cookie、表单内容或位置。反馈关闭时会删除诊断快照。</p>
+          <p>提交反馈时会自动附带以下诊断信息，仅超级管理员可见；不包含密码、令牌、Cookie、表单内容或位置。反馈关闭后保留诊断快照，供后续排查。</p>
           <dl v-if="diagnosticRows.length">
             <template v-for="row in diagnosticRows" :key="row.key">
               <dt>{{ row.label }}</dt>
@@ -324,7 +313,7 @@ onBeforeUnmount(releaseObjectURLs);
                 <span class="feedback-list__title"><strong>#{{ item.id }} · {{ item.message }}</strong><UnreadDot v-if="unread.ownIDs.includes(item.id)" /></span>
                 <small class="muted">{{ item.source === 'automatic' ? '自动上报' : '用户上报' }} · {{ formatDate(item.updated_at) }}</small>
               </span>
-              <span class="pill" :class="`status-${item.status}`">{{ statusLabel(item.status) }}</span>
+              <FeedbackStatus :status="item.status" />
               <ChevronRight :size="17" :class="{ expanded: openingID === item.id }" />
             </button>
             <section v-if="openingID === item.id" class="panel feedback-detail">
@@ -333,7 +322,7 @@ onBeforeUnmount(releaseObjectURLs);
                 <header class="feedback-detail__head">
                   <div>
                     <span class="pill">{{ selected.source === 'automatic' ? '自动上报' : '用户上报' }}</span>
-                    <span class="pill" :class="`status-${selected.status}`">{{ statusLabel(selected.status) }}</span>
+                    <FeedbackStatus :status="selected.status" />
                     <small class="muted">{{ formatDate(selected.created_at) }}</small>
                   </div>
                 </header>
@@ -399,9 +388,6 @@ onBeforeUnmount(releaseObjectURLs);
 .feedback-replies { display: grid; gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--cd-border); }
 .feedback-reply > div { display: flex; justify-content: space-between; gap: 12px; }
 .feedback-reply p { margin: 6px 0 0; white-space: pre-wrap; }
-.status-pending { color: var(--cd-warning); }
-.status-processing, .status-needs_info { color: var(--cd-primary); }
-.status-resolved { color: var(--cd-success); }
 @media (max-width: 820px) {
   .feedback-center__layout { grid-template-columns: 1fr; }
 }
