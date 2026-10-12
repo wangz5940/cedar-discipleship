@@ -178,6 +178,10 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		writeError(w, http.StatusNotFound, "week_not_found")
 		return
 	}
+	if errors.Is(err, learningdomain.ErrWeekAlreadyExists) {
+		writeError(w, http.StatusConflict, "week_already_exists")
+		return
+	}
 	if errors.Is(err, learningdomain.ErrWeekHasCheckins) {
 		writeError(w, http.StatusConflict, "week_has_checkins")
 		return

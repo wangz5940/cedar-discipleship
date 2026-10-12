@@ -351,6 +351,39 @@ it('shows only the first and last book chapters for a cross-book local reader', 
   expect(viewer.html).toContain('<h2>启示录 二十二章</h2>');
 });
 
+it.each(['combined', 'separate'])('opens and completes multi-chapter scripture without Array.at in %s mode', async (mode) => {
+  const original = Object.getOwnPropertyDescriptor(Array.prototype, 'at');
+  try {
+    Object.defineProperty(Array.prototype, 'at', { value: undefined, configurable: true });
+    vi.spyOn(verseSource, 'loadBibleBook').mockImplementation(async id => JSON.parse(readFileSync(new URL(`../public/bible/cuv/${id}.json`, import.meta.url), 'utf8')));
+    checkinMode = mode;
+    const task = await configureScripture('创世记', '1', 50, {
+      chapters_per_day: 2,
+      books: [
+        { book: '创世记', book_id: '1', chapters: 50 },
+        { book: '出埃及记', book_id: '2', chapters: 40 },
+      ],
+    });
+    const reading = task.contentLinks.find(link => link.taskType === 'daily_scripture');
+    expect(reading).toMatchObject({ title: '创世记五十章 至 出埃及记一章', url: '/bible/cuv/1.json' });
+    expect(reading.localBible.chapters.map(plan => [plan.bookId, plan.chapter])).toEqual([['1', 50], ['2', 1]]);
+    const before = currentTaskOptions();
+    await openTaskContent(task, reading);
+    expect(useContentViewerStore().viewer.html).toContain('<h2>创世记 五十章</h2>');
+    expect(useContentViewerStore().viewer.html).toContain('<h2>出埃及记 一章</h2>');
+    expect(currentTaskOptions()).toEqual(before);
+    await toggleCheckin(task);
+    expect(currentTaskOptions().find(item => item.type === task.type).completed).toBe(true);
+    expect(currentTaskOptions().find(item => item.type === 'weekly_verse').completed).toBe(true);
+    await toggleCheckin(currentTaskOptions().find(item => item.type === task.type));
+    expect(currentTaskOptions().find(item => item.type === task.type).completed).toBe(false);
+    const sameBook = await configureScripture('路加福音', '42', 22, { chapters_per_day: 3 });
+    expect(sameBook.contentLinks.find(link => link.taskType === 'daily_scripture').title).toBe('路加福音 二十二至二十四章');
+  } finally {
+    Object.defineProperty(Array.prototype, 'at', original);
+  }
+});
+
 it('opens the next cycle from Genesis and never opens an external fallback for a missing local file', async () => {
   vi.spyOn(verseSource, 'loadBibleBook').mockImplementation(async id => JSON.parse(readFileSync(new URL(`../public/bible/cuv/${id}.json`, import.meta.url), 'utf8')));
   await configureScripture('启示录', '66', 22);

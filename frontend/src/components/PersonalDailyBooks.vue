@@ -7,6 +7,7 @@ import { formatLocalDate } from '../runtime/date';
 import { applyPdfPageRangeToTitle, inferDailyDevotionContentType } from '../runtime/content';
 import LearningConfigSection from './ui/LearningConfigSection.vue';
 import DateField from './ui/DateField.vue';
+import { confirmDialog } from '../ui/dialog';
 import ConfiguredPlanList from './ui/ConfiguredPlanList.vue';
 const app = useAppStateStore();
 const date = ref(formatLocalDate(new Date()));
@@ -18,7 +19,8 @@ const files = computed(() => app.resources.filter((item) => item.id && ['pdf', '
 const draft = computed(() => {
   if (!drafts[date.value]) {
     const saved = plans.value.find((plan) => plan.date === date.value);
-    const previous = plans.value.filter((plan) => plan.date < date.value).at(-1);
+    const previousPlans = plans.value.filter((plan) => plan.date < date.value);
+    const previous = previousPlans[previousPlans.length - 1];
     drafts[date.value] = saved ? { ...saved } : { date: date.value, title: '', path: previous?.path || '', type: previous?.type || 'markdown', section: 1, page_start: 1, page_end: 1 };
   }
   return drafts[date.value];
@@ -51,10 +53,17 @@ async function save() {
   finally { saving.value = false; }
 }
 async function remove() {
-  if (saving.value || !window.confirm('删除当天个人书籍计划？已完成记录仍会保留。')) return;
-  saving.value = true;
+  if (saving.value) return;
   const selectedDate = date.value;
   const originalScope = scope.value;
+  const confirmed = await confirmDialog({
+    title: '删除个人书籍计划',
+    message: '删除当天个人书籍计划？已完成记录仍会保留。',
+    tone: 'danger',
+    confirmLabel: '确认删除',
+  });
+  if (!confirmed || saving.value || originalScope !== scope.value || selectedDate !== date.value) return;
+  saving.value = true;
   try {
     await api(`/personal-books/${selectedDate}`, { method: 'DELETE' });
     if (originalScope !== scope.value) return;

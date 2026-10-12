@@ -34,6 +34,7 @@ async function submit() {
   saving.value = true;
   try {
     const settings = await savePersonalSettings(memberName.value, mobileViewMode.value);
+    if (!settings) return;
     memberName.value = settings.member_name;
     mobileViewMode.value = normalizeMobileViewMode(settings.mobile_view_mode);
     showToast('个人设置已保存');

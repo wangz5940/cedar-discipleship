@@ -18,9 +18,10 @@ import (
 )
 
 var (
-	ErrInvalidVerseMode = errors.New("invalid_verse_mode")
-	ErrWeekNotFound     = errors.New("week_not_found")
-	ErrWeekHasCheckins  = errors.New("week_has_checkins")
+	ErrInvalidVerseMode  = errors.New("invalid_verse_mode")
+	ErrWeekNotFound      = errors.New("week_not_found")
+	ErrWeekHasCheckins   = errors.New("week_has_checkins")
+	ErrWeekAlreadyExists = errors.New("week_already_exists")
 )
 
 var taskBindingPageRangePattern = regexp.MustCompile(`([0-9]{1,4})\s*(?:[-~—–至到]\s*([0-9]{1,4}))?\s*页`)

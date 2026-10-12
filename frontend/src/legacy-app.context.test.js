@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, setStatsMonth, resetStatsRangeToHistory, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI } from './legacy-app';
+import { saveWeekDraft, updateWeekDraftField, login, logout, selectWeekDraft, setSelectedDate, setStatsDateRange, setStatsMonth, resetStatsRangeToHistory, setTab, switchGroup, toast, toggleCheckin, updateLearningValue, updateWeekBinding, studyAccountAPI, savePersonalSettings } from './legacy-app';
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useAppStateStore } from './stores/appState';
 import { useDashboardStore } from './stores/dashboard';
@@ -114,6 +114,49 @@ describe('main data context', () => {
     await old;
     expect(useAppStateStore().currentGroupID).toBe(2);
     expect(useCheckinWorkbenchStore().title).toBe('2:2026-08-03');
+  });
+
+  it.each(['switch-group', 'new-session', 'logout'])('ignores a personal settings response after %s', async (transition) => {
+    await login('member', 'password');
+    const request = fetch.getMockImplementation();
+    let finishSave;
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (url === '/api/personal-settings') return new Promise(resolve => { finishSave = resolve; });
+      return request(url, options);
+    }));
+    const pending = savePersonalSettings('旧小组名称', 'stacked');
+    if (transition === 'switch-group') {
+      groupID = 2;
+      await switchGroup(2);
+    } else {
+      await logout({ remote: false });
+      if (transition === 'new-session') await login('member', 'password');
+    }
+    const app = useAppStateStore();
+    const user = app.user;
+    const members = app.members;
+    finishSave(Response.json({ settings: { member_name: '旧小组名称', mobile_view_mode: 'stacked' } }));
+    const result = await pending;
+    expect(app.user).toBe(user);
+    expect(app.members).toBe(members);
+    expect(result).toBeNull();
+  });
+
+  it('applies personal settings to the current user and their member entry in the same context', async () => {
+    await login('member', 'password');
+    const request = fetch.getMockImplementation();
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (url === '/api/personal-settings') {
+        expect(options.method).toBe('PUT');
+        expect(JSON.parse(options.body)).toEqual({ member_name: '本组新名字', mobile_view_mode: 'stacked' });
+        return Response.json({ settings: { member_name: '本组新名字', mobile_view_mode: 'stacked' } });
+      }
+      return request(url, options);
+    }));
+    expect(await savePersonalSettings('本组新名字', 'stacked')).toEqual({ member_name: '本组新名字', mobile_view_mode: 'stacked' });
+    const app = useAppStateStore();
+    expect(app.user).toMatchObject({ member_name: '本组新名字', mobile_view_mode: 'stacked' });
+    expect(app.members[0]).toMatchObject({ user_id: 1, member_name: '本组新名字' });
   });
 
   it('refreshes and retries the latest switch after a session version conflict', async () => {
@@ -324,4 +367,33 @@ describe('main data context', () => {
       ? 'checkin_save_failed' : action === 'cancel' ? '已取消完成记录' : '学习已完成');
     if (status === 200) expect(title).not.toHaveBeenCalled();
   });
+  it('preserves a new weekly draft and explains a duplicate-date conflict', async () => {
+    await login('member', 'password');
+    selectWeekDraft(0);
+    updateWeekDraftField('start', '2026-10-12');
+    const before = JSON.parse(JSON.stringify(useAppStateStore().weekDraft));
+    const original = fetch.getMockImplementation();
+    vi.stubGlobal('fetch', vi.fn((url, options) => url === '/api/admin/study-weeks'
+      ? Promise.resolve(Response.json({ error: 'week_already_exists' }, { status: 409 }))
+      : original(url, options)));
+    await saveWeekDraft();
+    expect(useAppStateStore().toast).toContain('该日期范围已有周任务');
+    expect(useAppStateStore().weekDraft).toEqual(before);
+  });
+
+  it('submits a weekly save only once and ignores its result after switching groups', async () => {
+    await login('member', 'password');
+    selectWeekDraft(0); updateWeekDraftField('start', '2026-10-12');
+    const original = fetch.getMockImplementation(); let finish;
+    vi.stubGlobal('fetch', vi.fn((url, options) => url === '/api/admin/study-weeks'
+      ? new Promise(resolve => { finish = resolve; }) : original(url, options)));
+    const first = saveWeekDraft(); await saveWeekDraft();
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/admin/study-weeks')).toHaveLength(1);
+    groupID = 2; await switchGroup(2);
+    const nextDraft = JSON.parse(JSON.stringify(useAppStateStore().weekDraft));
+    finish(Response.json({ id: 88 })); await first;
+    expect(useAppStateStore().weekDraft).toEqual(nextDraft);
+    expect(useAppStateStore().currentGroupID).toBe(2);
+  });
+
 });
