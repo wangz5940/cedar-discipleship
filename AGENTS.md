@@ -94,6 +94,12 @@ This skill is mandatory unless the task is provably isolated from existing behav
 - JavaScript 必须通过 `npm run lint` 的未定义变量检查，TypeScript/Vue 必须通过 `npm run typecheck`；不得把未声明的业务变量加入 globals 来绕过检查。
 - PR 按入口记录验证方式、实际结果和未覆盖项。健康检查或测试总数不能代替场景证据；模拟浏览器测试不能宣称为真机验收，未实测浏览器和设备必须明确标注。
 
+### 浏览器运行时兼容
+
+- 基础学习、阅读、打卡及配置流程必须支持 iOS 15.0–15.3 Safari 缺少 `Array.prototype.at` 的场景；浏览器源码和公开脚本使用数组下标等兼容写法，不调用 Array、String 或 TypedArray 的 `.at()`。
+- JavaScript／TypeScript 语法转译不自动补齐运行时 API。新增内建 API 前核对目标浏览器支持情况，缺少能力时使用等价兼容实现；可选功能按实际接口检测，不能阻断基础流程。
+- `npm run lint` 检查 JavaScript、TypeScript、Vue 脚本与模板中的 `.at()` 调用。受影响入口必须在移除 `Array.prototype.at` 的环境中验证标题、继承、阅读及保存／完成结果，并如实标注真机覆盖情况。
+
 ## 6. Upstream Before Changes
 
 修改前端界面、交互或样式时，必须先阅读并遵守根目录 `ui.md`，复用同一功能的组件与语义样式。

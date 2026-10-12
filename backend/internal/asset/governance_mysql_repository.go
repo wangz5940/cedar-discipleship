@@ -134,7 +134,17 @@ func ensureAssetUnusedTx(ctx context.Context, tx *sql.Tx, groupID, assetID uint6
 	case err == nil:
 		return ErrAssetInUse
 	case errors.Is(err, sql.ErrNoRows):
-		return nil
+		var planID uint64
+		err = tx.QueryRowContext(ctx, `SELECT user_id FROM personal_daily_books
+			WHERE group_id=? AND path=? LIMIT 1 FOR UPDATE`, groupID,
+			"/api/assets/"+strconv.FormatUint(assetID, 10)+"/download").Scan(&planID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err == nil {
+			return ErrAssetInUse
+		}
+		return err
 	default:
 		return err
 	}

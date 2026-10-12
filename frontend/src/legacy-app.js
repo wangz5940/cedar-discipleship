@@ -853,6 +853,8 @@ export function setTab(tab) {
 }
 
 export async function savePersonalSettings(memberName, mobileViewMode) {
+  const generation = sessionGeneration;
+  const groupID = state.user?.current_group_id;
   const result = await api('/personal-settings', {
     method: 'PUT',
     body: JSON.stringify({
@@ -860,6 +862,7 @@ export async function savePersonalSettings(memberName, mobileViewMode) {
       mobile_view_mode: normalizeMobileViewMode(mobileViewMode),
     }),
   });
+  if (generation !== sessionGeneration || groupID !== state.user?.current_group_id) return null;
   const settings = result.settings || {};
   state.user = {
     ...state.user,
@@ -2299,7 +2302,7 @@ function dailyScriptureReadingLinks() {
   const plans = getDailyScripturePlans();
   if (plans.length < 2) return plans;
   const first = plans[0];
-  const last = plans.at(-1);
+  const last = plans[plans.length - 1];
   const title = first.bookId !== last.bookId
     ? `${first.bookName}${numberToChinese(first.chapter)}章 至 ${last.bookName}${numberToChinese(last.chapter)}章`
     : `${first.bookName} ${numberToChinese(first.chapter)}至${numberToChinese(last.chapter)}章`;
@@ -2801,8 +2804,15 @@ export function restoreWeekDraftDefaults() {
   render();
 }
 
+let weekSaveRequest = null;
 export async function saveWeekDraft() {
+  const context = `${sessionGeneration}:${state.user?.current_group_id || 0}`;
+  if (weekSaveRequest?.context === context) return;
   const draft = state.weekDraft || weekDraftFromWeek();
+  if (!draft.id && state.weeks.some(week => week.start === draft.start && week.end === draft.end)) {
+    toast('该日期范围已有周任务，请从周计划下拉栏选择后编辑；当前草稿已保留');
+    return;
+  }
   const payload = {
     start_date: draft.start,
     end_date: draft.end,
@@ -2832,6 +2842,8 @@ export async function saveWeekDraft() {
       asset_id: Number(draft.outline?.asset_id || 0),
     },
   };
+  const request = { context };
+  weekSaveRequest = request;
   try {
     const endpoint = draft.id ? `/admin/study-weeks/${draft.id}` : '/admin/study-weeks';
     const method = draft.id ? 'PUT' : 'POST';
@@ -2846,15 +2858,22 @@ export async function saveWeekDraft() {
         tone: 'warning',
       }),
     );
-    if (!result) return;
+    if (!result || context !== `${sessionGeneration}:${state.user?.current_group_id || 0}`) return;
     toast('当前周任务已保存');
     await loadAll();
+    if (context !== `${sessionGeneration}:${state.user?.current_group_id || 0}`) return;
     const savedID = Number(result.id || draft.id || 0);
     const savedWeek = (state.weeks || []).find((item) => Number(item.id) === savedID);
     state.weekDraft = weekDraftFromWeek(savedWeek || { ...draft, id: savedID });
     render();
   } catch (error) {
-    toast(error.message);
+    if (context === `${sessionGeneration}:${state.user?.current_group_id || 0}`) {
+      toast(error.code === 'week_already_exists'
+        ? '该日期范围已有周任务，请刷新后从周计划下拉栏选择编辑；当前草稿已保留'
+        : error.message);
+    }
+  } finally {
+    if (weekSaveRequest === request) weekSaveRequest = null;
   }
 }
 

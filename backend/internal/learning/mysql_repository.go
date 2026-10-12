@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 type MySQLRepository struct {
@@ -429,7 +431,7 @@ func (r *MySQLRepository) SaveWeek(
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE study_weeks SET start_date=?,end_date=?,title=?,verse_ref=?,recite_text=?,book_enabled=?,video_enabled=?,verse_enabled=?,outline_enabled=?,updated_at=? WHERE id=? AND group_id=?`,
 			input.StartDate, input.EndDate, input.Title, input.VerseRef, input.ReciteText, input.BookEnabled, input.VideoEnabled, input.VerseEnabled, input.OutlineEnabled, now, id, groupID); err != nil {
-			return 0, err
+			return 0, weekWriteError(err)
 		}
 	}
 	if err := ReplaceWeekTasksTx(ctx, tx, groupID, id, tasks, now); err != nil {
@@ -461,9 +463,18 @@ func InsertWeekTx(ctx context.Context, tx *sql.Tx, groupID uint64, input WeekInp
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		groupID, input.StartDate, input.EndDate, input.Title, input.VerseRef, input.ReciteText, input.BookEnabled, input.VideoEnabled, input.VerseEnabled, input.OutlineEnabled, now, now)
 	if err != nil {
-		return 0, err
+		return 0, weekWriteError(err)
 	}
 	return insertedID(res)
+}
+
+// Translate only the study_weeks write conflict; other constraints retain their errors.
+func weekWriteError(err error) error {
+	var duplicate *mysql.MySQLError
+	if errors.As(err, &duplicate) && duplicate.Number == 1062 {
+		return ErrWeekAlreadyExists
+	}
+	return err
 }
 
 func (r *MySQLRepository) weekTaskAssets(ctx context.Context, groupID uint64, weekIDs []uint64) (map[uint64][]TaskAsset, error) {

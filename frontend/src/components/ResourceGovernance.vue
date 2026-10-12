@@ -1,6 +1,6 @@
 <script setup>
 import { vDialogFocus } from '../ui/dialogFocus';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
   Check,
@@ -31,17 +31,25 @@ import MobileCardCollection from './ui/MobileCardCollection.vue';
 
 const app = useAppStateStore();
 const { currentGroupID, resources, learningConfig } = storeToRefs(app);
+const contextKey = computed(() => `${app.user?.id || 0}:${currentGroupID.value || 0}`);
+let contextRevision = 0;
+let governanceRequest = 0;
+let graphRequest = 0;
 const downloadSettingsBusy = ref(false);
 async function setResourceDownloads(enabled) {
-  const groupID = currentGroupID.value;
+  const revision = contextRevision;
   downloadSettingsBusy.value = true;
   try {
     const result = await api('/admin/resource-download', { method: 'PUT', body: JSON.stringify({ enabled }) });
-    if (currentGroupID.value !== groupID) return;
+    if (revision !== contextRevision) return;
     await reloadApp();
+    if (revision !== contextRevision) return;
     toast(result.enabled ? '本组资料允许下载' : '本组资料仅供在线学习');
-  } catch (error) { toast(error.message); }
-  finally { downloadSettingsBusy.value = false; }
+  } catch (error) {
+    if (revision === contextRevision) toast(error.message);
+  } finally {
+    if (revision === contextRevision) downloadSettingsBusy.value = false;
+  }
 }
 
 const activeView = ref('owned');
@@ -164,6 +172,8 @@ function statusText(status) {
 
 async function loadGovernance() {
   if (!currentGroupID.value) return;
+  const revision = contextRevision;
+  const request = ++governanceRequest;
   loading.value = true;
   try {
     const [groupResult, sharedResult, historyResult] = await Promise.all([
@@ -171,18 +181,20 @@ async function loadGovernance() {
       api('/admin/shared-resources'),
       api('/admin/resource-import-history'),
     ]);
+    if (revision !== contextRevision || request !== governanceRequest) return;
     groups.value = groupResult.study_groups || [];
     sharedResources.value = sharedResult.resources || [];
     historyItems.value = historyResult.events || [];
     await loadGraph();
   } catch (error) {
-    toast(error.message);
+    if (revision === contextRevision && request === governanceRequest) toast(error.message);
   } finally {
-    loading.value = false;
+    if (revision === contextRevision && request === governanceRequest) loading.value = false;
   }
 }
 
 async function refreshResources() {
+  const revision = contextRevision;
   if (refreshing.value || loading.value) return;
   refreshing.value = true;
   try {
@@ -191,12 +203,17 @@ async function refreshResources() {
       reloadApp(),
       loadAdminData(true),
     ]);
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
     toast('资源已刷新');
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message);
   } finally {
-    refreshing.value = false;
+    if (revision === contextRevision) {
+      refreshing.value = false;
+    }
   }
 }
 
@@ -262,6 +279,7 @@ function toggleBatchShareGroup(groupID) {
 }
 
 async function saveBatchShare() {
+  const revision = contextRevision;
   const dialog = batchShareDialog.value;
   if (!dialog || batchBusy.value) return;
   batchBusy.value = true;
@@ -275,15 +293,20 @@ async function saveBatchShare() {
         consumer_group_ids: dialog.scope === 'selected_groups' ? dialog.consumerGroupIDs : [],
       }),
     });
+    if (revision !== contextRevision) return;
     batchShareDialog.value = null;
     clearAssetSelection();
     toast(`已更新 ${result.result?.count || dialog.assets.length} 个资源`);
     await loadGovernance();
+    if (revision !== contextRevision) return;
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message);
   } finally {
-    batchBusy.value = false;
-    batchProgress.value = '';
+    if (revision === contextRevision) {
+      batchBusy.value = false;
+      batchProgress.value = '';
+    }
   }
 }
 
@@ -298,6 +321,7 @@ function openBatchDelete() {
 }
 
 async function confirmBatchDelete() {
+  const revision = contextRevision;
   const dialog = batchDeleteDialog.value;
   if (!dialog || batchBusy.value) return;
   batchBusy.value = true;
@@ -309,17 +333,24 @@ async function confirmBatchDelete() {
         asset_ids: dialog.assets.map((item) => item.id),
       }),
     });
+    if (revision !== contextRevision) return;
     batchDeleteDialog.value = null;
     clearAssetSelection();
     toast(`已删除 ${result.result?.count || dialog.assets.length} 个资源`);
     await reloadApp();
+    if (revision !== contextRevision) return;
     await loadAdminData(true);
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(assetRemovalErrorMessage(error));
   } finally {
-    batchBusy.value = false;
-    batchProgress.value = '';
+    if (revision === contextRevision) {
+      batchBusy.value = false;
+      batchProgress.value = '';
+    }
   }
 }
 
@@ -334,6 +365,7 @@ function openBatchImport() {
 }
 
 async function confirmBatchImport() {
+  const revision = contextRevision;
   const dialog = batchImportDialog.value;
   if (!dialog || batchBusy.value) return;
   batchBusy.value = true;
@@ -345,39 +377,59 @@ async function confirmBatchImport() {
         source_asset_ids: dialog.resources.map((item) => item.asset_id),
       }),
     });
+    if (revision !== contextRevision) return;
     batchImportDialog.value = null;
     clearSharedSelection();
     toast(`已导入 ${result.result?.count || dialog.resources.length} 个资源`);
     await reloadApp();
+    if (revision !== contextRevision) return;
     await loadAdminData(true);
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message);
   } finally {
-    batchBusy.value = false;
-    batchProgress.value = '';
+    if (revision === contextRevision) {
+      batchBusy.value = false;
+      batchProgress.value = '';
+    }
   }
 }
 
 async function loadGraph() {
+  if (!currentGroupID.value) return;
+  const revision = contextRevision;
+  const request = ++graphRequest;
   const query = new URLSearchParams({
     strength: strengthFilter.value,
     depth: String(depthFilter.value || 3),
   });
   if (graphGroupFilter.value) query.set('group_id', graphGroupFilter.value);
   if (typeFilter.value) query.set('type', typeFilter.value);
-  graph.value = await api(`/admin/resource-dependencies/graph?${query}`);
+  try {
+    const result = await api(`/admin/resource-dependencies/graph?${query}`);
+    if (revision === contextRevision && request === graphRequest) graph.value = result;
+  } catch (error) {
+    if (revision !== contextRevision || request !== graphRequest) return;
+    graph.value = { nodes: [], edges: [], metrics: {} };
+    toast(error.message);
+  }
 }
 
 async function openShare(asset) {
+  const revision = contextRevision;
   try {
     const result = await api(`/admin/assets/${asset.id}/sharing`);
+    if (revision !== contextRevision) return;
     shareDialog.value = {
       asset,
       scope: result.sharing?.scope || 'private',
       consumerGroupIDs: [...(result.sharing?.consumer_group_ids || [])],
     };
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message);
   }
 }
@@ -392,6 +444,7 @@ function toggleShareGroup(groupID) {
 }
 
 async function saveShare() {
+  const revision = contextRevision;
   const dialog = shareDialog.value;
   if (!dialog) return;
   try {
@@ -402,15 +455,19 @@ async function saveShare() {
         consumer_group_ids: dialog.scope === 'selected_groups' ? dialog.consumerGroupIDs : [],
       }),
     });
+    if (revision !== contextRevision) return;
     shareDialog.value = null;
     toast('共享范围已更新');
     await loadGovernance();
+    if (revision !== contextRevision) return;
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message);
   }
 }
 
 async function renameAsset(asset) {
+  const revision = contextRevision;
   const imported = asset.asset_kind === 'imported';
   const title = await promptDialog({
     title: '重命名资料',
@@ -421,6 +478,7 @@ async function renameAsset(asset) {
     placeholder: '资料名称',
     confirmLabel: '保存名称',
   });
+  if (revision !== contextRevision) return;
   if (title === null || title === asset.title) return;
   renamingAssetID.value = Number(asset.id);
   try {
@@ -428,16 +486,22 @@ async function renameAsset(asset) {
       method: 'PUT',
       body: JSON.stringify({ title }),
     });
+    if (revision !== contextRevision) return;
     await Promise.all([
       reloadApp(),
       loadAdminData(true),
     ]);
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
     toast('资料名称已更新');
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message === 'invalid_asset_title' ? '资料名称不能为空、不能换行，且最多 255 个字符' : error.message);
   } finally {
-    renamingAssetID.value = 0;
+    if (revision === contextRevision) {
+      renamingAssetID.value = 0;
+    }
   }
 }
 
@@ -480,6 +544,7 @@ function openBatchCategory() {
 }
 
 async function saveAssetCategory() {
+  const revision = contextRevision;
   const dialog = categoryDialog.value;
   if (!dialog?.category || changingCategoryAssetID.value) return;
   changingCategoryAssetID.value = dialog.batch ? -1 : Number(dialog.asset.id);
@@ -496,26 +561,32 @@ async function saveAssetCategory() {
         ? { asset_ids: dialog.assets.map((item) => item.id), category: dialog.category }
         : { category: dialog.category }),
     });
+    if (revision !== contextRevision) return;
     categoryDialog.value = null;
     if (dialog.batch) clearAssetSelection();
     await Promise.all([
       reloadApp(),
       loadAdminData(true),
     ]);
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
     toast(dialog.batch
       ? `已修改 ${result.result?.count || dialog.assets.length} 个资源的文件类型`
       : '文件类型已更新');
   } catch (error) {
+    if (revision !== contextRevision) return;
     const messages = {
       invalid_asset_category: '请选择有效的文件类型',
       asset_category_file_mismatch: '所选文件类型不支持该文件格式',
     };
     toast(messages[error.message] || error.message);
   } finally {
-    changingCategoryAssetID.value = 0;
-    batchBusy.value = false;
-    batchProgress.value = '';
+    if (revision === contextRevision) {
+      changingCategoryAssetID.value = 0;
+      batchBusy.value = false;
+      batchProgress.value = '';
+    }
   }
 }
 
@@ -529,6 +600,7 @@ async function openImport(resource) {
 }
 
 async function importNext() {
+  const revision = contextRevision;
   const dialog = importDialog.value;
   if (!dialog) return;
   if (dialog.step === 1) {
@@ -539,9 +611,11 @@ async function importNext() {
           source_asset_id: dialog.resource.asset_id,
         }),
       });
+      if (revision !== contextRevision) return;
       dialog.preview = result.preview;
       dialog.step = 2;
     } catch (error) {
+    if (revision !== contextRevision) return;
       toast(error.message);
     }
     return;
@@ -550,6 +624,7 @@ async function importNext() {
 }
 
 async function confirmImport() {
+  const revision = contextRevision;
   const dialog = importDialog.value;
   if (!dialog || dialog.confirming) return;
   dialog.confirming = true;
@@ -560,37 +635,70 @@ async function confirmImport() {
         source_asset_id: dialog.resource.asset_id,
       }),
     });
+    if (revision !== contextRevision) return;
     importDialog.value = null;
     toast('资源已导入当前小组');
     await reloadApp();
+    if (revision !== contextRevision) return;
     await loadAdminData(true);
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(error.message);
   } finally {
-    if (importDialog.value) importDialog.value.confirming = false;
+    if (revision === contextRevision) {
+      if (importDialog.value) importDialog.value.confirming = false;
+    }
   }
 }
 
 async function removeImport(asset) {
+  const revision = contextRevision;
   const confirmed = await confirmDialog({
     title: '移除导入资源',
     message: `确认移除已导入资源“${asset.title}”？`,
     tone: 'danger',
     confirmLabel: '确认移除',
   });
+  if (revision !== contextRevision) return;
   if (!confirmed) return;
   try {
     await api(`/admin/resource-imports/${asset.id}`, { method: 'DELETE' });
+    if (revision !== contextRevision) return;
     toast('导入资源已移除');
     await reloadApp();
+    if (revision !== contextRevision) return;
     await loadGovernance();
+    if (revision !== contextRevision) return;
   } catch (error) {
+    if (revision !== contextRevision) return;
     toast(assetRemovalErrorMessage(error));
   }
 }
 
-watch(currentGroupID, loadGovernance);
+watch(contextKey, () => {
+  contextRevision += 1;
+  governanceRequest += 1;
+  graphRequest += 1;
+  groups.value = [];
+  sharedResources.value = [];
+  historyItems.value = [];
+  graph.value = { nodes: [], edges: [], metrics: {} };
+  selectedAssetIDs.value = [];
+  selectedSharedAssetIDs.value = [];
+  for (const dialog of [shareDialog, importDialog, batchShareDialog, batchDeleteDialog, batchImportDialog, categoryDialog]) dialog.value = null;
+  loading.value = false;
+  refreshing.value = false;
+  downloadSettingsBusy.value = false;
+  batchBusy.value = false;
+  batchProgress.value = '';
+  renamingAssetID.value = 0;
+  changingCategoryAssetID.value = 0;
+  void loadGovernance();
+}, { flush: 'sync' });
+onBeforeUnmount(() => { contextRevision += 1; });
 watch([strengthFilter, depthFilter, graphGroupFilter], loadGraph);
 onMounted(loadGovernance);
 </script>

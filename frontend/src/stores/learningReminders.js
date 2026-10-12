@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from '../legacy-app';
+import { refreshReminderState } from '../runtime/reminderRefresh';
 import { encouragement, closeLearningNotification, showLearningNotification, usesInAppReminders } from '../runtime/learningNotifications';
 
 export const useLearningRemindersStore = defineStore('learningReminders', {
@@ -23,31 +24,33 @@ export const useLearningRemindersStore = defineStore('learningReminders', {
     async refresh() {
       if (!this.scope) return;
       const scope = this.scope;
-      const request = ++this.request;
-      try {
-        const data = await api('/learning-reminders');
-        if (scope !== this.scope || request !== this.request) return;
-        this.items = (data.items || []).filter(item => !this.seenIDs.includes(item.id)).map(item => ({ ...item, encouragement: this.items.find(previous => previous.id === item.id)?.encouragement || encouragement() }));
-        this.sentIDs = data.sent_ids || [];
-        this.muted = Boolean(data.muted);
-        const deliveries = data.deliveries || this.items;
-        this.pending = this.pending.filter(item => deliveries.some(record => record.id === item.id)).map(item => ({ ...item, apple_push_eligible: deliveries.find(record => record.id === item.id)?.apple_push_eligible }));
-        for (const item of deliveries) {
-          if (!this.seenIDs.includes(item.id) && !this.pending.some(record => record.id === item.id)) {
-            this.pending.push({ ...item, encouragement: this.items.find(record => record.id === item.id)?.encouragement || encouragement() });
+      const request = this.request;
+      return refreshReminderState(this, request, async (signal) => {
+        try {
+          const data = await api('/learning-reminders', { signal });
+          if (scope !== this.scope || request !== this.request) return;
+          this.items = (data.items || []).filter(item => !this.seenIDs.includes(item.id)).map(item => ({ ...item, encouragement: this.items.find(previous => previous.id === item.id)?.encouragement || encouragement() }));
+          this.sentIDs = data.sent_ids || [];
+          this.muted = Boolean(data.muted);
+          const deliveries = data.deliveries || this.items;
+          this.pending = this.pending.filter(item => deliveries.some(record => record.id === item.id)).map(item => ({ ...item, apple_push_eligible: deliveries.find(record => record.id === item.id)?.apple_push_eligible }));
+          for (const item of deliveries) {
+            if (!this.seenIDs.includes(item.id) && !this.pending.some(record => record.id === item.id)) {
+              this.pending.push({ ...item, encouragement: this.items.find(record => record.id === item.id)?.encouragement || encouragement() });
+            }
           }
-        }
-        this.pending.sort((a, b) => b.id - a.id);
-        if (this.muted || (this.banner && !this.pending.some(item => item.id === this.banner.id))) this.banner = null;
-        const fresh = this.pending.filter(item => !this.offeredIDs.includes(item.id));
-        this.offeredIDs = [...new Set([...this.offeredIDs, ...fresh.map(item => item.id)])].slice(-200);
-        try { localStorage.setItem(`learning-reminders-offered:${scope}`, JSON.stringify(this.offeredIDs)); } catch { /* Keep the session's automatic-display state. */ }
-        if (fresh.length && !this.muted) {
-          this.banner = fresh[0];
-          if (!usesInAppReminders()) fresh.forEach(item => { void showLearningNotification(item); });
-        }
-        if (usesInAppReminders() && !this.muted && !this.banner && this.pending.length) this.banner = this.pending[0];
-      } catch { /* Reminder failures must not interrupt learning or clear unread state. */ }
+          this.pending.sort((a, b) => b.id - a.id);
+          if (this.muted || (this.banner && !this.pending.some(item => item.id === this.banner.id))) this.banner = null;
+          const fresh = this.pending.filter(item => !this.offeredIDs.includes(item.id));
+          this.offeredIDs = [...new Set([...this.offeredIDs, ...fresh.map(item => item.id)])].slice(-200);
+          try { localStorage.setItem(`learning-reminders-offered:${scope}`, JSON.stringify(this.offeredIDs)); } catch { /* Keep the session's automatic-display state. */ }
+          if (fresh.length && !this.muted) {
+            this.banner = fresh[0];
+            if (!usesInAppReminders()) fresh.forEach(item => { void showLearningNotification(item); });
+          }
+          if (usesInAppReminders() && !this.muted && !this.banner && this.pending.length) this.banner = this.pending[0];
+        } catch { /* Reminder failures must not interrupt learning or clear unread state. */ }
+      });
     },
     async send(userID) {
       const scope = this.scope;

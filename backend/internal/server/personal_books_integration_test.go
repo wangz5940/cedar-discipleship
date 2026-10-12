@@ -6,6 +6,7 @@ import (
 	"agp/backend/internal/asset"
 	"agp/backend/internal/testdb"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,6 +46,10 @@ func TestPersonalBooksIsolationAndCompletion(t *testing.T) {
 		}
 	}
 	require(call("PUT", plan, 1, 1, a.handleSavePersonalBook), 200, `"ok":true`)
+	if _, err := asset.NewMySQLRepository(db).BatchDelete(t.Context(), 1, 1, asset.BatchDeleteInput{AssetIDs: []uint64{10}}, time.Now()); !errors.Is(err, asset.ErrAssetInUse) {
+		t.Fatalf("delete personal book resource: %v", err)
+	}
+
 	require(call("GET", "", 1, 1, a.handlePersonalBooks), 200, `"completed":false`)
 	require(call("GET", "", 2, 1, a.handlePersonalBooks), 200, `"plans":[]`)
 	require(call("PUT", strings.Replace(plan, "My book", "Other account", 1), 2, 1, a.handleSavePersonalBook), 200, `"ok":true`)
@@ -74,4 +79,45 @@ func TestPersonalBooksIsolationAndCompletion(t *testing.T) {
 	response := httptest.NewRecorder()
 	a.handlePersonalBookCompletion(response, req)
 	require(response, 400, "future_date_forbidden")
+	t.Run("save succeeds with a single database connection", func(t *testing.T) {
+		previousLimit := db.Stats().MaxOpenConnections
+		db.SetMaxOpenConns(1)
+		defer db.SetMaxOpenConns(previousLimit)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		req := httptest.NewRequest("PUT", "/api/personal-books", strings.NewReader(plan))
+		req = req.WithContext(context.WithValue(ctx, currentUserKey, currentUser{ID: 1, CurrentGroupID: 1}))
+		response := httptest.NewRecorder()
+		a.handleSavePersonalBook(response, req)
+		require(response, 200, `"ok":true`)
+	})
+	t.Run("save waits for removal and rejects the removed resource", func(t *testing.T) {
+		tx, err := db.BeginTx(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(t.Context(), `UPDATE asset_bindings SET deleted_at=NOW() WHERE asset_id=10 AND group_id=1`); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			done <- call("PUT", strings.Replace(plan, "2026-01-02", "2026-01-03", 1), 1, 1, a.handleSavePersonalBook)
+		}()
+		testdb.WaitForLockWait(t, db)
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case response := <-done:
+			require(response, 404, "asset_not_found")
+		case <-time.After(3 * time.Second):
+			t.Fatal("save did not finish after removal")
+		}
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM personal_daily_books WHERE logical_date='2026-01-03'`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("plan persisted after resource removal: count=%d err=%v", count, err)
+		}
+	})
+
 }

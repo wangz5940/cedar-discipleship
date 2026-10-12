@@ -1,6 +1,8 @@
 package server
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -89,14 +91,35 @@ func (a *app) handleSavePersonalBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_personal_book")
 		return
 	}
-	// Use the same resource-access check as the download entry point.
+	// Check download access before taking a transaction connection.
 	if _, err := a.assets.DownloadFile(r.Context(), u.CurrentGroupID, assetID); err != nil {
 		writeError(w, 404, "asset_not_found")
 		return
 	}
-	_, err := a.db.ExecContext(r.Context(), `INSERT INTO personal_daily_books(group_id,user_id,logical_date,title,path,content_type,section_number,page_start,page_end) VALUES(?,?,?,?,?,?,?,?,?)
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "personal_books_failed")
+		return
+	}
+	defer tx.Rollback()
+	// Serialize plan saves with resource removal, using the same binding lock as weekly tasks.
+	var lockedAssetID uint64
+	if err := tx.QueryRowContext(r.Context(), `SELECT asset_id FROM asset_bindings
+		WHERE asset_id=? AND group_id=? AND deleted_at IS NULL FOR SHARE`, assetID, u.CurrentGroupID).Scan(&lockedAssetID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, 404, "asset_not_found")
+		} else {
+			writeError(w, 500, "personal_books_failed")
+		}
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_daily_books(group_id,user_id,logical_date,title,path,content_type,section_number,page_start,page_end) VALUES(?,?,?,?,?,?,?,?,?)
  ON DUPLICATE KEY UPDATE title=VALUES(title),path=VALUES(path),content_type=VALUES(content_type),section_number=VALUES(section_number),page_start=VALUES(page_start),page_end=VALUES(page_end)`, u.CurrentGroupID, u.ID, p.Date, p.Title, p.Path, p.Type, p.Section, p.PageStart, p.PageEnd)
 	if err != nil {
+		writeError(w, 500, "personal_books_failed")
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, 500, "personal_books_failed")
 		return
 	}

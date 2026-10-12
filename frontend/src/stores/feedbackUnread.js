@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from '../legacy-app';
+import { refreshReminderState } from '../runtime/reminderRefresh';
 
 export const useFeedbackUnreadStore = defineStore('feedbackUnread', {
   state: () => ({ accountID: 0, ownIDs: [], adminIDs: [], request: 0 }),
@@ -17,15 +18,17 @@ export const useFeedbackUnreadStore = defineStore('feedbackUnread', {
     },
     async refresh() {
       if (!this.accountID) return;
-      const request = ++this.request;
-      try {
-        const data = await api('/feedback/unread');
-        if (request !== this.request) return;
-        this.ownIDs = data.own_ids || [];
-        this.adminIDs = data.admin_ids || [];
-      } catch {
-        // A reminder failure must not interrupt feedback or clear unread items.
-      }
+      const request = this.request;
+      return refreshReminderState(this, request, async (signal) => {
+        try {
+          const data = await api('/feedback/unread', { signal });
+          if (request !== this.request) return;
+          this.ownIDs = data.own_ids || [];
+          this.adminIDs = data.admin_ids || [];
+        } catch {
+          // A reminder failure must not interrupt feedback or clear unread items.
+        }
+      });
     },
     async markRead(detail, admin = false) {
       if (!this.accountID) return;
