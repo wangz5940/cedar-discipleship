@@ -85,9 +85,6 @@ func (r *memoryRepository) UpdateStatus(_ context.Context, feedbackID uint64, st
 	}
 	r.item.Status = status
 	r.item.UpdatedAt = updatedAt
-	if status == StatusClosed {
-		r.item.DiagnosticsJSON = ""
-	}
 	r.status = status
 	return true, nil
 }

@@ -12,6 +12,7 @@ import { useContentViewerStore } from './stores/contentViewer';
 import { lazyPage } from './ui/lazyPage';
 import { disposeApp, initializeApp, initializeStudyAccount, setTab } from './legacy-app';
 import { parseReaderPageRequest } from './runtime/content';
+import { reportAutomaticFeedback } from './runtime/errorFeedback';
 
 const StudyPreview = lazyPage(() => import('./components/StudyPreview.vue'));
 const studyPreview = import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'ovcm';
@@ -52,6 +53,12 @@ async function boot() {
     if (window.location.hash.startsWith('#/course/')) setTab('courses');
     shell.setReady();
   } catch (error) {
+    // Request failures already pass through their own reporting classification.
+    if (!error?.requestPath) {
+      void reportAutomaticFeedback(error, {
+        actionContext: 'app_boot', actionLabel: '加载首页',
+      });
+    }
     shell.setError(error);
   } finally {
     retrying.value = false;

@@ -30,6 +30,9 @@
   --cd-warning: var(--cd-button-accent-light);
   --cd-danger: #b3423e;
   --cd-info: var(--cd-primary);
+  --cd-feedback-pending-bg: #FFF4DB;
+  --cd-feedback-pending-text: #805313;
+  --cd-feedback-pending-border: #E4CC96;
   --cd-card-blue-wash: linear-gradient(135deg, rgb(35 65 106 / 7%) 0%, rgb(35 65 106 / 1%) 48%, rgb(35 65 106 / 4%) 100%);
   /* 兼容旧组件命名：强调色统一映射到柔和绿色系。 */
   --cd-gold: var(--cd-button-accent-dark);

@@ -187,16 +187,8 @@ func (r *MySQLRepository) FindByID(ctx context.Context, feedbackID uint64) (*Fee
 }
 
 func (r *MySQLRepository) UpdateStatus(ctx context.Context, feedbackID uint64, status Status, updatedAt time.Time) (bool, error) {
-	var result sql.Result
-	var err error
-	if status == StatusClosed {
-		result, err = r.db.ExecContext(ctx, `UPDATE feedbacks
-			SET status=?,diagnostics_json=NULL,updated_at=?
-			WHERE id=?`, status, updatedAt, feedbackID)
-	} else {
-		result, err = r.db.ExecContext(ctx, `UPDATE feedbacks SET status=?,updated_at=? WHERE id=?`,
-			status, updatedAt, feedbackID)
-	}
+	result, err := r.db.ExecContext(ctx, `UPDATE feedbacks SET status=?,updated_at=? WHERE id=?`,
+		status, updatedAt, feedbackID)
 	if err != nil {
 		return false, err
 	}
