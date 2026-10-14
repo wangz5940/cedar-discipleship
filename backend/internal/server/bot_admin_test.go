@@ -41,9 +41,12 @@ func (m *fakeBotManager) Assign(
 	_ context.Context,
 	robotID string,
 	target notificationdomain.Target,
-	groupID uint64,
+	groupID, expectedGroupID uint64,
 	_ time.Time,
 ) error {
+	if m.BindingGroupID(robotID, target.ChatID) != expectedGroupID {
+		return notificationdomain.ErrBindingChanged
+	}
 	m.robotIDs = append(m.robotIDs, robotID)
 	m.assignments = append(m.assignments, notificationdomain.Binding{Target: target, GroupID: groupID})
 	return m.err
@@ -185,7 +188,7 @@ func TestBotManagementRequiresPlatformOrTenantAdmin(t *testing.T) {
 	}
 }
 
-func TestTenantBotManagementShowsAllChatsButOnlyOwnGroups(t *testing.T) {
+func TestTenantBotManagementHidesChatsBoundToOtherTenants(t *testing.T) {
 	t.Parallel()
 	manager := &fakeBotManager{robots: []notificationdomain.RobotStatus{{
 		ID: "primary", Name: "主机器人", State: "healthy", Authenticated: true,
@@ -216,11 +219,12 @@ func TestTenantBotManagementShowsAllChatsButOnlyOwnGroups(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Robots) != 1 || len(payload.Robots[0].Chats) != 2 || len(payload.StudyGroups) != 1 || payload.StudyGroups[0].ID != 1 {
+	if len(payload.Robots) != 1 || len(payload.Robots[0].Chats) != 1 || len(payload.StudyGroups) != 1 || payload.StudyGroups[0].ID != 1 {
 		t.Fatalf("tenant view lost robots/chats or leaked groups: %+v", payload)
 	}
 	robot := payload.Robots[0]
-	if robot.Chats[0].GroupID != 1 || robot.Chats[1].GroupID != 0 || !robot.Chats[1].BoundElsewhere || len(robot.Bindings) != 1 || robot.Bindings[0].GroupID != 1 {
+	if robot.Chats[0].ChatID != 20 || robot.Chats[0].GroupID != 1 ||
+		len(robot.Bindings) != 1 || robot.Bindings[0].GroupID != 1 {
 		t.Fatalf("tenant view leaked foreign binding: %+v", robot)
 	}
 	if manager.robots[0].Chats[1].GroupID != 2 || len(manager.robots[0].Bindings) != 2 {
@@ -332,5 +336,46 @@ func TestTenantBotBindingOnlyAcceptsCurrentTenantGroup(t *testing.T) {
 	}
 	if len(manager.assignments) != 1 || manager.assignments[0].GroupID != 1 {
 		t.Fatalf("tenant binding calls = %+v", manager.assignments)
+	}
+}
+
+func TestTenantBotBindingRejectsChatBoundToOtherTenant(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		groupID uint64
+	}{
+		{name: "unbind", groupID: 0},
+		{name: "rebind", groupID: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manager := &fakeBotManager{robots: []notificationdomain.RobotStatus{{
+				ID: "primary",
+				Bindings: []notificationdomain.Binding{{
+					Target:  notificationdomain.Target{ChatID: 21, ChatType: 3},
+					GroupID: 2,
+				}},
+			}}}
+			app := &app{botManager: manager, audits: auditdomain.NewService(notificationAuditRepository{})}
+			request := httptest.NewRequest(http.MethodPut, "/api/super-admin/bot-bindings", strings.NewReader(
+				`{"robot_id":"primary","chat_id":21,"chat_type":3,"group_id":`+
+					strconv.FormatUint(tc.groupID, 10)+`}`,
+			))
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+				ID: 3, IsTenantAdmin: true, CurrentGroupID: 1, CurrentTenantID: 10,
+				Groups: []userdomain.Group{{ID: 1, TenantID: 10}, {ID: 2, TenantID: 20}},
+			}))
+			response := httptest.NewRecorder()
+
+			app.requireBotAdmin(app.handleBotBinding).ServeHTTP(response, request)
+
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body)
+			}
+			if len(manager.assignments) != 0 {
+				t.Fatalf("foreign binding changed: %+v", manager.assignments)
+			}
+		})
 	}
 }

@@ -76,7 +76,7 @@ type app struct {
 		Register(context.Context, notificationdomain.RobotRegistration) (notificationdomain.RobotStatus, error)
 		Remove(string) error
 		ClearFailed(string) (int, error)
-		Assign(context.Context, string, notificationdomain.Target, uint64, time.Time) error
+		Assign(context.Context, string, notificationdomain.Target, uint64, uint64, time.Time) error
 		BindingGroupID(string, int64) uint64
 	}
 	botAPIKey []byte

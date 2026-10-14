@@ -26,11 +26,19 @@ async function load() {
     const result = await api('/super-admin/bot-management');
     const returnedRobots = Array.isArray(result.robots) ? result.robots : [];
     const legacyChats = Array.isArray(result.chats) ? result.chats : [];
-    robots.value = returnedRobots.length
+    const loadedRobots = returnedRobots.length
       ? returnedRobots
       : legacyChats.length
         ? [{ id: 'default', name: '默认机器人', source: 'deployment', state: 'healthy', authenticated: true, chats: legacyChats }]
         : [];
+    robots.value = app.user?.is_super_admin
+      ? loadedRobots
+      : loadedRobots.map(robot => ({
+        ...robot,
+        chats: Array.isArray(robot.chats)
+          ? robot.chats.filter(chat => !chat.bound_elsewhere)
+          : robot.chats,
+      }));
     configured.value = result.configured === true || robots.value.length > 0;
     studyGroups.value = Array.isArray(result.study_groups) ? result.study_groups : [];
   } catch (error) {
@@ -129,6 +137,7 @@ async function assign(robot, chat, event) {
       robot_authentication_failed: '机器人认证失败，请检查 Token',
       study_group_not_found: '学习小组不存在',
       invalid_bot_chat: '群聊信息无效',
+      bot_binding_changed: '群聊绑定已变化，请刷新后重试',
       bot_binding_save_failed: '群聊绑定保存失败',
     }[error.message] || error.message);
   } finally {

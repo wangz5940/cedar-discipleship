@@ -25,7 +25,13 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	testdb.Exec(t, db, `INSERT INTO users(id,username,display_name,name_pinyin,is_super_admin,created_at,updated_at)
 		VALUES(1,'super','Super','super',1,NOW(),NOW()),(2,'admina','Admin A','admina',0,NOW(),NOW()),
 		(3,'adminb','Admin B','adminb',0,NOW(),NOW())`)
-	a := &app{db: db, users: user.NewService(user.NewMySQLRepository(db)), audits: audit.NewService(audit.NewMySQLRepository(db)), secret: []byte("tenant-test-secret")}
+	a := &app{
+		db:           db,
+		users:        user.NewService(user.NewMySQLRepository(db)),
+		audits:       audit.NewService(audit.NewMySQLRepository(db)),
+		secret:       []byte("tenant-test-secret"),
+		loginLimiter: newLoginLimiter(),
+	}
 	mux := http.NewServeMux()
 	a.routes(mux)
 	call := func(method, path string, userID, groupID uint64, body string) (int, map[string]any) {
@@ -332,6 +338,39 @@ func TestTenantHTTPIsolationAndAdministration(t *testing.T) {
 	}
 	if status, data := call(http.MethodPost, fmt.Sprintf("/api/super-admin/tenants/%d/admins", emptyTenantID), 1, 0, `{"username":"emptyadmin","display_name":"Empty Admin","password":"chosen-pass-4"}`); status != http.StatusCreated || data["initial_password"] != nil {
 		t.Fatalf("create admin before group: %d %v", status, data)
+	}
+	loginRequest := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(
+		`{"username":"emptyadmin","password":"chosen-pass-4"}`,
+	))
+	loginRequest.Header.Set("Content-Type", "application/json")
+	loginResponse := httptest.NewRecorder()
+	mux.ServeHTTP(loginResponse, loginRequest)
+	var loginData struct {
+		Token string `json:"token"`
+		User  struct {
+			CurrentGroupID  uint64 `json:"current_group_id"`
+			CurrentTenantID uint64 `json:"current_tenant_id"`
+			IsTenantAdmin   bool   `json:"is_tenant_admin"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(loginResponse.Body.Bytes(), &loginData); err != nil {
+		t.Fatal(err)
+	}
+	if loginResponse.Code != http.StatusOK || loginData.Token == "" ||
+		loginData.User.CurrentGroupID != 0 ||
+		loginData.User.CurrentTenantID != emptyTenantID ||
+		!loginData.User.IsTenantAdmin {
+		t.Fatalf("empty tenant admin login: status=%d response=%s", loginResponse.Code, loginResponse.Body)
+	}
+	adminGroupsRequest := httptest.NewRequest(http.MethodGet, path(emptyTenantID, "groups"), nil)
+	adminGroupsRequest.Header.Set("Authorization", "Bearer "+loginData.Token)
+	adminGroupsResponse := httptest.NewRecorder()
+	mux.ServeHTTP(adminGroupsResponse, adminGroupsRequest)
+	var adminGroupsData map[string]any
+	_ = json.Unmarshal(adminGroupsResponse.Body.Bytes(), &adminGroupsData)
+	adminGroups, groupsOK := adminGroupsData["study_groups"].([]any)
+	if adminGroupsResponse.Code != http.StatusOK || !groupsOK || len(adminGroups) != 0 {
+		t.Fatalf("empty tenant admin groups: status=%d response=%s", adminGroupsResponse.Code, adminGroupsResponse.Body)
 	}
 	if status, data := call(http.MethodGet, path(emptyTenantID, "admins"), 1, 0, ""); status != http.StatusOK || len(data["admins"].([]any)) != 1 {
 		t.Fatalf("new tenant admin missing: %d %v", status, data)

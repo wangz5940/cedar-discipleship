@@ -516,7 +516,7 @@ func (f *Fleet) Assign(
 	ctx context.Context,
 	robotID string,
 	target Target,
-	groupID uint64,
+	groupID, expectedGroupID uint64,
 	now time.Time,
 ) error {
 	if strings.TrimSpace(robotID) == "" {
@@ -536,7 +536,7 @@ func (f *Fleet) Assign(
 			return ErrRobotAuthentication
 		}
 	}
-	return robot.manager.Assign(ctx, target, groupID, now)
+	return robot.manager.AssignIfCurrent(ctx, target, groupID, expectedGroupID, now)
 }
 
 func (f *Fleet) BindingGroupID(robotID string, chatID int64) uint64 {

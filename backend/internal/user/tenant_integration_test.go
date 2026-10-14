@@ -62,6 +62,57 @@ func TestTenantMembershipAndGroupSelection(t *testing.T) {
 	}
 }
 
+func TestEmptyTenantAdminContext(t *testing.T) {
+	db := testdb.Open(t)
+	testdb.Apply(t, db, "013_member_personal_settings.sql")
+	testdb.Exec(t, db, `INSERT INTO tenants(id,name,status,created_at,updated_at) VALUES
+		(2,'空小家',1,NOW(),NOW()),(3,'另一空小家',1,NOW(),NOW()),(4,'已停用小家',0,NOW(),NOW());
+		INSERT INTO users(id,username,display_name,name_pinyin,created_at,updated_at) VALUES
+		(10,'emptyadmin','Empty Admin','emptyadmin',NOW(),NOW()),
+		(11,'emptymember','Empty Member','emptymember',NOW(),NOW()),
+		(12,'multiadmin','Multi Admin','multiadmin',NOW(),NOW()),
+		(13,'inactiveadmin','Inactive Admin','inactiveadmin',NOW(),NOW());
+		INSERT INTO tenant_members(tenant_id,user_id,role,status,created_at,updated_at) VALUES
+		(2,10,'admin',1,NOW(),NOW()),
+		(2,11,'member',1,NOW(),NOW()),
+		(2,12,'admin',1,NOW(),NOW()),(3,12,'admin',1,NOW(),NOW()),
+		(4,13,'admin',1,NOW(),NOW())`)
+	repo := NewMySQLRepository(db)
+	service := NewService(repo)
+
+	tests := []struct {
+		name            string
+		userID          uint64
+		wantTenantID    uint64
+		wantTenantAdmin bool
+	}{
+		{name: "sole active admin", userID: 10, wantTenantID: 2, wantTenantAdmin: true},
+		{name: "ordinary member", userID: 11},
+		{name: "admin of multiple tenants", userID: 12},
+		{name: "admin of inactive tenant", userID: 13},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tenantID, ok, err := repo.FindSoleTenantAdmin(t.Context(), tc.userID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tenantID != tc.wantTenantID || ok != tc.wantTenantAdmin {
+				t.Fatalf("repository context = tenant %d admin %t, want tenant %d admin %t",
+					tenantID, ok, tc.wantTenantID, tc.wantTenantAdmin)
+			}
+			got, err := service.CurrentUser(t.Context(), tc.userID, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.CurrentTenantID != tc.wantTenantID || got.IsTenantAdmin != tc.wantTenantAdmin ||
+				got.CurrentGroupID != 0 || len(got.Groups) != 0 {
+				t.Fatalf("current user = %+v", got)
+			}
+		})
+	}
+}
+
 func TestDefaultTenantNameMigration(t *testing.T) {
 	db := testdb.Open(t)
 	var name string

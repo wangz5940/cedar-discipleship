@@ -15,6 +15,7 @@ type Repository interface {
 	ListUsers(ctx context.Context, limit int) ([]UserListItem, error)
 	ListGroups(ctx context.Context, userID uint64, isSuperAdmin bool) ([]Group, error)
 	ListMembershipGroups(ctx context.Context, userID uint64) ([]Group, error)
+	FindSoleTenantAdmin(ctx context.Context, userID uint64) (uint64, bool, error)
 	ListRoles(ctx context.Context, userID, groupID uint64) ([]string, error)
 	ListMembers(ctx context.Context, groupID uint64) ([]Member, error)
 	PersonalSettings(ctx context.Context, userID, groupID uint64) (PersonalSettings, error)

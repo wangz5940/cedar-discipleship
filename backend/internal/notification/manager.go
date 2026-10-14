@@ -9,6 +9,7 @@ import (
 )
 
 var ErrChatNotFound = errors.New("bot_chat_not_found")
+var ErrBindingChanged = errors.New("bot_binding_changed")
 
 type Manager struct {
 	client *PotatoClient
@@ -91,6 +92,25 @@ func (m *Manager) ClearFailed() (int, error) {
 }
 
 func (m *Manager) Assign(ctx context.Context, target Target, groupID uint64, now time.Time) error {
+	return m.assign(ctx, target, groupID, nil, now)
+}
+
+func (m *Manager) AssignIfCurrent(
+	ctx context.Context,
+	target Target,
+	groupID, expectedGroupID uint64,
+	now time.Time,
+) error {
+	return m.assign(ctx, target, groupID, &expectedGroupID, now)
+}
+
+func (m *Manager) assign(
+	ctx context.Context,
+	target Target,
+	groupID uint64,
+	expectedGroupID *uint64,
+	now time.Time,
+) error {
 	if groupID > 0 {
 		chats, err := m.client.ListChats(ctx)
 		if err != nil {
@@ -112,7 +132,13 @@ func (m *Manager) Assign(ctx context.Context, target Target, groupID uint64, now
 	if m.closed {
 		return ErrRobotNotFound
 	}
-	if err := m.store.Assign(target, groupID); err != nil {
+	var err error
+	if expectedGroupID == nil {
+		err = m.store.Assign(target, groupID)
+	} else {
+		err = m.store.AssignIfCurrent(target, groupID, *expectedGroupID)
+	}
+	if err != nil {
 		return err
 	}
 	m.queue.SetTargets(m.store.Targets())
