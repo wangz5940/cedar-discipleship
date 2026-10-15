@@ -73,6 +73,14 @@ func (s *BindingStore) Bindings() []Binding {
 }
 
 func (s *BindingStore) Assign(target Target, groupID uint64) error {
+	return s.assign(target, groupID, nil)
+}
+
+func (s *BindingStore) AssignIfCurrent(target Target, groupID, expectedGroupID uint64) error {
+	return s.assign(target, groupID, &expectedGroupID)
+}
+
+func (s *BindingStore) assign(target Target, groupID uint64, expectedGroupID *uint64) error {
 	if groupID > 0 {
 		if err := validateBinding(target, groupID); err != nil {
 			return err
@@ -82,6 +90,13 @@ func (s *BindingStore) Assign(target Target, groupID uint64) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	currentGroupID := uint64(0)
+	if current, ok := s.bindings[target.ChatID]; ok {
+		currentGroupID = current.GroupID
+	}
+	if expectedGroupID != nil && currentGroupID != *expectedGroupID {
+		return ErrBindingChanged
+	}
 	next := make(map[int64]Binding, len(s.bindings)+1)
 	for chatID, binding := range s.bindings {
 		next[chatID] = binding

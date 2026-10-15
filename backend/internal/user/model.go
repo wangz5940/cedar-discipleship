@@ -12,6 +12,14 @@ type User struct {
 	Status             int    `json:"status"`
 }
 
+type LoginUserResult struct {
+	User            *User
+	Groups          []Group
+	CurrentGroupID  uint64
+	CurrentTenantID uint64
+	IsTenantAdmin   bool
+}
+
 type Group struct {
 	ID          uint64 `json:"id"`
 	Code        string `json:"code"`

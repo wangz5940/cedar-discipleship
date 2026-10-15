@@ -10,10 +10,10 @@ vi.mock('../legacy-app', () => ({ api, toast: vi.fn() }));
 beforeEach(() => { api.mockReset(); vi.stubGlobal('localStorage', { getItem: () => null }); });
 afterEach(() => vi.unstubAllGlobals());
 
-async function renderRobots(response, account = 99) {
+async function renderRobots(response, account = 99, isSuperAdmin = false) {
   api.mockResolvedValue(response);
   const pinia = createPinia();
-  useAppStateStore(pinia).user = { id: account };
+  useAppStateStore(pinia).user = { id: account, is_super_admin: isSuperAdmin };
   const component = { ...BotManagementAdmin, async setup(props, context) {
     const state = BotManagementAdmin.setup(props, context);
     await state.load();
@@ -42,4 +42,25 @@ it('按账号恢复机器人的展开状态，保留旧版群聊响应兼容', a
   expect(own).toContain('旧群聊');
   const other = await renderRobots(response, 100);
   expect(other).not.toContain('aria-expanded="true"');
+});
+
+it('小家管理员隐藏已绑定其他小家的群聊，超级管理员仍可见', async () => {
+  const response = { configured: true, robots: [{
+    id: 'default',
+    name: '默认机器人',
+    authenticated: true,
+    state: 'healthy',
+    chats: [
+      { chat_id: 7, chat_type: 3, title: '本小家群聊', group_id: 1 },
+      { chat_id: 8, chat_type: 3, title: '其他小家群聊', bound_elsewhere: true },
+    ],
+  }] };
+
+  const tenantAdmin = await renderRobots(response);
+  expect(tenantAdmin).toContain('本小家群聊');
+  expect(tenantAdmin).not.toContain('其他小家群聊');
+
+  const superAdmin = await renderRobots(response, 1, true);
+  expect(superAdmin).toContain('本小家群聊');
+  expect(superAdmin).toContain('其他小家群聊');
 });

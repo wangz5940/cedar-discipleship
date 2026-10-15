@@ -85,26 +85,61 @@ func (s *Service) CurrentUser(ctx context.Context, userID, currentGroupID uint64
 		}
 		vo.MemberName = firstNonEmpty(settings.MemberName, item.DisplayName)
 		vo.MobileViewMode = normalizeMobileViewMode(settings.MobileViewMode)
+	} else {
+		vo.CurrentTenantID, vo.IsTenantAdmin, err = s.emptyTenantAdminContext(
+			ctx, item, groups, currentGroupID,
+		)
+		if err != nil {
+			return UserVO{}, err
+		}
 	}
 	return vo, nil
 }
 
-func (s *Service) LoginUser(ctx context.Context, username string) (*User, []Group, uint64, error) {
+func (s *Service) LoginUser(ctx context.Context, username string) (LoginUserResult, error) {
 	item, err := s.repo.FindByUsername(ctx, username)
 	if err != nil || item.Status != 1 {
-		return nil, nil, 0, ErrUserNotFound
+		return LoginUserResult{}, ErrUserNotFound
 	}
 	groups, err := s.repo.ListGroups(ctx, item.ID, item.IsSuperAdmin)
 	if err != nil {
-		return nil, nil, 0, err
+		return LoginUserResult{}, err
 	}
-	var currentGroupID uint64
+	result := LoginUserResult{User: item, Groups: groups}
 	if item.DefaultGroupID > 0 && ContainsGroup(groups, item.DefaultGroupID) {
-		currentGroupID = item.DefaultGroupID
+		result.CurrentGroupID = item.DefaultGroupID
 	} else if len(groups) == 1 {
-		currentGroupID = groups[0].ID
+		result.CurrentGroupID = groups[0].ID
 	}
-	return item, groups, currentGroupID, nil
+	if result.CurrentGroupID > 0 {
+		for _, group := range groups {
+			if group.ID == result.CurrentGroupID {
+				result.CurrentTenantID = group.TenantID
+				result.IsTenantAdmin = group.TenantAdmin
+				break
+			}
+		}
+	} else {
+		result.CurrentTenantID, result.IsTenantAdmin, err = s.emptyTenantAdminContext(
+			ctx, item, groups, result.CurrentGroupID,
+		)
+		if err != nil {
+			return LoginUserResult{}, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) emptyTenantAdminContext(
+	ctx context.Context,
+	item *User,
+	groups []Group,
+	requestedGroupID uint64,
+) (uint64, bool, error) {
+	if requestedGroupID != 0 || item.IsSuperAdmin || len(groups) != 0 {
+		return 0, false, nil
+	}
+	return s.repo.FindSoleTenantAdmin(ctx, item.ID)
 }
 
 func (s *Service) VisibleGroups(ctx context.Context, userID uint64, isSuperAdmin bool) ([]Group, error) {

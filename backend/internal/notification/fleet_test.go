@@ -134,10 +134,10 @@ func TestFleetScopesStatusAndBindingsByRobot(t *testing.T) {
 		robot.client.groupsEndpoint = server.URL + "/getGroups"
 	}
 	target := Target{ChatID: 20, ChatType: 3}
-	if err := fleet.Assign(t.Context(), "primary", target, 1, time.Now()); err != nil {
+	if err := fleet.Assign(t.Context(), "primary", target, 1, 0, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := fleet.Assign(t.Context(), "secondary", target, 2, time.Now()); err != nil {
+	if err := fleet.Assign(t.Context(), "secondary", target, 2, 0, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if got := fleet.BindingGroupID("primary", 20); got != 1 {

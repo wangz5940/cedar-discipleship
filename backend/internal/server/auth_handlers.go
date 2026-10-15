@@ -34,16 +34,16 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
-	user, groups, currentGroupID, err := a.users.LoginUser(r.Context(), username)
-	if err != nil || !verifyPassword(req.Password, user.PasswordHash) {
+	login, err := a.users.LoginUser(r.Context(), username)
+	if err != nil || login.User == nil || !verifyPassword(req.Password, login.User.PasswordHash) {
 		a.loginLimiter.fail(remote, username)
 		var userID uint64
-		if user != nil {
-			userID = user.ID
+		if login.User != nil {
+			userID = login.User.ID
 		}
 		a.recordLoginLog(r, userdomain.LoginLog{
 			UserID:        userID,
-			GroupID:       currentGroupID,
+			GroupID:       login.CurrentGroupID,
 			Username:      username,
 			Success:       false,
 			FailureReason: "invalid_username_or_password",
@@ -52,7 +52,10 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.loginLimiter.success(remote, username)
-	sessionID, err := a.issueRefreshSession(r.Context(), w, r, user.ID, currentGroupID, user.PasswordHash)
+	user := login.User
+	sessionID, err := a.issueRefreshSession(
+		r.Context(), w, r, user.ID, login.CurrentGroupID, user.PasswordHash,
+	)
 	if errors.Is(err, userdomain.ErrPasswordChanged) {
 		writeError(w, http.StatusUnauthorized, "invalid_username_or_password")
 		return
@@ -61,7 +64,9 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "session_failed")
 		return
 	}
-	token, err := a.signToken(tokenClaims{UserID: user.ID, CurrentGroupID: currentGroupID, SessionID: sessionID})
+	token, err := a.signToken(tokenClaims{
+		UserID: user.ID, CurrentGroupID: login.CurrentGroupID, SessionID: sessionID,
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "token_failed")
 		return
@@ -69,13 +74,13 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	_ = a.users.RecordLogin(r.Context(), user.ID, time.Now().UTC())
 	a.recordLoginLog(r, userdomain.LoginLog{
 		UserID:   user.ID,
-		GroupID:  currentGroupID,
+		GroupID:  login.CurrentGroupID,
 		Username: username,
 		Success:  true,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": token,
-		"user":  loginUserResponse(user, groups, currentGroupID),
+		"user":  loginUserResponse(login),
 	})
 }
 
@@ -141,33 +146,16 @@ func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func loginUserResponse(user *userdomain.User, groups []userdomain.Group, currentGroupID uint64) map[string]any {
+func loginUserResponse(login userdomain.LoginUserResult) map[string]any {
+	user := login.User
 	return map[string]any{
 		"id": user.ID, "username": user.Username, "display_name": user.DisplayName,
 		"is_super_admin": user.IsSuperAdmin, "default_group_id": nullableUint64Value(user.DefaultGroupID),
 		"must_change_password": user.MustChangePassword,
-		"current_group_id":     currentGroupID, "study_groups": groups,
-		"current_tenant_id": currentTenantID(groups, currentGroupID),
-		"is_tenant_admin":   currentTenantAdmin(groups, currentGroupID),
+		"current_group_id":     login.CurrentGroupID, "study_groups": login.Groups,
+		"current_tenant_id": login.CurrentTenantID,
+		"is_tenant_admin":   login.IsTenantAdmin,
 	}
-}
-
-func currentTenantID(groups []userdomain.Group, groupID uint64) uint64 {
-	for _, group := range groups {
-		if group.ID == groupID {
-			return group.TenantID
-		}
-	}
-	return 0
-}
-
-func currentTenantAdmin(groups []userdomain.Group, groupID uint64) bool {
-	for _, group := range groups {
-		if group.ID == groupID {
-			return group.TenantAdmin
-		}
-	}
-	return false
 }
 
 func (a *app) handleMe(w http.ResponseWriter, r *http.Request) {

@@ -288,6 +288,34 @@ func (r *MySQLRepository) ListMembershipGroups(ctx context.Context, userID uint6
 	return scanGroups(rows)
 }
 
+func (r *MySQLRepository) FindSoleTenantAdmin(ctx context.Context, userID uint64) (uint64, bool, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT tm.tenant_id
+		FROM tenant_members tm
+		JOIN tenants t ON t.id=tm.tenant_id AND t.status=1
+		WHERE tm.user_id=? AND tm.role='admin' AND tm.status=1
+		ORDER BY tm.tenant_id LIMIT 2`, userID)
+	if err != nil {
+		return 0, false, err
+	}
+	defer rows.Close()
+
+	var tenantIDs []uint64
+	for rows.Next() {
+		var tenantID uint64
+		if err := rows.Scan(&tenantID); err != nil {
+			return 0, false, err
+		}
+		tenantIDs = append(tenantIDs, tenantID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, false, err
+	}
+	if len(tenantIDs) != 1 {
+		return 0, false, nil
+	}
+	return tenantIDs[0], true, nil
+}
+
 func (r *MySQLRepository) ListRoles(ctx context.Context, userID, groupID uint64) ([]string, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT role FROM user_group_roles WHERE user_id=? AND group_id=?`, userID, groupID)
 	if err != nil {

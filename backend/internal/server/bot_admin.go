@@ -54,13 +54,10 @@ func (a *app) handleBotManagement(w http.ResponseWriter, r *http.Request) {
 		visible := make([]notificationdomain.RobotStatus, len(robots))
 		for i, robot := range robots {
 			visible[i] = robot
-			visible[i].Chats = make([]notificationdomain.Chat, len(robot.Chats))
-			copy(visible[i].Chats, robot.Chats)
-			for j := range visible[i].Chats {
-				chat := &visible[i].Chats[j]
-				if chat.GroupID != 0 && !allowed[chat.GroupID] {
-					chat.GroupID = 0
-					chat.BoundElsewhere = true
+			visible[i].Chats = make([]notificationdomain.Chat, 0, len(robot.Chats))
+			for _, chat := range robot.Chats {
+				if chat.GroupID == 0 || allowed[chat.GroupID] {
+					visible[i].Chats = append(visible[i].Chats, chat)
 				}
 			}
 			visible[i].Bindings = make([]notificationdomain.Binding, 0, len(robot.Bindings))
@@ -186,9 +183,24 @@ func (a *app) handleBotBinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := mustUser(r)
+	manageableGroups := botManageableGroups(user)
+	previousGroupID := a.botManager.BindingGroupID(req.RobotID, req.ChatID)
+	if !user.IsSuperAdmin && previousGroupID > 0 {
+		found := false
+		for _, group := range manageableGroups {
+			if group.ID == previousGroupID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+	}
 	if req.GroupID > 0 {
 		found := false
-		for _, group := range botManageableGroups(user) {
+		for _, group := range manageableGroups {
 			if group.ID == req.GroupID {
 				found = true
 				break
@@ -199,9 +211,10 @@ func (a *app) handleBotBinding(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	previousGroupID := a.botManager.BindingGroupID(req.RobotID, req.ChatID)
 	target := notificationdomain.Target{ChatID: req.ChatID, ChatType: req.ChatType}
-	if err := a.botManager.Assign(r.Context(), req.RobotID, target, req.GroupID, time.Now().UTC()); err != nil {
+	if err := a.botManager.Assign(
+		r.Context(), req.RobotID, target, req.GroupID, previousGroupID, time.Now().UTC(),
+	); err != nil {
 		if errors.Is(err, notificationdomain.ErrRobotNotFound) {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
@@ -212,6 +225,10 @@ func (a *app) handleBotBinding(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, notificationdomain.ErrRobotAuthentication) {
 			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		if errors.Is(err, notificationdomain.ErrBindingChanged) {
+			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "bot_binding_save_failed")

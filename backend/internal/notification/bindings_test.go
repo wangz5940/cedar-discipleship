@@ -1,6 +1,7 @@
 package notification
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -49,6 +50,24 @@ func TestBindingStorePersistsUniqueChatAssignments(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("binding file mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestBindingStoreAssignIfCurrentRejectsStaleBinding(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewBindingStore(filepath.Join(t.TempDir(), "bindings.json"), map[uint64]Target{
+		2: {ChatID: 20, ChatType: 3},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AssignIfCurrent(Target{ChatID: 20, ChatType: 3}, 1, 0); !errors.Is(err, ErrBindingChanged) {
+		t.Fatalf("stale assignment error = %v, want %v", err, ErrBindingChanged)
+	}
+	want := []Binding{{Target: Target{ChatID: 20, ChatType: 3}, GroupID: 2}}
+	if got := store.Bindings(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("stale assignment changed bindings = %#v", got)
 	}
 }
 
