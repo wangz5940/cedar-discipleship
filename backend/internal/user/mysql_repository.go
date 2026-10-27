@@ -456,13 +456,8 @@ func (r *MySQLRepository) CreateMember(ctx context.Context, groupID, actorID uin
 			return 0, err
 		}
 	} else {
-		var exists bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
-			SELECT 1 FROM tenant_members tm JOIN study_groups g ON g.tenant_id=tm.tenant_id
-			WHERE g.id=? AND tm.user_id=? AND tm.status=1 AND NOT EXISTS (
-				SELECT 1 FROM tenant_members admin WHERE admin.user_id=tm.user_id AND admin.role='admin' AND admin.status=1
-			))`, groupID, userID).Scan(&exists); err != nil || !exists {
-			return 0, ErrMemberAddFailed
+		if err := ensureTenantMemberTx(ctx, tx, groupID, userID, now); err != nil {
+			return 0, err
 		}
 	}
 	if userID == 0 {
