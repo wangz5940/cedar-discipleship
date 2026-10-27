@@ -277,20 +277,52 @@ func TestServiceCreateMemberReturnsExistingAccountInformation(t *testing.T) {
 	}
 }
 
-func TestServiceCreateMemberDoesNotRevealAnotherTenant(t *testing.T) {
+func TestServiceCreateMemberReturnsExistingAccountWithoutOtherTenantGroups(t *testing.T) {
+	t.Parallel()
+
 	repo := &createMemberTestRepository{
-		existingUser: &User{ID: 23, Username: "existing", Status: 1},
-		groups:       []Group{{ID: 5, Name: "乙组", TenantID: 2}},
+		existingUser: &User{ID: 23, Username: "existing", DisplayName: "已有成员", Status: 1},
+		groups: []Group{
+			{ID: 5, Name: "乙组", TenantID: 2},
+		},
 	}
 	_, err := NewService(repo).CreateMember(context.Background(), 7, 9, CreateMemberInput{
 		CreateUser: true, TenantID: 1, DisplayName: "新成员", Username: "existing",
 	})
-	if !errors.Is(err, ErrUsernameExists) {
-		t.Fatalf("error = %v, want username conflict", err)
+
+	var conflict *UsernameConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("CreateMember() error = %v, want UsernameConflictError", err)
 	}
-	var details *UsernameConflictError
-	if errors.As(err, &details) {
-		t.Fatal("cross-tenant account details were exposed")
+	if conflict.ExistingUser.ID != 23 ||
+		conflict.ExistingUser.Username != "existing" ||
+		conflict.ExistingUser.DisplayName != "已有成员" {
+		t.Fatalf("existing user = %+v", conflict.ExistingUser)
+	}
+	if len(conflict.ExistingUser.Groups) != 0 {
+		t.Fatalf("cross-tenant groups leaked: %+v", conflict.ExistingUser.Groups)
+	}
+	if repo.created {
+		t.Fatal("repository CreateMember called after username conflict")
+	}
+}
+
+func TestServiceCreateMemberKeepsPlainConflictWithoutTenantContext(t *testing.T) {
+	t.Parallel()
+
+	repo := &createMemberTestRepository{
+		existingUser: &User{ID: 23, Username: "existing", DisplayName: "已有成员", Status: 1},
+		groups:       []Group{{ID: 5, Name: "乙组", TenantID: 2}},
+	}
+	_, err := NewService(repo).CreateMember(context.Background(), 7, 9, CreateMemberInput{
+		CreateUser: true, DisplayName: "新成员", Username: "existing",
+	})
+	if !errors.Is(err, ErrUsernameExists) {
+		t.Fatalf("CreateMember() error = %v, want %v", err, ErrUsernameExists)
+	}
+	var conflict *UsernameConflictError
+	if errors.As(err, &conflict) {
+		t.Fatalf("CreateMember() error = %v, want plain conflict", err)
 	}
 }
 

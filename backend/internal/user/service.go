@@ -247,15 +247,11 @@ func (s *Service) usernameConflict(ctx context.Context, tenantID uint64, item *U
 	if tenantID == 0 {
 		return ErrUsernameExists
 	}
-	visible := groups[:0]
+	visible := make([]Group, 0, len(groups))
 	for _, group := range groups {
 		if group.TenantID == tenantID {
 			visible = append(visible, group)
 		}
-	}
-	groups = visible
-	if len(groups) == 0 {
-		return ErrUsernameExists
 	}
 	return &UsernameConflictError{
 		ExistingUser: ExistingUserVO{
@@ -263,7 +259,7 @@ func (s *Service) usernameConflict(ctx context.Context, tenantID uint64, item *U
 			Username:    item.Username,
 			DisplayName: item.DisplayName,
 			Status:      item.Status,
-			Groups:      groups,
+			Groups:      visible,
 		},
 	}
 }

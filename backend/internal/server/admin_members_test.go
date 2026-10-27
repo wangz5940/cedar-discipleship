@@ -91,6 +91,49 @@ func TestHandleAdminCreateMemberReturnsExistingAccountDetails(t *testing.T) {
 	}
 }
 
+func TestHandleAdminCreateMemberHidesOtherTenantGroups(t *testing.T) {
+	t.Parallel()
+
+	repo := &adminMemberTestRepository{
+		existingUser: &userdomain.User{
+			ID:          23,
+			Username:    "existing",
+			DisplayName: "已有成员",
+			Status:      1,
+		},
+		groups: []userdomain.Group{
+			{ID: 5, Code: "beta", Name: "乙组", TenantID: 2},
+		},
+	}
+	a := &app{users: userdomain.NewService(repo)}
+	request := adminMemberRequest(t, `{
+		"create_user": true,
+		"display_name": "新成员",
+		"username": "existing"
+	}`)
+	recorder := httptest.NewRecorder()
+
+	a.handleAdminCreateMember(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusConflict)
+	}
+	var payload struct {
+		Error        string                    `json:"error"`
+		ExistingUser userdomain.ExistingUserVO `json:"existing_user"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Error != "username_exists" ||
+		payload.ExistingUser.ID != 23 ||
+		payload.ExistingUser.Username != "existing" ||
+		payload.ExistingUser.DisplayName != "已有成员" ||
+		len(payload.ExistingUser.Groups) != 0 {
+		t.Fatalf("response = %+v", payload)
+	}
+}
+
 func TestHandleAdminCreateMemberConfirmsExistingAccountMembership(t *testing.T) {
 	t.Parallel()
 

@@ -47,8 +47,15 @@ func TestTenantMembershipAndGroupSelection(t *testing.T) {
 	if err != nil || bothB.CurrentTenantID != 2 || bothB.IsTenantAdmin {
 		t.Fatalf("shared account in B = %+v, err = %v", bothB, err)
 	}
-	if _, err := repo.CreateMember(t.Context(), 1, 1, CreateMemberInput{UserID: 3, DisplayName: "Only B"}); !errors.Is(err, ErrMemberAddFailed) {
-		t.Fatalf("cross-tenant add member error = %v", err)
+	if _, err := repo.CreateMember(t.Context(), 1, 1, CreateMemberInput{UserID: 3, DisplayName: "Only B"}); err != nil {
+		t.Fatalf("cross-tenant add member: %v", err)
+	}
+	onlyBGroups, err := repo.ListMembershipGroups(t.Context(), 3)
+	if err != nil || len(onlyBGroups) != 2 || onlyBGroups[0].ID != 1 || onlyBGroups[1].ID != 3 {
+		t.Fatalf("cross-tenant member groups = %+v, err = %v", onlyBGroups, err)
+	}
+	if _, err := repo.CreateMember(t.Context(), 3, 1, CreateMemberInput{UserID: 1, DisplayName: "Admin"}); !errors.Is(err, ErrMemberAddFailed) {
+		t.Fatalf("cross-tenant tenant admin add error = %v, want %v", err, ErrMemberAddFailed)
 	}
 	if _, err := repo.CreateMember(t.Context(), 2, 1, CreateMemberInput{UserID: 2, DisplayName: "Both"}); err != nil {
 		t.Fatalf("same-tenant add member: %v", err)
