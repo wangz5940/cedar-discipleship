@@ -224,7 +224,11 @@ func (a *app) setGroupDefaultPassword(groupID uint64, password string, includeLe
 	if err != nil {
 		return 0, err
 	}
-	affected, err := a.users.SetGroupDefaultPassword(r.Context(), groupID, hash, time.Now().UTC())
+	encrypted, err := a.encryptDefaultPassword(password)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := a.users.SetGroupDefaultPassword(r.Context(), groupID, hash, time.Now().UTC(), encrypted)
 	if err != nil {
 		return 0, err
 	}
