@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 )
@@ -191,5 +192,14 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	defer dir.Close()
+	return syncDirectory(dir)
+}
+
+func syncDirectory(dir *os.File) error {
+	// Windows cannot flush directory handles opened by os.Open. The file itself
+	// is still synced before rename, and other platforms retain directory sync.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	return dir.Sync()
 }
