@@ -6,6 +6,20 @@ import Dashboard from './Dashboard.vue';
 import { useDashboardStore } from '../stores/dashboard';
 
 describe('dashboard statistics', () => {
+  it('renders week, month and year shortcuts while preserving month and history controls', async () => {
+    const pinia = createPinia();
+    useDashboardStore(pinia).setSnapshot({ visible: true, statsPeriod: 'week' });
+    const context = {};
+    await renderToString(createSSRApp(Dashboard).use(pinia), context);
+    const html = context.teleports['#vue-dashboard'];
+    expect(html).toContain('统计查询周期');
+    expect(html.indexOf('>本周</button>')).toBeLessThan(html.indexOf('>本月</button>'));
+    expect(html.indexOf('>本月</button>')).toBeLessThan(html.indexOf('>本年</button>'));
+    expect(html).toMatch(/aria-pressed="true"[^>]*>本周<\/button>/);
+    expect(html).toContain('统计月份');
+    expect(html).toContain('全部历史');
+  });
+
   it('shows status without check-in actions for self and other members', async () => {
     const pinia = createPinia();
     useDashboardStore(pinia).setSnapshot({

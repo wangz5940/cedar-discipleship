@@ -27,6 +27,12 @@ export function currentCalendarWeekRange(value = todayString()): DateRange {
   return { start: formatLocalDate(start), end: formatLocalDate(end) };
 }
 
+export function currentStatisticsRange(period: 'week' | 'month' | 'year', value = todayString()): DateRange {
+  if (period === 'year') return { start: `${value.slice(0, 4)}-01-01`, end: value };
+  if (period === 'month') return { start: `${value.slice(0, 7)}-01`, end: value };
+  return { start: currentCalendarWeekRange(value).start, end: value };
+}
+
 export function weekEndDateFromStart(value: string): string {
   const start = parseLocalDate(value);
   if (formatLocalDate(start) !== value) return '';
