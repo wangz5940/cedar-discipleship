@@ -174,11 +174,11 @@ func (s *Service) AllGroups(ctx context.Context) ([]Group, error) {
 	return s.repo.ListAllGroups(ctx)
 }
 
-func (s *Service) CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time) (uint64, error) {
+func (s *Service) CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time, encryptedPassword ...string) (uint64, error) {
 	if strings.TrimSpace(name) == "" {
 		return 0, ErrGroupNameRequired
 	}
-	return s.repo.CreateGroup(ctx, name, passwordHash, actorID, at)
+	return s.repo.CreateGroup(ctx, name, passwordHash, actorID, at, encryptedPassword...)
 }
 
 func (s *Service) UpdateGroup(ctx context.Context, id uint64, name string, at time.Time) error {
@@ -309,8 +309,8 @@ func (s *Service) ResetNonSuperPasswords(ctx context.Context, passwordHash strin
 	return s.repo.ResetNonSuperPasswords(ctx, passwordHash, at)
 }
 
-func (s *Service) SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time) (int64, error) {
-	return s.repo.SetGroupDefaultPassword(ctx, groupID, passwordHash, at)
+func (s *Service) SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time, encryptedPassword ...string) (int64, error) {
+	return s.repo.SetGroupDefaultPassword(ctx, groupID, passwordHash, at, encryptedPassword...)
 }
 
 func (s *Service) GroupDefaultPasswordHash(ctx context.Context, groupID uint64) (string, error) {

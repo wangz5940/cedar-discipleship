@@ -476,6 +476,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/admin/members/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminRemoveMember)))
 	mux.HandleFunc("POST /api/admin/members/{id}/reset-password", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResetMemberPassword)))
 	mux.HandleFunc("PUT /api/admin/group/default-password", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminSetGroupDefaultPassword)))
+	mux.HandleFunc("GET /api/admin/group/default-password", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminGetGroupDefaultPassword)))
 	mux.HandleFunc("POST /api/admin/members/{id}/admins", a.auth(a.requireRole(roleGroupAdmin, a.handleGrantGroupAdmin)))
 	mux.HandleFunc("DELETE /api/admin/members/{id}/admins", a.auth(a.requireRole(roleGroupAdmin, a.handleRevokeGroupAdmin)))
 	mux.HandleFunc("GET /api/admin/audit-logs", a.auth(a.requireRole(roleGroupAdmin, a.handleAuditLogs)))

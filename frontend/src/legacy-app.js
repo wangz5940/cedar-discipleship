@@ -2972,6 +2972,7 @@ export async function updateGroupPassword(password) {
       body: JSON.stringify({ password }),
     });
     toast(`默认密码已更新，影响 ${result.affected_users || 0} 个账号`);
+    return result;
   } catch (error) {
     toast(error.message);
   }

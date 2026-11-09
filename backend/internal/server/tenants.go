@@ -333,14 +333,19 @@ func (a *app) handleTenantCreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "password_failed")
 		return
 	}
+	encrypted, err := a.encryptDefaultPassword(password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "password_failed")
+		return
+	}
 	code, err := randomURLToken(12)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "group_code_failed")
 		return
 	}
 	now := time.Now().UTC()
-	res, err := a.db.ExecContext(r.Context(), `INSERT INTO study_groups(tenant_id,code,name,description,default_password_hash,auto_seed_ministry_catalog,created_by,created_at,updated_at)
-		SELECT id,?,?,'',?,0,?,?,? FROM tenants WHERE id=? AND status=1`, "group-"+strings.ToLower(code), req.Name, hash, mustUser(r).ID, now, now, tenantID)
+	res, err := a.db.ExecContext(r.Context(), `INSERT INTO study_groups(tenant_id,code,name,description,default_password_hash,default_password_encrypted,auto_seed_ministry_catalog,created_by,created_at,updated_at)
+		SELECT id,?,?,'',?,?,0,?,?,? FROM tenants WHERE id=? AND status=1`, "group-"+strings.ToLower(code), req.Name, hash, encrypted, mustUser(r).ID, now, now, tenantID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "group_create_failed")
 		return
