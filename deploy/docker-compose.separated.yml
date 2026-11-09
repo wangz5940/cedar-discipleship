@@ -92,7 +92,7 @@ services:
     volumes:
       - ${AGP_LOG_DIR:-../logs}/frontend:/var/log/cedar
     ports:
-      - "${AGP_WEB_PORT:-5114}:80"
+      - "${AGP_WEB_BIND_HOST:+${AGP_WEB_BIND_HOST}:}${AGP_WEB_PORT:-5114}:80"
     logging:
       driver: json-file
       options:

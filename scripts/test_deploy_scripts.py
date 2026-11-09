@@ -39,7 +39,7 @@ if "up" in args and "-f" in args:
 with open(os.environ["COMMAND_LOG"], "a") as log:
     log.write(json.dumps({"args": args, "jwt_length": len(os.getenv("AGP_JWT_SECRET", "")),
                           "password_length": len(os.getenv("BOOTSTRAP_SUPERADMIN_PASSWORD", "")),
-                          "images": images}) + "\\n")
+                          "images": images, "web_bind_host": os.getenv("AGP_WEB_BIND_HOST", "")}) + "\\n")
 if args[:2] == ["image", "inspect"]:
     if "org.opencontainers.image.revision" in args[args.index("--format") + 1]:
         print(os.environ.get("IMAGE_REVISION", "a" * 40))
@@ -69,6 +69,14 @@ if "--dry-run=true" in args and os.environ.get("FAIL_DRY_RUN") == "1":
         up = next(item for item in self.commands() if "up" in item["args"])
         self.assertEqual(up["jwt_length"], 48)
         self.assertEqual(up["password_length"], 16)
+
+    def test_oneclick_reads_frontend_bind_host_from_environment_file(self):
+        self.env.update(RUN_PRIMARY_MIGRATION="false", RUN_RESOURCE_FILE_MIGRATION="false")
+        (self.root / ".env").write_text("AGP_WEB_BIND_HOST=127.0.0.1\n")
+        result = self.run_script("deploy-oneclick.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        up = next(item for item in self.commands() if "up" in item["args"])
+        self.assertEqual(up["web_bind_host"], "127.0.0.1")
 
     def test_finite_random_input_with_and_without_openssl(self):
         for fallback in (False, True):
