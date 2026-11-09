@@ -11,6 +11,7 @@ import { loadBibleBook, selectedVerseText } from './runtime/verseSource';
 import {
   currentCalendarWeekRange,
   currentMonthString,
+  currentStatisticsRange,
   dayOffsetFrom,
   formatLocalDate,
   formatMonthLabel,
@@ -111,7 +112,8 @@ const state = shallowReactive({
   homeStatsLoading: false,
   homeStatsCheckedGroupID: 0,
   homeStatsCheckedAt: 0,
-  statsFrom: monthStartString(),
+  statsPeriod: 'week',
+  statsFrom: currentStatisticsRange('week').start,
   statsTo: todayString(),
   checkins: [],
   members: [],
@@ -323,6 +325,7 @@ function dashboardSnapshot() {
     leaderNote: leader ? `${leader.total} 次打卡` : '暂无记录',
     rankingFrom,
     rankingTo,
+    statsPeriod: state.statsPeriod,
     statsFrom: state.statsFrom || state.monthlyRanking?.from || '',
     statsTo: state.statsTo,
     statsMaxDate: todayString(),
@@ -952,6 +955,7 @@ export function shiftSelectedDate(delta) {
 
 export async function setStatsMonth(month) {
   if (!/^\d{4}-\d{2}$/.test(month) || month > todayString().slice(0, 7)) return;
+  state.statsPeriod = 'custom';
   const start = parseLocalDate(`${month}-01`);
   const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
   state.statsFrom = formatLocalDate(start);
@@ -964,6 +968,7 @@ export async function setStatsMonth(month) {
 
 export async function setStatsDateRange(part, value) {
   if (!value) return;
+  state.statsPeriod = 'custom';
   let next = value;
   if (next > todayString()) {
     toast('统计范围不能超过今天');
@@ -986,6 +991,7 @@ export async function setStatsDateRange(part, value) {
 }
 
 export async function resetStatsRangeToHistory() {
+  state.statsPeriod = 'history';
   state.statsFrom = '';
   state.statsTo = todayString();
   try {
@@ -995,8 +1001,15 @@ export async function resetStatsRangeToHistory() {
 }
 
 export async function resetStatsRangeToMonth() {
-  state.statsFrom = monthStartString();
-  state.statsTo = todayString();
+  return setStatsPeriod('month');
+}
+
+export async function setStatsPeriod(period) {
+  if (!['week', 'month', 'year'].includes(period)) return;
+  const range = currentStatisticsRange(period);
+  state.statsPeriod = period;
+  state.statsFrom = range.start;
+  state.statsTo = range.end;
   try {
     await loadMonthlyRanking();
     render();

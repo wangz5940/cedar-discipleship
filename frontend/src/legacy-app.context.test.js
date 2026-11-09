@@ -4,6 +4,8 @@ import { saveWeekDraft, updateWeekDraftField, login, logout, selectWeekDraft, se
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useAppStateStore } from './stores/appState';
 import { useDashboardStore } from './stores/dashboard';
+import { setStatsPeriod } from './legacy-app';
+import { currentStatisticsRange } from './runtime/date';
 
 describe('main data context', () => {
   let groupID;
@@ -181,6 +183,24 @@ describe('main data context', () => {
     release();
     await old;
     expect(useDashboardStore().rankingFrom).toBe('2026-07-02');
+  });
+
+  it('queries the current week, month and year through the shared statistics entry', async () => {
+    await login('member', 'password');
+    setTab('dashboard');
+    for (const period of ['week', 'month', 'year']) {
+      await setStatsPeriod(period);
+      const range = currentStatisticsRange(period);
+      const dashboard = useDashboardStore();
+      expect(dashboard.statsPeriod).toBe(period);
+      expect(dashboard.statsFrom).toBe(range.start);
+      expect(dashboard.statsTo).toBe(range.end);
+      expect(fetch).toHaveBeenCalledWith(`/api/dashboard/monthly-ranking?from=${range.start}&to=${range.end}`, expect.anything());
+    }
+    await setStatsMonth('2024-02');
+    expect(useDashboardStore().statsPeriod).toBe('custom');
+    await resetStatsRangeToHistory();
+    expect(useDashboardStore().statsPeriod).toBe('history');
   });
 
   it('loads all historical statistics and switches to a selected date range', async () => {

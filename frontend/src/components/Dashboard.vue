@@ -27,6 +27,7 @@ import {
   setSelectedDate,
   setStatsMonth,
   resetStatsRangeToHistory,
+  setStatsPeriod,
   shiftSelectedDate,
   toast as showToast,
 } from '../legacy-app';
@@ -47,6 +48,7 @@ const {
   statsTaskTypes,
   rankingFrom,
   rankingTo,
+  statsPeriod,
   statsFrom,
   statsMaxDate,
 } = storeToRefs(store);
@@ -291,6 +293,16 @@ async function exportRankingChart() {
             <button v-if="statsView === 'chart'" class="primary stats-export" type="button" @click="exportRankingChart">导出图片</button>
           </div>
           <div class="inline stats-controls">
+            <div class="stats-periods" role="group" aria-label="统计查询周期">
+              <button
+                v-for="period in [{ key: 'week', label: '本周' }, { key: 'month', label: '本月' }, { key: 'year', label: '本年' }]"
+                :key="period.key"
+                :class="statsPeriod === period.key ? 'primary' : 'secondary'"
+                :aria-pressed="statsPeriod === period.key"
+                type="button"
+                @click="setStatsPeriod(period.key)"
+              >{{ period.label }}</button>
+            </div>
             <button class="secondary compact-control" type="button" :aria-pressed="monthLabel === '全部历史'" @click="resetStatsRangeToHistory">全部历史</button>
             <DateField
               :model-value="monthLabel === '全部历史' ? '' : statsFrom.slice(0, 7)"
@@ -490,6 +502,8 @@ async function exportRankingChart() {
 .stats-center__eyebrow { margin-bottom: 6px; }
 .stats-center__title { font-size: 20px; }
 .stats-controls { flex-wrap: wrap; gap: 12px; }
+.stats-periods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.stats-periods button { min-height: 44px; padding: 8px 14px; }
 .view-toggle { border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-surface, #fff); }
 .view-toggle { gap: 4px; padding: 2px; }
 .compact-control, .filter-chip { min-height: 36px; padding: 4px 12px; font-size: 12px; }
@@ -526,6 +540,7 @@ async function exportRankingChart() {
   .spread > .inline { flex-wrap: wrap; }
   .stats-center-head { align-items: stretch; }
   .stats-center-head > div { width: 100%; }
+  .stats-periods { width: 100%; }
   .view-toggle { width: 100%; }
   .view-toggle button { flex: 1; min-height: 44px; }
   .progress-panel { display: none; }
