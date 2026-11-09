@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -212,7 +213,7 @@ func TestFleetRegisterPersistsRobotAndKeepsTokenServerSide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("robots.json mode = %o, want 600", info.Mode().Perm())
 	}
 	var stored struct {

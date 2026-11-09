@@ -61,7 +61,7 @@ func (r *MySQLRepository) ListAllGroups(ctx context.Context) ([]Group, error) {
 	return scanGroups(rows)
 }
 
-func (r *MySQLRepository) CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time) (uint64, error) {
+func (r *MySQLRepository) CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time, encryptedPassword ...string) (uint64, error) {
 	name = strings.TrimSpace(name)
 	if err := r.ensureGroupNameUnique(ctx, 0, name); err != nil {
 		return 0, err
@@ -70,7 +70,7 @@ func (r *MySQLRepository) CreateGroup(ctx context.Context, name, passwordHash st
 	if err != nil {
 		return 0, err
 	}
-	res, err := r.db.ExecContext(ctx, `INSERT INTO study_groups (code,name,description,default_password_hash,auto_seed_ministry_catalog,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`, code, name, "", passwordHash, false, actorID, at, at)
+	res, err := r.db.ExecContext(ctx, `INSERT INTO study_groups (code,name,description,default_password_hash,default_password_encrypted,auto_seed_ministry_catalog,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, code, name, "", passwordHash, firstEncryptedPassword(encryptedPassword), false, actorID, at, at)
 	if err != nil {
 		return 0, err
 	}
@@ -539,13 +539,13 @@ func (r *MySQLRepository) ResetNonSuperPasswords(ctx context.Context, passwordHa
 	return affected, tx.Commit()
 }
 
-func (r *MySQLRepository) SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time) (int64, error) {
+func (r *MySQLRepository) SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time, encryptedPassword ...string) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE study_groups SET default_password_hash=?, updated_at=? WHERE id=?`, passwordHash, at, groupID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE study_groups SET default_password_hash=?, default_password_encrypted=?, updated_at=? WHERE id=?`, passwordHash, firstEncryptedPassword(encryptedPassword), at, groupID); err != nil {
 		return 0, err
 	}
 	ids, err := passwordTargetsTx(ctx, tx, `SELECT u.id FROM users u
@@ -895,4 +895,11 @@ func insertedID(result sql.Result) (uint64, error) {
 		return 0, fmt.Errorf("invalid insert id %d", id)
 	}
 	return uint64(id), nil
+}
+
+func firstEncryptedPassword(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }

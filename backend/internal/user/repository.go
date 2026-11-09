@@ -9,7 +9,7 @@ type Repository interface {
 	FindByID(ctx context.Context, id uint64) (*User, error)
 	FindByUsername(ctx context.Context, username string) (*User, error)
 	ListAllGroups(ctx context.Context) ([]Group, error)
-	CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time) (uint64, error)
+	CreateGroup(ctx context.Context, name, passwordHash string, actorID uint64, at time.Time, encryptedPassword ...string) (uint64, error)
 	UpdateGroup(ctx context.Context, id uint64, name string, at time.Time) error
 	DeleteGroup(ctx context.Context, id uint64, at time.Time) ([]string, error)
 	ListUsers(ctx context.Context, limit int) ([]UserListItem, error)
@@ -26,7 +26,7 @@ type Repository interface {
 	SetRole(ctx context.Context, groupID, userID uint64, role string, grant bool, at time.Time) error
 	ResetNonSuperPasswords(ctx context.Context, passwordHash string, at time.Time) (int64, error)
 	ResetMemberPassword(ctx context.Context, groupID, memberID uint64, allowAdmins bool, at time.Time) (uint64, error)
-	SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time) (int64, error)
+	SetGroupDefaultPassword(ctx context.Context, groupID uint64, passwordHash string, at time.Time, encryptedPassword ...string) (int64, error)
 	GroupDefaultPasswordHash(ctx context.Context, groupID uint64) (string, error)
 	HasSuperAdmin(ctx context.Context) (bool, error)
 	BootstrapSuperAdmin(ctx context.Context, username, displayName, namePinyin, passwordHash string, at time.Time) error

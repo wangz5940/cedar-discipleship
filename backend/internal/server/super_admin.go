@@ -35,7 +35,12 @@ func (a *app) handleSuperCreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "password_failed")
 		return
 	}
-	id, err := a.users.CreateGroup(r.Context(), req.Name, hash, u.ID, time.Now().UTC())
+	encrypted, err := a.encryptDefaultPassword(password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "password_failed")
+		return
+	}
+	id, err := a.users.CreateGroup(r.Context(), req.Name, hash, u.ID, time.Now().UTC(), encrypted)
 	if errors.Is(err, userdomain.ErrGroupNameRequired) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -148,7 +149,10 @@ func TestQueuePersistsAndDeduplicates(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := files[0].Info()
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("job file permissions = %v, err=%v", info, err)
 	}
 	payload, err := os.ReadFile(filepath.Join(queue.dir, "pending", files[0].Name()))

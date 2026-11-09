@@ -2,6 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('AdminConsole password permissions', () => {
+  it('hides account names in square cards while preserving password reset', () => {
+    const component = readFileSync(new URL('./AdminConsole.vue', import.meta.url), 'utf8');
+    expect(component).not.toContain('{{ member.username }}');
+    expect(component).toContain('aspect-ratio: 1;');
+    expect(component).toContain('@click="resetMemberPassword(member)"');
+    expect(component).toContain('const defaultPasswordVisible = ref(false)');
+  });
+
   it('shows the group password control through the shared admin capability', () => {
     const component = readFileSync(new URL('./AdminConsole.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 

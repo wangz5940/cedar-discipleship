@@ -98,6 +98,12 @@ const {
 const groupName = ref('');
 const groupEditName = ref('');
 const groupPassword = ref('');
+const currentDefaultPassword = ref('');
+const defaultPasswordVisible = ref(false);
+const defaultPasswordLoading = ref(false);
+const defaultPasswordMessage = ref('');
+const groupPasswordSaving = ref(false);
+let defaultPasswordRequest = 0;
 const memberName = ref('');
 const memberUsername = ref('');
 const memberUsernameInput = ref(null);
@@ -216,6 +222,61 @@ watch(() => Boolean(user.value?.is_super_admin || user.value?.is_tenant_admin), 
 watch(() => Boolean(user.value?.is_super_admin), (isSuperAdmin) => {
   if (!isSuperAdmin && adminSection.value === 'feedback') setAdminSection('learning');
 });
+watch([currentGroupID, canManageRoles, adminSection], () => {
+  defaultPasswordRequest += 1;
+  currentDefaultPassword.value = '';
+  defaultPasswordVisible.value = false;
+  defaultPasswordLoading.value = false;
+  defaultPasswordMessage.value = '';
+  groupPassword.value = '';
+});
+
+async function toggleDefaultPassword() {
+  if (defaultPasswordVisible.value) {
+    defaultPasswordVisible.value = false;
+    currentDefaultPassword.value = '';
+    return;
+  }
+  const groupID = currentGroupID.value;
+  const request = ++defaultPasswordRequest;
+  defaultPasswordLoading.value = true;
+  defaultPasswordMessage.value = '';
+  try {
+    const result = await api('/admin/group/default-password');
+    if (request !== defaultPasswordRequest || groupID !== currentGroupID.value || !canManageRoles.value || adminSection.value !== 'members') return;
+    if (!result.available) {
+      defaultPasswordMessage.value = '已有默认密码尚未保存加密副本，请重新设置后查看。';
+      return;
+    }
+    currentDefaultPassword.value = result.password;
+    defaultPasswordVisible.value = true;
+  } catch (error) {
+    if (request === defaultPasswordRequest) defaultPasswordMessage.value = error.message;
+  } finally {
+    if (request === defaultPasswordRequest) defaultPasswordLoading.value = false;
+  }
+}
+
+async function saveGroupPassword() {
+  if (groupPasswordSaving.value) return;
+  const groupID = currentGroupID.value;
+  defaultPasswordRequest += 1;
+  defaultPasswordLoading.value = false;
+  currentDefaultPassword.value = '';
+  defaultPasswordVisible.value = false;
+  groupPasswordSaving.value = true;
+  try {
+    const result = await updateGroupPassword(groupPassword.value);
+    if (result && groupID === currentGroupID.value) {
+      groupPassword.value = '';
+      currentDefaultPassword.value = '';
+      defaultPasswordVisible.value = false;
+      defaultPasswordMessage.value = '';
+    }
+  } finally {
+    groupPasswordSaving.value = false;
+  }
+}
 const activeGroup = computed(() => groups.value.find((item) => Number(item.id) === Number(currentGroupID.value)));
 const conflictAlreadyInGroup = computed(() => members.value.some(
   (member) => Number(member.user_id) === Number(memberConflict.value?.id),
@@ -948,8 +1009,14 @@ async function runLocalBackupImport() {
         <div v-if="currentGroupID && canManageRoles" class="card">
           <h2>修改本组默认密码</h2>
           <div class="form-stack">
-            <input v-model="groupPassword" placeholder="新的默认密码（至少 8 位）" type="password" @keyup.enter="updateGroupPassword(groupPassword)" />
-            <div class="form-actions"><button type="button" @click="updateGroupPassword(groupPassword)">更新默认密码</button></div>
+            <label for="current-group-password">当前默认密码</label>
+            <div class="default-password-display">
+              <input id="current-group-password" :value="defaultPasswordVisible ? currentDefaultPassword : '••••••••'" :type="defaultPasswordVisible ? 'text' : 'password'" readonly autocomplete="off" />
+              <button class="secondary" type="button" :disabled="defaultPasswordLoading || groupPasswordSaving" :aria-pressed="defaultPasswordVisible" @click="toggleDefaultPassword">{{ defaultPasswordLoading ? '读取中' : defaultPasswordVisible ? '隐藏' : '查看' }}</button>
+            </div>
+            <p v-if="defaultPasswordMessage" role="status">{{ defaultPasswordMessage }}</p>
+            <input v-model="groupPassword" aria-label="新的默认密码" placeholder="新的默认密码（至少 8 位）" type="password" autocomplete="new-password" :disabled="groupPasswordSaving" @keyup.enter="saveGroupPassword" />
+            <div class="form-actions"><button class="primary" :disabled="groupPasswordSaving" type="button" @click="saveGroupPassword">{{ groupPasswordSaving ? '更新中' : '更新默认密码' }}</button></div>
           </div>
         </div>
 
@@ -974,13 +1041,12 @@ async function runLocalBackupImport() {
               <div class="avatar">{{ (member.member_name || member.display_name || '?').slice(0, 1) }}</div>
               <div>
                 <b>{{ member.member_name || member.display_name }}</b>
-                <div class="muted">{{ member.username }}</div>
+                <span v-if="roleLabel(member)" class="pill role-pill" :class="{ 'role-admin': member.roles?.includes('group_admin') }">
+                  {{ roleLabel(member) }}
+                </span>
               </div>
             </div>
             <div class="member-actions">
-              <span v-if="roleLabel(member)" class="pill role-pill" :class="{ 'role-admin': member.roles?.includes('group_admin') }">
-                {{ roleLabel(member) }}
-              </span>
               <button
                 v-if="canManageRoles && !member.is_super_admin && !member.roles?.includes('group_leader')"
                 :class="member.roles?.includes('group_admin') ? 'secondary' : 'ok'"
@@ -1341,26 +1407,49 @@ async function runLocalBackupImport() {
 .admin-member-settings { margin-bottom: 24px; }
 .admin-members-section { min-width: 0; }
 .admin-member-list-title { margin-top: 0; }
-.admin-member-card .member-main { flex: 1 1 auto; }
-.admin-member-card .member-main > div:last-child { flex: 1 1 auto; }
+.default-password-display { display: flex; align-items: center; gap: 8px; }
+.default-password-display input { flex: 1; min-width: 0; }
+.default-password-display button { flex: 0 0 auto; min-height: 44px; }
+.admin-member-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+}
+.admin-member-card {
+  aspect-ratio: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 20px;
+}
+.admin-member-card .member-main {
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+}
 .admin-member-card .member-main b {
-  overflow: visible;
+  white-space: normal;
   overflow-wrap: anywhere;
-  line-height: 1.35;
-  text-overflow: clip;
+}
+.admin-member-card .role-pill { display: inline-flex; margin-top: 8px; }
+.admin-member-card .member-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  width: 100%;
+  margin-left: 0;
+  gap: 8px;
+}
+.admin-member-card .member-actions button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
   white-space: normal;
 }
-.admin-member-card .member-actions { min-width: 94px; }
-.admin-member-card .member-actions button {
-  min-width: 90px;
-  padding-inline: 8px;
-}
-.admin-member-card .role-pill {
-  padding: 5px 8px;
-  font-size: 11px;
-  line-height: 1.2;
-  white-space: nowrap;
-}
+.admin-member-card .member-actions button:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .admin-group-actions { justify-content: flex-start; }
 .member-conflict-details { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; margin: 16px 0; }
 .member-conflict-details dt { color: var(--cd-muted); }
