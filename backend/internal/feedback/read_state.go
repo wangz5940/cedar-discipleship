@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -128,6 +129,11 @@ func (s *ReadStateStore) write(document readStateDocument) error {
 		return err
 	}
 	defer dir.Close()
+	// Windows cannot flush directory handles opened by os.Open. The state file
+	// has already been synced before rename.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	return dir.Sync()
 }
 
