@@ -4,7 +4,7 @@ import { saveWeekDraft, updateWeekDraftField, login, logout, selectWeekDraft, se
 import { useCheckinWorkbenchStore } from './stores/checkinWorkbench';
 import { useAppStateStore } from './stores/appState';
 import { useDashboardStore } from './stores/dashboard';
-import { setStatsPeriod } from './legacy-app';
+import { setStatsPeriod, setStatsRange } from './legacy-app';
 import { currentStatisticsRange } from './runtime/date';
 
 describe('main data context', () => {
@@ -183,6 +183,59 @@ describe('main data context', () => {
     release();
     await old;
     expect(useDashboardStore().rankingFrom).toBe('2026-07-02');
+  });
+
+  it('submits both statistics dates in one request and rejects invalid ranges', async () => {
+    await login('member', 'password');
+    setTab('dashboard');
+    expect(await setStatsRange('2024-02-03', '2024-02-20')).toBe(true);
+    const dashboard = useDashboardStore();
+    expect(dashboard.statsFrom).toBe('2024-02-03');
+    expect(dashboard.statsTo).toBe('2024-02-20');
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/dashboard/monthly-ranking?from=2024-02-03&to=2024-02-20')).toHaveLength(1);
+    const calls = fetch.mock.calls.length;
+    expect(await setStatsRange('2024-02-30', '2024-03-01')).toBe(false);
+    expect(await setStatsRange('2024-03-02', '2024-03-01')).toBe(false);
+    expect(fetch.mock.calls).toHaveLength(calls);
+    expect(dashboard.statsFrom).toBe('2024-02-03');
+  });
+
+  it('ignores an older confirmed range after a newer range finishes', async () => {
+    await login('member', 'password');
+    setTab('dashboard');
+    heldPath = '/api/dashboard/monthly-ranking?from=2024-02-03&to=2024-02-20';
+    const old = setStatsRange('2024-02-03', '2024-02-20');
+    await waiting;
+    expect(await setStatsRange('2024-03-01', '2024-03-10')).toBe(true);
+    release();
+    expect(await old).toBe(false);
+    expect(useDashboardStore().rankingFrom).toBe('2024-03-01');
+  });
+
+  it('caps ranges at today and keeps all-history queries available', async () => {
+    await login('member', 'password');
+    setTab('dashboard');
+    const today = currentStatisticsRange('week').end;
+    expect(await setStatsRange('2024-01-01', '9999-12-31')).toBe(true);
+    expect(useDashboardStore().statsTo).toBe(today);
+    expect(await setStatsRange('', today, 'history')).toBe(true);
+    expect(useDashboardStore().statsPeriod).toBe('history');
+    expect(fetch).toHaveBeenCalledWith(`/api/dashboard/monthly-ranking?from=all&to=${today}`, expect.anything());
+  });
+
+  it('keeps the previous statistics range when a confirmed query fails', async () => {
+    await login('member', 'password');
+    setTab('dashboard');
+    await setStatsPeriod('month');
+    const dashboard = useDashboardStore();
+    const previous = { from: dashboard.statsFrom, to: dashboard.statsTo, period: dashboard.statsPeriod };
+    const request = fetch.getMockImplementation();
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).includes('monthly-ranking?from=2024-02-03')) return Response.json({ error: 'query_failed' }, { status: 503 });
+      return request(url, options);
+    }));
+    expect(await setStatsRange('2024-02-03', '2024-02-20')).toBe(false);
+    expect({ from: dashboard.statsFrom, to: dashboard.statsTo, period: dashboard.statsPeriod }).toEqual(previous);
   });
 
   it('queries the current week, month and year through the shared statistics entry', async () => {
