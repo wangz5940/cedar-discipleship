@@ -90,7 +90,7 @@ function initialize(event) {
   });
 }
 function remember(element, force = false, completed = false) {
-  if (viewportRecovery?.key === route()?.key && viewportRecovery.scope === studyMemoryScope()) return;
+  if (viewportRecovery && viewportRecovery.key === route()?.key && viewportRecovery.scope === studyMemoryScope()) return;
   const state = states.get(element);
   if (!state || element.readyState < 1 || route()?.key !== state.key || element.currentSrc !== state.source) return;
   if (state.awaitingTime !== null) {

@@ -67,3 +67,11 @@ it('keeps uploaded courses and the original static player on their existing reco
     expect(bridge(search).listeners.window.resize).toBeUndefined();
   }
 });
+
+it('ignores late media events after leaving the course route', () => {
+  const state = bridge();
+  state.location.hash = '';
+  expect(() => state.emit('document', 'pause')).not.toThrow();
+  state.flush();
+  expect(state.savePosition).not.toHaveBeenCalled();
+});
