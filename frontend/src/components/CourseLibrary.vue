@@ -12,6 +12,16 @@ import { courseMemoryKey } from '../../public/study-memory.js';
 import { studyAccessStatus } from '../../public/study-access.js';
 
 const props = defineProps({ sections: { type: Array, default: () => [] }, weeks: { type: Array, default: () => [] }, preview: { type: Boolean, default: false }, openOvcm: { type: Boolean, default: false } });
+let catalogueTimer;
+let mounted = false;
+async function refreshCatalogue() {
+  const eligible = () => access.value.unlocked || props.weeks.some(week => (week.videos || []).some(item => ovcmReference(item.url)));
+  if (!mounted || document.hidden || !eligible()) return;
+  try {
+    const result = await loadOvcmCourses();
+    if (mounted && eligible()) courses.value = result;
+  } catch { /* Keep the currently displayed catalogue while offline. */ }
+}
 const emit = defineEmits(['search-submit']);
 const source = ref(props.openOvcm ? 'ovcm' : 'local');
 const access = ref(studyAccessStatus());
@@ -65,8 +75,8 @@ function accessChanged() {
   } else if (!courses.value.length) loadCourses();
   else restoreRoute();
 }
-onMounted(() => { accessChanged(); window.addEventListener('cedar-study-access', accessChanged); window.addEventListener('hashchange', restoreRoute); });
-onBeforeUnmount(() => { window.removeEventListener('cedar-study-access', accessChanged); window.removeEventListener('hashchange', restoreRoute); uploadURLs.forEach(url => URL.revokeObjectURL(url)); });
+onMounted(() => { mounted = true; accessChanged(); catalogueTimer = window.setInterval(refreshCatalogue, 60_000); document.addEventListener('visibilitychange', refreshCatalogue); window.addEventListener('cedar-study-access', accessChanged); window.addEventListener('hashchange', restoreRoute); });
+onBeforeUnmount(() => { mounted = false; clearInterval(catalogueTimer); document.removeEventListener('visibilitychange', refreshCatalogue); window.removeEventListener('cedar-study-access', accessChanged); window.removeEventListener('hashchange', restoreRoute); uploadURLs.forEach(url => URL.revokeObjectURL(url)); });
 function restoreRoute() {
   if (!access.value.unlocked) return;
   const match = location.hash.match(/^#\/course\/([^/]+)\/([^?]+)(?:\?t=([\d.]+))?$/);
@@ -143,7 +153,7 @@ async function openFavorite(item) {
 </script>
 
 <template>
-  <OriginalCoursePlayer v-if="selectedLesson && source === 'ovcm'" :course-id="selectedCourse.id" :lesson-id="selectedLesson.id" :lessons="selectedCourse.lessons" :title="selectedCourse.title" :start-time="startTime" :resume-playback="resumePlayback" @close="close" @favorites="showFavorites" />
+  <OriginalCoursePlayer v-if="selectedLesson && source === 'ovcm'" :catalogue-course="selectedCourse" :course-id="selectedCourse.id" :lesson-id="selectedLesson.id" :lessons="selectedCourse.lessons" :title="selectedCourse.title" :start-time="startTime" :resume-playback="resumePlayback" @close="close" @favorites="showFavorites" />
   <UploadedCoursePlayer v-else-if="selectedLesson" :lesson="selectedLesson" :lessons="selectedCourse.lessons" :title="selectedCourse.title" :start-time="startTime" :resume-playback="resumePlayback" :autoplay="autoplay" @select="open(selectedCourse, $event.lesson, $event.time, $event.autoplay)" @close="close" />
   <section v-else class="course-library">
     <div class="library-intro">
