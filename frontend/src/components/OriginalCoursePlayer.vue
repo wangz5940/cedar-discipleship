@@ -4,7 +4,7 @@ import MemoryActions from './MemoryActions.vue';
 import { courseMemoryKey, mediaMemoryItem, savedPosition, studyMemoryScope, studyFrameChanged } from '../../public/study-memory.js';
 import { togglePictureInPicture } from '../../public/media-session.js';
 
-const props = defineProps({ localCourse: { type: Object, default: null }, compact: Boolean, courseId: String, lessonId: String, lessons: { type: Array, default: () => [] }, title: String, startTime: { type: Number, default: 0 }, resumePlayback: { type: Boolean, default: true }, autoplay: Boolean, showFavorites: { type: Boolean, default: true }, syncParentRoute: { type: Boolean, default: true } });
+const props = defineProps({ localCourse: { type: Object, default: null }, catalogueCourse: { type: Object, default: null }, compact: Boolean, courseId: String, lessonId: String, lessons: { type: Array, default: () => [] }, title: String, startTime: { type: Number, default: 0 }, resumePlayback: { type: Boolean, default: true }, autoplay: Boolean, showFavorites: { type: Boolean, default: true }, syncParentRoute: { type: Boolean, default: true } });
 const emit = defineEmits(['close', 'favorites', 'lesson-change', 'time-change']);
 const frame = ref(null);
 const canPictureInPicture = ref(false);
@@ -24,7 +24,7 @@ const memoryItem = computed(() => lessonMemoryItem(activeLesson.value));
 const source = computed(() => {
   const lesson = props.lessonId.startsWith(`${props.courseId}-`) ? props.lessonId.slice(props.courseId.length + 1) : props.lessonId;
   const time = restoredTime.value || props.startTime;
-  return `/ovcm-player/index.html${props.localCourse ? '?local=1' : ''}#/course/${encodeURIComponent(props.courseId)}/${encodeURIComponent(lesson)}${time > 0 || !props.resumePlayback ? `?t=${time}` : ''}`;
+  return `/ovcm-player/index.html${props.localCourse ? '?local=1' : props.catalogueCourse ? '?catalogue=1' : ''}#/course/${encodeURIComponent(props.courseId)}/${encodeURIComponent(lesson)}${time > 0 || !props.resumePlayback ? `?t=${time}` : ''}`;
 });
 function resume(time) { frame.value?.contentWindow?.postMessage({ type: 'cedar-resume', time }, location.origin); }
 function sendMetadata() {
@@ -38,6 +38,7 @@ function bindFrame() {
   frame.value?.contentWindow?.postMessage({ type: 'cedar-study-account', accountId: studyMemoryScope() }, location.origin);
   sendMetadata();
   if (props.localCourse) frame.value?.contentWindow?.postMessage({ type: 'cedar-local-course', course: JSON.parse(JSON.stringify(props.localCourse)) }, location.origin);
+  else if (props.catalogueCourse) frame.value?.contentWindow?.postMessage({ type: 'cedar-ovcm-course', course: JSON.parse(JSON.stringify(props.catalogueCourse)) }, location.origin);
 }
 async function pictureInPicture() {
   const video = frame.value?.contentDocument?.querySelector('video');

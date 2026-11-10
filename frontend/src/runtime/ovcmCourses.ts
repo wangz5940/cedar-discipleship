@@ -1,13 +1,35 @@
 type Lesson = { id: string; title: string; type: string; [key: string]: any };
 type Course = { id: string; title: string; lessons: Lesson[]; [key: string]: any };
-let catalogue: Promise<Course[]> | undefined;
+type Catalogue = { courses: Course[]; synced_at?: string; stale: boolean };
+let catalogue: Promise<Catalogue> | undefined;
+let loadedAt = 0;
+let lastCatalogue: Catalogue | undefined;
+
+export function loadOvcmCatalogue(): Promise<Catalogue> {
+  if (catalogue && Date.now() - loadedAt < 60_000) return catalogue;
+  loadedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  catalogue = fetch('/api/ovcm/catalogue', { cache: 'no-store', signal: controller.signal })
+    .finally(() => clearTimeout(timeout)).then(async response => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    if (!Array.isArray(result.courses) || !result.courses.length) throw new Error('Invalid OVCM catalogue');
+    return result;
+  }).catch(async () => {
+    if (lastCatalogue) return { ...lastCatalogue, stale: true };
+    const response = await fetch('/ovcm-courses.json');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const courses = await response.json();
+    if (!Array.isArray(courses) || !courses.length) throw new Error('Invalid OVCM catalogue');
+    return { courses, stale: true };
+  }).then(result => { lastCatalogue = result; return result; })
+    .catch(error => { catalogue = undefined; throw error; });
+  return catalogue;
+}
 
 export function loadOvcmCourses(): Promise<Course[]> {
-  catalogue ||= fetch('/ovcm-courses.json').then(async response => {
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }).catch(error => { catalogue = undefined; throw error; });
-  return catalogue;
+  return loadOvcmCatalogue().then(result => result.courses);
 }
 
 export function ovcmReference(value: unknown) {

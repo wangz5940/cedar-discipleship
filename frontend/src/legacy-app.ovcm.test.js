@@ -13,9 +13,9 @@ it('selects a public course as a URL binding and opens the actual player with sl
   applyBindingSelection('videos', 0, `url:${url}`, [{ title: '起初的话', url, type: 'audio' }]);
   expect(useAppStateStore().weekDraft.videos[0]).toMatchObject({ title: '起初的话', url, type: 'audio', asset_id: 0 });
   const lesson = { id: 'ds10tg-01', title: '起初的话', type: 'audio', slides: [{ time: 0, url: '/slide.svg' }] };
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ courses: [
     { id: 'ds10tg', title: '得胜者', lessons: [lesson] },
-  ]), { status: 200 })));
+  ], stale: false }), { status: 200 })));
   await openContentTarget({ title: '本周音视频', type: 'video', url: `${url}?t=1044` });
   expect(useContentViewerStore().viewer).toMatchObject({ type: 'ovcm', lesson, startTime: 1044, resumePlayback: false });
   await openContentTarget({ title: '上传讲义', content: '已有讲义正文', url });

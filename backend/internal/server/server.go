@@ -30,6 +30,7 @@ import (
 	"agp/backend/internal/logctx"
 	ministrydomain "agp/backend/internal/ministry"
 	notificationdomain "agp/backend/internal/notification"
+	"agp/backend/internal/ovcm"
 	statisticsdomain "agp/backend/internal/statistics"
 	"agp/backend/internal/studymemory"
 	userdomain "agp/backend/internal/user"
@@ -48,6 +49,7 @@ type app struct {
 	studyMemory   studymemory.Repository
 	studyLearning studymemory.LearningRepository
 	ovcmKeyHash   string
+	ovcmCatalogue *ovcm.Catalogue
 	secret        []byte
 	resourceRoot  string
 	migrationsDir string
@@ -233,6 +235,8 @@ func Run() error {
 	workers.Go(func() { fleet.Run(notificationContext) })
 	workers.Go(func() { a.automaticFeedback.run(notificationContext) })
 	workers.Go(func() { a.runLearningPush(notificationContext) })
+	a.ovcmCatalogue = ovcm.New(cfg.ResourceRoot)
+	workers.Go(func() { a.ovcmCatalogue.Run(notificationContext) })
 	defer func() {
 		stopNotifications()
 		workers.Wait()
@@ -360,6 +364,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/personal-books/{date}/completion", a.auth(a.handlePersonalBookCompletion))
 	mux.HandleFunc("GET /api/study-memory", a.auth(a.handleStudyMemory))
 	mux.HandleFunc("GET /api/study-access", a.auth(a.handleStudyAccess))
+	mux.HandleFunc("GET /api/ovcm/catalogue", a.handleOvcmCatalogue)
 	mux.HandleFunc("POST /api/study-access", a.auth(a.handleToggleStudyAccess))
 	mux.HandleFunc("GET /api/assets/{id}/handout", a.auth(a.handleMediaHandout))
 	mux.HandleFunc("PUT /api/assets/{id}/handout", a.auth(a.requireRole(roleGroupAdmin, a.handleMediaHandout)))

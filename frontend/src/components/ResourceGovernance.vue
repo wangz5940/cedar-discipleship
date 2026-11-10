@@ -28,6 +28,7 @@ import {
 import { useAppStateStore } from '../stores/appState';
 import DateField from './ui/DateField.vue';
 import MobileCardCollection from './ui/MobileCardCollection.vue';
+import OvcmRootResources from './OvcmRootResources.vue';
 
 const app = useAppStateStore();
 const { currentGroupID, resources, learningConfig } = storeToRefs(app);
@@ -808,6 +809,7 @@ onMounted(loadGovernance);
         </template>
         <template #empty>没有符合筛选条件的共享资源。</template>
       </MobileCardCollection>
+      <OvcmRootResources />
     </template>
 
     <template v-else-if="activeView === 'history'">

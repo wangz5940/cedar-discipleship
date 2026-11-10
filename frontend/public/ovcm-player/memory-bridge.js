@@ -9,6 +9,39 @@ const recovering = new WeakMap();
 let systemSession;
 let sessionElement;
 let lessonMetadata = {};
+let viewportRecovery;
+
+function restoreViewportProgress() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const recovery = viewportRecovery;
+    if (!recovery) return;
+    if (route()?.key !== recovery.key || studyMemoryScope() !== recovery.scope) {
+      viewportRecovery = null;
+      return;
+    }
+    const element = Array.from(document.querySelectorAll('audio,video')).find(element => element.currentSrc === recovery.source && element.readyState >= 1);
+    if (!element) return;
+    element.currentTime = Math.min(recovery.time, Math.max(0, element.duration - 1));
+    viewportRecovery = null;
+    remember(element, true);
+    if (recovery.playing) void element.play().catch(() => {});
+    else element.pause();
+  }));
+}
+
+// The pinned player replaces its media element across responsive layouts.
+// Only the live-catalogue entry opts into this additional recovery path.
+if (new URLSearchParams(location.search).get('catalogue') === '1') {
+  window.addEventListener('resize', () => {
+    const element = Array.from(document.querySelectorAll('audio,video')).find(element => element.readyState >= 1 && element.currentTime > 0);
+    const state = element && states.get(element);
+    if (!viewportRecovery && state && state.key === route()?.key) {
+      viewportRecovery = { key: state.key, scope: state.scope, source: element.currentSrc, time: element.currentTime, playing: !element.paused };
+    }
+    restoreViewportProgress();
+  }, true);
+  document.addEventListener('loadedmetadata', restoreViewportProgress, true);
+}
 function route() {
   const match = location.hash.match(/^#\/course\/([^/]+)\/([^?]+)(?:\?t=([\d.]+))?$/);
   return match ? { key: lessonMetadata.kind === 'media' ? lessonMetadata.key : courseMemoryKey(decodeURIComponent(match[1]), decodeURIComponent(match[2])), explicit: match[3] !== undefined, time: Number(match[3] || 0) } : null;
@@ -57,6 +90,7 @@ function initialize(event) {
   });
 }
 function remember(element, force = false, completed = false) {
+  if (viewportRecovery && viewportRecovery.key === route()?.key && viewportRecovery.scope === studyMemoryScope()) return;
   const state = states.get(element);
   if (!state || element.readyState < 1 || route()?.key !== state.key || element.currentSrc !== state.source) return;
   if (state.awaitingTime !== null) {

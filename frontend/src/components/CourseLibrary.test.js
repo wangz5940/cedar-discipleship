@@ -35,8 +35,10 @@ beforeEach(() => {
   openContentTarget.mockReset();
   openContentTarget.mockResolvedValue(undefined);
   vi.stubGlobal('window', {
+    setInterval,
     addEventListener: vi.fn(), removeEventListener: vi.fn(), location: { origin: 'https://cedar.test' },
   });
+  vi.stubGlobal('document', { hidden: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
 });
 afterEach(() => {
   mounted.splice(0).forEach(app => app.unmount());
