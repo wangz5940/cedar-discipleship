@@ -1,7 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
+  CalendarDays,
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
@@ -9,7 +10,6 @@ import {
 import MemberReminderControl from './ui/MemberReminderControl.vue';
 import DateNavigator from './ui/DateNavigator.vue';
 import DateCalendarDialog from './ui/DateCalendarDialog.vue';
-import DateField from './ui/DateField.vue';
 import MobileCardCollection from './ui/MobileCardCollection.vue';
 import RankingChart from './ui/RankingChart.vue';
 import { useAppStateStore } from '../stores/appState';
@@ -22,12 +22,11 @@ import {
   statisticTotal,
 } from '../runtime/statistics';
 import { exportRankingPNG } from '../runtime/rankingExport';
+import { currentStatisticsRange, todayString } from '../runtime/date';
 import {
   openMemberCalendar,
   setSelectedDate,
-  setStatsMonth,
-  resetStatsRangeToHistory,
-  setStatsPeriod,
+  setStatsRange,
   shiftSelectedDate,
   toast as showToast,
 } from '../legacy-app';
@@ -50,6 +49,7 @@ const {
   rankingTo,
   statsPeriod,
   statsFrom,
+  statsTo,
   statsMaxDate,
 } = storeToRefs(store);
 const mobileViewMode = computed(() => appUser.value?.mobile_view_mode || 'masonry');
@@ -58,6 +58,59 @@ const statsView = ref('chart');
 const activeStatKey = ref('all');
 const datePickerOpen = ref(false);
 const datePickerMonth = ref('');
+const statsRangeOpen = ref(false);
+const statsRangeMonth = ref('');
+const rangeEndpoint = ref('from');
+const rangeFrom = ref('');
+const rangeTo = ref('');
+const rangePreset = ref('custom');
+const rangeSaving = ref(false);
+const statsRangeLabel = computed(() => statsFrom.value && statsTo.value ? `${statsFrom.value} 至 ${statsTo.value}` : '选择统计日期范围');
+
+watch(() => `${appUser.value?.id}:${appUser.value?.current_group_id}:${visible.value}`, () => { statsRangeOpen.value = false; });
+
+function openStatsRange() {
+  rangePreset.value = statsPeriod.value;
+  rangeFrom.value = statsPeriod.value === 'history' ? '' : statsFrom.value;
+  rangeTo.value = statsTo.value || statsMaxDate.value || todayString();
+  selectRangeEndpoint('from');
+  statsRangeOpen.value = true;
+}
+
+function selectRangeEndpoint(part) {
+  rangeEndpoint.value = part;
+  statsRangeMonth.value = ((part === 'from' ? rangeFrom.value : rangeTo.value) || rangeTo.value).slice(0, 7);
+}
+
+function selectRangeDate(date) {
+  rangePreset.value = 'custom';
+  if (rangeEndpoint.value === 'from') {
+    rangeFrom.value = date;
+    if (date > rangeTo.value) rangeTo.value = date;
+    rangeEndpoint.value = 'to';
+  } else {
+    [rangeFrom.value, rangeTo.value] = [rangeFrom.value || date, date].sort();
+    rangeEndpoint.value = 'from';
+  }
+}
+
+function selectRangePreset(period) {
+  const range = period === 'history' ? { start: '', end: todayString() } : currentStatisticsRange(period);
+  rangePreset.value = period;
+  rangeFrom.value = range.start;
+  rangeTo.value = range.end;
+  selectRangeEndpoint('from');
+}
+
+async function applyStatsRange() {
+  if (rangeSaving.value) return;
+  rangeSaving.value = true;
+  try {
+    if (await setStatsRange(rangeFrom.value, rangeTo.value, rangePreset.value)) statsRangeOpen.value = false;
+  } finally {
+    rangeSaving.value = false;
+  }
+}
 const matrixSort = ref({ key: 'total', direction: 'desc' });
 const availableLegend = computed(() => availableStatisticsLegend(ranking.value, statsTaskTypes.value, 'rainbow'));
 const activeLegend = computed(() => availableLegend.value.find((item) => item.key === activeStatKey.value) || null);
@@ -190,6 +243,37 @@ async function exportRankingChart() {
         @close="datePickerOpen = false"
       />
 
+      <DateCalendarDialog
+        :open="statsRangeOpen"
+        :month="statsRangeMonth"
+        :selected-date="rangeEndpoint === 'from' ? rangeFrom : rangeTo"
+        :range-start="rangeFrom"
+        :range-end="rangeTo"
+        :max-date="statsMaxDate"
+        title="选择统计日期范围"
+        @month-change="statsRangeMonth = $event"
+        @select="selectRangeDate"
+        @close="!rangeSaving && (statsRangeOpen = false)"
+      >
+        <template #before-calendar>
+          <div class="stats-range-endpoints" role="group" aria-label="统计起止日期">
+            <button :class="rangeEndpoint === 'from' ? 'primary' : 'secondary'" type="button" :aria-pressed="rangeEndpoint === 'from'" @click="selectRangeEndpoint('from')">
+              <span>开始日期</span><strong>{{ rangeFrom || '全部历史' }}</strong>
+            </button>
+            <button :class="rangeEndpoint === 'to' ? 'primary' : 'secondary'" type="button" :aria-pressed="rangeEndpoint === 'to'" @click="selectRangeEndpoint('to')">
+              <span>结束日期</span><strong>{{ rangeTo }}</strong>
+            </button>
+          </div>
+          <div class="stats-range-presets" role="group" aria-label="快捷统计范围">
+            <button v-for="preset in [{ key: 'month', label: '本月' }, { key: 'year', label: '本年' }, { key: 'history', label: '全部历史' }]" :key="preset.key" :class="rangePreset === preset.key ? 'primary' : 'secondary'" :aria-pressed="rangePreset === preset.key" type="button" @click="selectRangePreset(preset.key)">{{ preset.label }}</button>
+          </div>
+        </template>
+        <template #footer>
+          <button class="secondary stats-range-action" type="button" :disabled="rangeSaving" @click="statsRangeOpen = false">取消</button>
+          <button class="primary stats-range-action" type="button" :disabled="rangeSaving" @click="applyStatsRange">{{ rangeSaving ? '查询中' : '查询' }}</button>
+        </template>
+      </DateCalendarDialog>
+
       <!-- Daily Member Attendance Table -->
       <div class="panel daily-detail">
         <div class="sectiontitle member-detail-heading">
@@ -293,24 +377,10 @@ async function exportRankingChart() {
             <button v-if="statsView === 'chart'" class="primary stats-export" type="button" @click="exportRankingChart">导出图片</button>
           </div>
           <div class="inline stats-controls">
-            <div class="stats-periods" role="group" aria-label="统计查询周期">
-              <button
-                v-for="period in [{ key: 'week', label: '本周' }, { key: 'month', label: '本月' }, { key: 'year', label: '本年' }]"
-                :key="period.key"
-                :class="statsPeriod === period.key ? 'primary' : 'secondary'"
-                :aria-pressed="statsPeriod === period.key"
-                type="button"
-                @click="setStatsPeriod(period.key)"
-              >{{ period.label }}</button>
-            </div>
-            <button class="secondary compact-control" type="button" :aria-pressed="monthLabel === '全部历史'" @click="resetStatsRangeToHistory">全部历史</button>
-            <DateField
-              :model-value="monthLabel === '全部历史' ? '' : statsFrom.slice(0, 7)"
-              mode="month"
-              label="统计月份"
-              :max="statsMaxDate"
-              @update:model-value="setStatsMonth"
-            />
+            <button class="secondary stats-range-trigger" type="button" aria-haspopup="dialog" :aria-expanded="statsRangeOpen" :aria-label="`统计日期范围：${statsRangeLabel}`" @click="openStatsRange">
+              <CalendarDays :size="17" aria-hidden="true" />
+              <span>{{ statsRangeLabel }}</span>
+            </button>
             <div class="inline view-toggle" aria-label="统计视图">
               <button
                 class="compact-control"
@@ -502,8 +572,15 @@ async function exportRankingChart() {
 .stats-center__eyebrow { margin-bottom: 6px; }
 .stats-center__title { font-size: 20px; }
 .stats-controls { flex-wrap: wrap; gap: 12px; }
-.stats-periods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.stats-periods button { min-height: 44px; padding: 8px 14px; }
+.stats-range-trigger { display: flex; align-items: center; gap: 8px; min-height: 44px; max-width: 100%; white-space: normal; text-align: left; }
+.stats-range-trigger svg { flex-shrink: 0; }
+.stats-range-endpoints { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.stats-range-endpoints button { display: flex; min-width: 0; min-height: 54px; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; }
+.stats-range-endpoints span { font-size: 12px; opacity: .8; }
+.stats-range-endpoints strong { font-size: 14px; }
+.stats-range-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.stats-range-presets button { min-height: 44px; padding: 8px 6px; font-size: 13px; }
+.stats-range-action { min-height: 44px; }
 .view-toggle { border: 1px solid var(--cd-border); border-radius: var(--cd-radius-base); background: var(--cd-surface, #fff); }
 .view-toggle { gap: 4px; padding: 2px; }
 .compact-control, .filter-chip { min-height: 36px; padding: 4px 12px; font-size: 12px; }
@@ -540,7 +617,7 @@ async function exportRankingChart() {
   .spread > .inline { flex-wrap: wrap; }
   .stats-center-head { align-items: stretch; }
   .stats-center-head > div { width: 100%; }
-  .stats-periods { width: 100%; }
+  .stats-range-trigger { width: 100%; }
   .view-toggle { width: 100%; }
   .view-toggle button { flex: 1; min-height: 44px; }
   .progress-panel { display: none; }

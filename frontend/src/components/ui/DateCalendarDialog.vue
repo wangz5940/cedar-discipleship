@@ -13,6 +13,8 @@ const props = defineProps({
   title: { type: String, default: '选择日期' },
   counts: { type: Object, default: () => ({}) },
   showToday: { type: Boolean, default: false },
+  rangeStart: { type: String, default: '' },
+  rangeEnd: { type: String, default: '' },
 });
 
 const emit = defineEmits(['close', 'select', 'month-change', 'today']);
@@ -94,6 +96,7 @@ function shiftMonth(offset) {
 
 <template>
   <AppOverlay :open="open" variant="modal" :title="choosingYear ? '选择年份' : title" panel-class="date-calendar" @close="emit('close')">
+    <slot name="before-calendar" />
     <div class="date-calendar__month">
       <button class="quiet icon-button" type="button" :aria-label="choosingYear ? '上一组年份' : mode === 'month' ? '上一年' : '上个月'" :disabled="!canRetreat" @click="shiftMonth(-1)"><ChevronLeft :size="18" /></button>
       <button v-if="mode === 'month'" class="quiet date-calendar__year-trigger" type="button" :aria-label="choosingYear ? '返回月份选择' : `选择年份，当前${monthTitle}`" @click="toggleYears">{{ choosingYear ? `${firstYear}—${lastYear} 年` : monthTitle }}</button>
@@ -125,11 +128,11 @@ function shiftMonth(offset) {
         v-for="day in days"
         :key="day.date"
         class="date-calendar__day"
-        :class="{ outside: day.outside, selected: day.selected, recorded: day.count }"
+        :class="{ outside: day.outside, selected: day.selected || day.date === rangeStart || day.date === rangeEnd, recorded: day.count, 'in-range': rangeStart && rangeEnd && day.date > rangeStart && day.date < rangeEnd }"
         type="button"
         :disabled="day.disabled"
         :aria-label="`${day.date}${day.count ? `，已完成${day.count}项` : ''}`"
-        :aria-pressed="day.selected"
+        :aria-pressed="day.selected || day.date === rangeStart || day.date === rangeEnd"
         @click="emit('select', day.date)"
       >
         <b>{{ day.day }}</b>
@@ -139,6 +142,7 @@ function shiftMonth(offset) {
     <button v-if="showToday" class="quiet date-calendar__today" type="button" @click="emit('today')">
       <CalendarDays :size="16" />回到今天
     </button>
+    <template v-if="$slots.footer" #footer><slot name="footer" /></template>
   </AppOverlay>
 </template>
 
@@ -157,6 +161,7 @@ function shiftMonth(offset) {
 .date-calendar__day:hover:not(:disabled) { background: var(--cd-primary-soft); color: var(--cd-primary); }
 .date-calendar__day.outside { opacity: 0; }
 .date-calendar__day.selected { border-color: var(--cd-primary); background: var(--cd-primary); color: #fff; }
+.date-calendar__day.in-range:not(.selected) { background: var(--cd-primary-soft); }
 .date-calendar__day.selected small { color: #fff; }
 .date-calendar__day.recorded:not(.selected) { background: var(--cd-primary-soft); }
 .date-calendar__today { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; margin-top: 14px; }

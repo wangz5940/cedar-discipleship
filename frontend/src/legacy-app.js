@@ -990,6 +990,31 @@ export async function setStatsDateRange(part, value) {
   }
 }
 
+export async function setStatsRange(from, to, period = 'custom') {
+  const dates = period === 'history' ? [to] : [from, to];
+  if (dates.some((value) => !/^\d{4}-\d{2}-\d{2}$/.test(value || '') || formatLocalDate(parseLocalDate(value)) !== value)) {
+    toast('请选择有效的统计日期');
+    return false;
+  }
+  const end = to > todayString() ? todayString() : to;
+  if (period !== 'history' && from > end) {
+    toast('开始日期不能晚于结束日期');
+    return false;
+  }
+  try {
+    const loaded = await loadMonthlyRanking(false, { from: period === 'history' ? 'all' : from, to: end });
+    if (!loaded) return false;
+    state.statsPeriod = period;
+    state.statsFrom = period === 'history' ? '' : from;
+    state.statsTo = end;
+    render();
+    return true;
+  } catch (error) {
+    toast(error.message);
+    return false;
+  }
+}
+
 export async function resetStatsRangeToHistory() {
   state.statsPeriod = 'history';
   state.statsFrom = '';
@@ -1034,13 +1059,16 @@ export async function saveActiveMemberRule(rule) {
   render();
 }
 
-async function loadMonthlyRanking(homeOnly = false) {
+async function loadMonthlyRanking(homeOnly = false, range = null) {
   normalizeStatsRange();
   const context = statisticsContextKey();
   const requestID = ++rankingRequestID;
-  const result = await api(`/dashboard/monthly-ranking?from=${homeOnly ? monthStartString() : state.statsFrom || 'all'}&to=${homeOnly ? todayString() : state.statsTo}`);
-  if (context !== statisticsContextKey() || requestID !== rankingRequestID) return;
+  const from = range?.from ?? (homeOnly ? monthStartString() : state.statsFrom || 'all');
+  const to = range?.to ?? (homeOnly ? todayString() : state.statsTo);
+  const result = await api(`/dashboard/monthly-ranking?from=${from}&to=${to}`);
+  if (context !== statisticsContextKey() || requestID !== rankingRequestID) return false;
   state.monthlyRanking = result;
+  return true;
 }
 
 async function refreshDashboardData() {
