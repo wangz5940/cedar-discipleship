@@ -22,7 +22,7 @@ export function loadOvcmCatalogue(): Promise<Catalogue> {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const courses = await response.json();
     if (!Array.isArray(courses) || !courses.length) throw new Error('Invalid OVCM catalogue');
-    return { courses, stale: true };
+    return { courses: courses.map(course => ({ ...course, bundledCatalogue: true })), stale: true };
   }).then(result => { lastCatalogue = result; return result; })
     .catch(error => { catalogue = undefined; throw error; });
   return catalogue;

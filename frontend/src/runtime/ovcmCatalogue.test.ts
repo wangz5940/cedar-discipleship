@@ -35,6 +35,8 @@ it('uses the bundled catalogue until the first successful server sync, then retr
   vi.stubGlobal('fetch', fetcher);
   const { loadOvcmCatalogue } = await import('./ovcmCourses');
   expect(await loadOvcmCatalogue()).toMatchObject({ courses, stale: true });
+  expect((await loadOvcmCatalogue()).courses[0].bundledCatalogue).toBe(true);
   await vi.advanceTimersByTimeAsync(60_001);
   expect(await loadOvcmCatalogue()).toMatchObject({ courses, stale: false });
+  expect((await loadOvcmCatalogue()).courses[0].bundledCatalogue).toBeUndefined();
 });

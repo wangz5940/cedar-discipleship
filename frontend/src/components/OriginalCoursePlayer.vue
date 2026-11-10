@@ -21,10 +21,11 @@ function lessonMemoryItem(lessonId) {
   return { key, kind: 'ovcm', courseId: props.courseId, lessonId, title: lesson?.title || lessonId, type: lesson?.type, courseTitle: props.title };
 }
 const memoryItem = computed(() => lessonMemoryItem(activeLesson.value));
+const syncedCourse = computed(() => props.catalogueCourse?.bundledCatalogue ? null : props.catalogueCourse);
 const source = computed(() => {
   const lesson = props.lessonId.startsWith(`${props.courseId}-`) ? props.lessonId.slice(props.courseId.length + 1) : props.lessonId;
   const time = restoredTime.value || props.startTime;
-  return `/ovcm-player/index.html${props.localCourse ? '?local=1' : props.catalogueCourse ? '?catalogue=1' : ''}#/course/${encodeURIComponent(props.courseId)}/${encodeURIComponent(lesson)}${time > 0 || !props.resumePlayback ? `?t=${time}` : ''}`;
+  return `/ovcm-player/index.html${props.localCourse ? '?local=1' : syncedCourse.value ? '?catalogue=1' : ''}#/course/${encodeURIComponent(props.courseId)}/${encodeURIComponent(lesson)}${time > 0 || !props.resumePlayback ? `?t=${time}` : ''}`;
 });
 function resume(time) { frame.value?.contentWindow?.postMessage({ type: 'cedar-resume', time }, location.origin); }
 function sendMetadata() {
@@ -38,7 +39,7 @@ function bindFrame() {
   frame.value?.contentWindow?.postMessage({ type: 'cedar-study-account', accountId: studyMemoryScope() }, location.origin);
   sendMetadata();
   if (props.localCourse) frame.value?.contentWindow?.postMessage({ type: 'cedar-local-course', course: JSON.parse(JSON.stringify(props.localCourse)) }, location.origin);
-  else if (props.catalogueCourse) frame.value?.contentWindow?.postMessage({ type: 'cedar-ovcm-course', course: JSON.parse(JSON.stringify(props.catalogueCourse)) }, location.origin);
+  else if (syncedCourse.value) frame.value?.contentWindow?.postMessage({ type: 'cedar-ovcm-course', course: JSON.parse(JSON.stringify(syncedCourse.value)) }, location.origin);
 }
 async function pictureInPicture() {
   const video = frame.value?.contentDocument?.querySelector('video');
