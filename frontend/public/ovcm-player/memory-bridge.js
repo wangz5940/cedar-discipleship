@@ -21,8 +21,11 @@ function restoreViewportProgress() {
     }
     const element = Array.from(document.querySelectorAll('audio,video')).find(element => element.currentSrc === recovery.source && element.readyState >= 1);
     if (!element) return;
-    element.currentTime = Math.min(recovery.time, Math.max(0, element.duration - 1));
     viewportRecovery = null;
+    const sameElement = recovery.element && element === recovery.element;
+    if (sameElement && !element.paused && element.currentTime >= recovery.time) return;
+    if (sameElement && Math.abs(element.currentTime - recovery.time) < 0.5) return;
+    element.currentTime = Math.min(recovery.time, Math.max(0, element.duration - 1));
     remember(element, true);
     if (recovery.playing) void element.play().catch(() => {});
     else element.pause();
@@ -36,7 +39,7 @@ if (new URLSearchParams(location.search).get('catalogue') === '1') {
     const element = Array.from(document.querySelectorAll('audio,video')).find(element => element.readyState >= 1 && element.currentTime > 0);
     const state = element && states.get(element);
     if (!viewportRecovery && state && state.key === route()?.key) {
-      viewportRecovery = { key: state.key, scope: state.scope, source: element.currentSrc, time: element.currentTime, playing: !element.paused };
+      viewportRecovery = { key: state.key, scope: state.scope, source: element.currentSrc, time: element.currentTime, playing: !element.paused, element };
     }
     restoreViewportProgress();
   }, true);
@@ -52,8 +55,10 @@ function syncPlaybackButton(element) {
   if (!state || element.ended || route()?.key !== state.key || element.currentSrc !== state.source) return;
   // Original React controls track their own play flag; native lock-screen actions
   // and OS interruptions must update it through the existing control as well.
+  const controls = document.querySelector('[data-tour="player-controls"]') || document.getElementById('player-root');
+  if (!controls) return;
   const titles = element.paused ? ['暂停', 'Pause'] : ['播放', 'Play'];
-  const button = document.querySelector(titles.map(title => `button[title="${title}"]`).join(','));
+  const button = controls.querySelector(titles.map(title => `button[title="${title}"]`).join(','));
   button?.click();
 }
 function initialize(event) {
@@ -106,7 +111,6 @@ document.addEventListener('play', event => {
   if (!media(event.target)) return;
   const state = states.get(event.target);
   if (state) state.wasPlaying = true;
-  queueMicrotask(() => syncPlaybackButton(event.target));
 }, true);
 document.addEventListener('error', event => {
   const element = event.target, state = states.get(element);
@@ -125,7 +129,7 @@ document.addEventListener('timeupdate', event => {
   }
 }, true);
 document.addEventListener('pause', event => {
-  if (media(event.target)) { remember(event.target, true); queueMicrotask(() => syncPlaybackButton(event.target)); }
+  if (media(event.target)) remember(event.target, true);
 }, true);
 document.addEventListener('ended', event => { if (media(event.target)) remember(event.target, true, true); }, true);
 window.addEventListener('pagehide', () => document.querySelectorAll('audio,video').forEach(element => remember(element, true)));
