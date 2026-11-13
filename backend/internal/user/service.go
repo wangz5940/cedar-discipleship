@@ -69,6 +69,11 @@ func (s *Service) CurrentUser(ctx context.Context, userID, currentGroupID uint64
 	if vo.CurrentGroupID > 0 {
 		for _, group := range groups {
 			if group.ID == vo.CurrentGroupID {
+				if group.MemberUserID != 0 {
+					vo.AccountID = item.ID
+					vo.ID = group.MemberUserID
+					userID = group.MemberUserID
+				}
 				vo.CurrentTenantID = group.TenantID
 				vo.IsTenantAdmin = group.TenantAdmin
 				break

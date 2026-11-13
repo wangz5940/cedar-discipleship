@@ -52,6 +52,7 @@ func Open(t *testing.T) *sql.DB {
 	for _, migration := range []string{"001_init.sql", "002_checkin_partitions.sql", "007_resource_sharing.sql", "015_tenants.sql", "017_audit_log_id.sql", "018_feedback_workflow.sql", "023_recite_paper.sql", "024_learning_reminders.sql", "028_daily_devotion_reminders.sql", "030_personal_daily_books.sql", "031_group_password_encrypted.sql"} {
 		Apply(t, db, migration)
 	}
+	Apply(t, db, "032_account_links.sql")
 	return db
 }
 

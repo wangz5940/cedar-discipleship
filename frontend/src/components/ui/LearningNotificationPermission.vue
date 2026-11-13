@@ -12,7 +12,7 @@ const open = ref(false);
 const busy = ref(false);
 const permission = ref('unsupported');
 const checked = new Set();
-const scope = computed(() => app.authenticated && app.members.some(member => Number(member.user_id) === Number(app.user?.id)) ? `${app.user?.id}:${app.currentGroupID}` : '');
+const scope = computed(() => app.authenticated && app.members.some(member => Number(member.user_id) === Number(app.user?.id)) ? `${app.user?.account_id || app.user?.id}:${app.currentGroupID}` : '');
 const supportMessage = computed(() => notificationSupportMessage());
 const canRequest = computed(() => permission.value === 'default' && !supportMessage.value);
 watch([scope, () => app.authenticated], ([key]) => {

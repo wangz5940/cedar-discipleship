@@ -6,6 +6,9 @@ import (
 )
 
 type Repository interface {
+	CreateAccountLinkReview(context.Context, string, string, uint64) (AccountLinkReview, error)
+	ReviewAccountLink(context.Context, uint64, uint64, bool) error
+	AccountLinkReviews(context.Context) ([]AccountLinkReview, error)
 	FindByID(ctx context.Context, id uint64) (*User, error)
 	FindByUsername(ctx context.Context, username string) (*User, error)
 	ListAllGroups(ctx context.Context) ([]Group, error)
