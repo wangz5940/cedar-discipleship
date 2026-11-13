@@ -53,6 +53,18 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	a.loginLimiter.success(remote, username)
 	user := login.User
+	var responseUser any = loginUserResponse(login)
+	for _, group := range login.Groups {
+		if group.MemberUserID != 0 {
+			current, err := a.users.CurrentUser(r.Context(), user.ID, login.CurrentGroupID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "user_failed")
+				return
+			}
+			responseUser = current
+			break
+		}
+	}
 	sessionID, err := a.issueRefreshSession(
 		r.Context(), w, r, user.ID, login.CurrentGroupID, user.PasswordHash,
 	)
@@ -80,7 +92,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": token,
-		"user":  loginUserResponse(login),
+		"user":  responseUser,
 	})
 }
 
@@ -106,7 +118,7 @@ func (a *app) handleRefreshSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, err := a.signToken(tokenClaims{
-		UserID:         user.ID,
+		UserID:         session.UserID,
 		CurrentGroupID: user.CurrentGroupID,
 		SessionID:      session.ID,
 		GroupVersion:   session.GroupVersion,
@@ -179,7 +191,7 @@ func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	user, err := a.users.CurrentUser(r.Context(), u.ID, req.GroupID)
+	user, err := a.users.CurrentUser(r.Context(), claims.UserID, req.GroupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "user_failed")
 		return
@@ -187,7 +199,7 @@ func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
 	groupVersion, err := a.updateRefreshSessionGroup(
 		r.Context(),
 		claims.SessionID,
-		u.ID,
+		claims.UserID,
 		claims.GroupVersion,
 		req.GroupID,
 	)
@@ -200,7 +212,7 @@ func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, err := a.signToken(tokenClaims{
-		UserID:         u.ID,
+		UserID:         claims.UserID,
 		CurrentGroupID: req.GroupID,
 		SessionID:      claims.SessionID,
 		GroupVersion:   groupVersion,
@@ -221,7 +233,7 @@ func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.GroupID == 0 {
-		if err := a.users.SetDefaultGroup(r.Context(), u.ID, 0, time.Now().UTC()); err != nil {
+		if err := a.users.SetDefaultGroup(r.Context(), u.LoginAccountID(), 0, time.Now().UTC()); err != nil {
 			writeError(w, http.StatusInternalServerError, "default_group_failed")
 			return
 		}
@@ -230,7 +242,7 @@ func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {
 			u.ID,
 			"update_default_group",
 			"users",
-			u.ID,
+			u.LoginAccountID(),
 			map[string]any{"default_group_id": u.DefaultGroupID},
 			map[string]any{"default_group_id": uint64(0)},
 			r,
@@ -243,7 +255,7 @@ func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	if err := a.users.SetDefaultGroup(r.Context(), u.ID, req.GroupID, time.Now().UTC()); err != nil {
+	if err := a.users.SetDefaultGroup(r.Context(), u.LoginAccountID(), req.GroupID, time.Now().UTC()); err != nil {
 		writeError(w, http.StatusInternalServerError, "default_group_failed")
 		return
 	}
@@ -252,7 +264,7 @@ func (a *app) handleSetDefaultGroup(w http.ResponseWriter, r *http.Request) {
 		u.ID,
 		"update_default_group",
 		"users",
-		u.ID,
+		u.LoginAccountID(),
 		map[string]any{"default_group_id": u.DefaultGroupID},
 		map[string]any{"default_group_id": req.GroupID},
 		r,
@@ -312,7 +324,7 @@ func (a *app) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password_too_short")
 		return
 	}
-	oldHash, err := a.users.PasswordHash(r.Context(), u.ID)
+	oldHash, err := a.users.PasswordHash(r.Context(), u.LoginAccountID())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "user_not_found")
 		return
@@ -326,7 +338,7 @@ func (a *app) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "password_failed")
 		return
 	}
-	if err := a.users.UpdatePassword(r.Context(), u.ID, oldHash, hash, time.Now().UTC()); err != nil {
+	if err := a.users.UpdatePassword(r.Context(), u.LoginAccountID(), oldHash, hash, time.Now().UTC()); err != nil {
 		if errors.Is(err, userdomain.ErrPasswordChanged) {
 			writeError(w, http.StatusUnauthorized, "invalid_password")
 			return
@@ -339,7 +351,7 @@ func (a *app) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		u.ID,
 		"change_password",
 		"users",
-		u.ID,
+		u.LoginAccountID(),
 		nil,
 		map[string]any{"password_changed": true, "sessions_revoked": true},
 		r,

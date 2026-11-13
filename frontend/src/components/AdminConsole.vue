@@ -75,6 +75,7 @@ import {
 
 const MinistryCatalogAdmin = lazyPage(() => import('./MinistryCatalogAdmin.vue'));
 const TenantManagement = lazyPage(() => import('./TenantManagement.vue'));
+const AccountLinkAdmin = lazyPage(() => import('./AccountLinkAdmin.vue'));
 const BotManagementAdmin = lazyPage(() => import('./BotManagementAdmin.vue'));
 const FeedbackAdmin = lazyPage(() => import('./FeedbackAdmin.vue'));
 const ReciteHistoryAdmin = lazyPage(() => import('./ReciteHistoryAdmin.vue'));
@@ -977,6 +978,7 @@ async function runLocalBackupImport() {
     </div>
 
     <section v-if="adminSection === 'members'">
+      <AccountLinkAdmin v-if="user?.is_super_admin" />
       <div class="section-title admin-section-title">
         <div>
           <h2>成员与小组</h2>

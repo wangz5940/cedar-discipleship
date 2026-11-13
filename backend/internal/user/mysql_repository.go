@@ -271,16 +271,18 @@ func (r *MySQLRepository) ListGroups(ctx context.Context, userID uint64, isSuper
 	if isSuperAdmin {
 		return r.allGroups(ctx)
 	}
-	return r.ListMembershipGroups(ctx, userID)
+	return r.linkedGroups(ctx, userID)
 }
 
-func (r *MySQLRepository) ListMembershipGroups(ctx context.Context, userID uint64) ([]Group, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT g.id,g.code,g.name,g.tenant_id,t.name,
+const membershipGroupQuery = `SELECT DISTINCT g.id,g.code,g.name,g.tenant_id,t.name,
 		(tm.role='admin') FROM study_groups g
 		JOIN tenants t ON t.id=g.tenant_id AND t.status=1
 		JOIN tenant_members tm ON tm.tenant_id=t.id AND tm.user_id=? AND tm.status=1
 		LEFT JOIN group_members m ON m.group_id=g.id AND m.user_id=tm.user_id AND m.status=1
-		WHERE g.status=1 AND (tm.role='admin' OR m.id IS NOT NULL) ORDER BY g.id`, userID)
+		WHERE g.status=1 AND (tm.role='admin' OR m.id IS NOT NULL) ORDER BY g.id`
+
+func (r *MySQLRepository) ListMembershipGroups(ctx context.Context, userID uint64) ([]Group, error) {
+	rows, err := r.db.QueryContext(ctx, membershipGroupQuery, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -553,6 +555,7 @@ func (r *MySQLRepository) SetGroupDefaultPassword(ctx context.Context, groupID u
 		LEFT JOIN user_group_roles r ON r.user_id=u.id AND r.group_id=? AND r.role=?
 		WHERE u.is_super_admin=0
 		  AND r.id IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM account_links al WHERE al.user_id=u.id)
 		  AND (SELECT COUNT(*) FROM group_members gm WHERE gm.user_id=u.id AND gm.status=1)=1
 		ORDER BY u.id FOR UPDATE`, groupID, groupID, RoleGroupLeader)
 	if err != nil {

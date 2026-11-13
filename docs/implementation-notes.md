@@ -75,6 +75,10 @@ export BOOTSTRAP_SUPERADMIN_PASSWORD='你的强密码'
 
 ## 已实现的核心规则
 
+- 超级管理员通过“管理后台 → 人员管理 → 账号关联审核”输入两个登录账号，预览所有关联账号及有效小组后确认通过或拒绝。`POST /api/super-admin/account-links` 创建待审核快照，`GET /api/super-admin/account-links` 返回最近 100 条记录，`POST /api/super-admin/account-links/{id}/review` 接收 `approve` 或 `reject`。
+- 审核通过在事务内关联身份并记录审核人和时间，重复提交同一审核结果可安全重试。账号或小组快照变化时重新预览；账号停用、同组成员身份重复或涉及超级管理员账号时返回关联冲突。
+- 关联身份使用原账号密码登录，切组后服务端返回对应小组原成员的 `id` 与登录账号的 `account_id`。学习、历史打卡、个人设置及角色使用原组成员身份，刷新会话、改密和默认小组使用登录账号。已关联账号排除在小组默认密码批量覆盖范围之外。迁移 `032_account_links.sql` 可重复执行，已有成员和打卡记录继续使用原 ID。
+
 - 每个账号只有一个实际登录密码，登录只需要 `username + password`。
 - 登录成功后后端返回 Token，前端持久化到 `localStorage`，刷新页面后可自动恢复登录态。
 - 未认证状态下不展示用户所属小组，避免通过用户名枚举小组归属。

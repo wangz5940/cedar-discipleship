@@ -2,6 +2,7 @@ package user
 
 type UserVO struct {
 	ID                 uint64   `json:"id"`
+	AccountID          uint64   `json:"account_id,omitempty"`
 	Username           string   `json:"username"`
 	DisplayName        string   `json:"display_name"`
 	IsSuperAdmin       bool     `json:"is_super_admin"`
@@ -14,6 +15,14 @@ type UserVO struct {
 	MobileViewMode     string   `json:"mobile_view_mode"`
 	Groups             []Group  `json:"study_groups"`
 	Roles              []string `json:"roles"`
+}
+
+// LoginAccountID identifies the credential owner while ID identifies the current group's member.
+func (u UserVO) LoginAccountID() uint64 {
+	if u.AccountID != 0 {
+		return u.AccountID
+	}
+	return u.ID
 }
 
 type MemberVO struct {
