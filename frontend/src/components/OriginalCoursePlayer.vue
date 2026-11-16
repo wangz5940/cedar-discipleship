@@ -76,7 +76,7 @@ onBeforeUnmount(() => window.removeEventListener('message', syncRoute));
       <strong :title="title">{{ title || '小组课程' }}</strong>
       <slot name="tools" />
     </header>
-    <div v-else class="original-memory-bar"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" class="ghost" @click="pictureInPicture">画中画</button><button v-if="showFavorites" type="button" class="ghost" @click="emit('favorites')">我的收藏</button><button type="button" class="ghost" @click="emit('close')">返回课程</button></div>
+    <div v-else class="original-memory-bar"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" class="ghost" @click="pictureInPicture">画中画</button><button v-if="showFavorites" type="button" class="ghost" @click="emit('favorites')">视频收藏</button><button type="button" class="ghost" @click="emit('close')">返回课程</button></div>
     <div v-if="compact" class="local-player-actions"><MemoryActions :item="memoryItem" @resume="resume" /><button v-if="canPictureInPicture" type="button" @click="pictureInPicture">画中画</button></div>
     <p v-if="notice" role="status">{{ notice }}</p>
     <iframe ref="frame" class="original-course-player" :src="source" title="OVCM 课程播放器" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen @load="bindFrame"></iframe>

@@ -144,7 +144,7 @@ async function openFavorite(item) {
   } else if (props.preview) {
     if (item.url.startsWith('/api/')) { toast('请登录 Cedar 后打开小组上传的收藏资源。'); return; }
     source.value = 'local';
-    open({ id: 'favorite', title: item.courseTitle || '我的收藏', lessons: [item] }, item);
+    open({ id: 'favorite', title: item.courseTitle || '视频收藏', lessons: [item] }, item);
   } else {
     try { await openContentTarget({ ...item, resumePlayback: true }); }
     catch (failure) { toast(`打开失败：${failure.message}`); }
@@ -172,7 +172,7 @@ async function openFavorite(item) {
       </aside>
     </div>
     <div class="library-section-label"><h2>我的学习资源</h2><select v-model="typeFilter" aria-label="课程类型"><option value="all">全部课时</option><option value="video">视频课时</option><option value="audio">音频课时</option></select></div>
-    <div class="course-source-tabs"><button v-if="access.unlocked" type="button" :class="{ active: source === 'ovcm' }" @click="source = 'ovcm'">OVCM 课程</button><button type="button" :class="{ active: source === 'local' }" @click="source = 'local'">{{ preview ? '本地上传资源' : '小组课程' }}</button><button v-if="access.unlocked" type="button" :class="{ active: source === 'favorites' }" @click="source = 'favorites'">收藏夹</button><button v-if="preview" type="button" @click="uploadInput.click()">选择本地音视频</button><input v-if="preview" ref="uploadInput" hidden type="file" accept="audio/*,video/*,.mp3,.m4a,.mp4,.webm,.wav,.ogg,.flac,.mov" multiple @change="uploadLocal" /></div>
+    <div class="course-source-tabs"><button v-if="access.unlocked" type="button" :class="{ active: source === 'ovcm' }" @click="source = 'ovcm'">OVCM 课程</button><button type="button" :class="{ active: source === 'local' }" @click="source = 'local'">{{ preview ? '本地上传资源' : '小组课程' }}</button><button v-if="access.unlocked" type="button" :class="{ active: source === 'favorites' }" @click="source = 'favorites'">视频收藏</button><button v-if="preview" type="button" @click="uploadInput.click()">选择本地音视频</button><input v-if="preview" ref="uploadInput" hidden type="file" accept="audio/*,video/*,.mp3,.m4a,.mp4,.webm,.wav,.ogg,.flac,.mov" multiple @change="uploadLocal" /></div>
     <div v-if="error && source !== 'favorites'" class="course-empty" role="alert">{{ error }} <button type="button" @click="loadCourses(source === 'local')">重试</button></div>
     <StudyFavorites v-if="access.unlocked && source === 'favorites'" @open="openFavorite" /><div v-else-if="loading && source === 'ovcm'" class="course-empty" role="status">正在加载课程…</div>
     <template v-else>

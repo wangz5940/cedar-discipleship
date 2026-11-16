@@ -87,7 +87,8 @@ function initialize(event) {
   queueMicrotask(() => {
     if (route()?.key !== state.key || element.currentSrc !== state.source) return;
     if (recovery) element.currentTime = Math.min(recovery.time, element.duration);
-    else if (!current.explicit && studyMemoryStatus().ready) element.currentTime = savedPosition(state.key, element.duration);
+    else if (current.explicit) element.currentTime = Math.min(current.time, Math.max(0, element.duration - 1));
+    else if (studyMemoryStatus().ready) element.currentTime = savedPosition(state.key, element.duration);
     if (recovery?.playing || (lessonMetadata.kind === 'media' && lessonMetadata.autoplay)) {
       lessonMetadata.autoplay = false;
       void element.play().catch(() => {});
@@ -144,8 +145,13 @@ window.addEventListener('message', event => {
     return;
   }
   if (event.data?.type === 'cedar-study-account') {
+    const wasReady = studyMemoryStatus().ready;
     setStudyFrameAccount(event.data.accountId);
-    document.querySelectorAll('audio,video').forEach(element => { const state = states.get(element); if (state) state.scope = studyMemoryScope(); });
+    document.querySelectorAll('audio,video').forEach(element => {
+      const state = states.get(element);
+      if (state) state.scope = studyMemoryScope();
+      if (!wasReady && element.currentTime === 0) initialize({ target: element });
+    });
     return;
   }
   if (event.data?.type !== 'cedar-resume') return;
