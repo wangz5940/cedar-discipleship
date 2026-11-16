@@ -18,10 +18,12 @@ function bridge(search = '?catalogue=1', options = {}) {
   }
   let element = new Media();
   const savePosition = vi.fn();
-  const location = { search, hash: '#/course/wd/03', origin: 'https://cedar.test' };
+  const location = { search, hash: options.hash || '#/course/wd/03', origin: 'https://cedar.test' };
+  let ready = options.ready !== false;
   const register = target => (name, callback) => { (listeners[target][name] ||= []).push(callback); };
   let sessionConfig;
   class MockEvent { constructor(type) { this.type = type; } }
+  const parent = { postMessage() {} };
   runInNewContext(source, {
     window: { addEventListener: register('window') },
     document: {
@@ -30,12 +32,12 @@ function bridge(search = '?catalogue=1', options = {}) {
       querySelector: selector => (options.querySelector ? options.querySelector(selector) : null),
       getElementById: id => (options.getElementById ? options.getElementById(id) : null),
     },
-    location, URLSearchParams, HTMLMediaElement: Media, Event: MockEvent, parent: { postMessage() {} },
+    location, URLSearchParams, HTMLMediaElement: Media, Event: MockEvent, parent,
     queueMicrotask: callback => callbacks.push(callback), requestAnimationFrame: callback => callbacks.push(callback),
     courseMemoryKey: (course, lesson) => `ovcm:${course}/${lesson}`,
     savedPosition: () => 60, savePosition, studyMemoryScope: () => 'account-1',
-    studyMemoryStatus: () => ({ ready: true }), suspendStudyMemory() {},
-    setStudyFrameAccount() {},
+    studyMemoryStatus: () => ({ ready }), suspendStudyMemory() {},
+    setStudyFrameAccount() { ready = true; },
     bindMediaSession: (el, config) => { sessionConfig = config; return { dispose() {} }; },
     supportsPictureInPicture: () => false,
   });
@@ -43,8 +45,24 @@ function bridge(search = '?catalogue=1', options = {}) {
   const flush = () => { while (callbacks.length) callbacks.shift()(); };
   emit('document', 'loadedmetadata');
   flush();
-  return { listeners, location, savePosition, emit, flush, get element() { return element; }, replace() { element = new Media(); }, get sessionConfig() { return sessionConfig; } };
+  const message = data => (listeners.window.message || []).forEach(callback => callback({ origin: location.origin, source: parent, data }));
+  return { listeners, location, savePosition, emit, flush, message, get element() { return element; }, replace() { element = new Media(); }, get sessionConfig() { return sessionConfig; } };
 }
+
+it('applies the explicit resume timestamp before saving playback progress', () => {
+  const state = bridge('?catalogue=1', { hash: '#/course/wd/03?t=125' });
+  expect(state.element.currentTime).toBe(125);
+  state.emit('document', 'pause');
+  expect(state.savePosition).toHaveBeenCalledWith('ovcm:wd/03', 125, 600, undefined, 'account-1');
+});
+
+it('restores a loaded video when its account scope arrives after metadata', () => {
+  const state = bridge('?catalogue=1', { ready: false });
+  expect(state.element.currentTime).toBe(0);
+  state.message({ type: 'cedar-study-account', accountId: 1 });
+  state.flush();
+  expect(state.element.currentTime).toBe(60);
+});
 
 it('restores a synchronized lesson after responsive media replacement without saving zero progress', () => {
   const state = bridge();

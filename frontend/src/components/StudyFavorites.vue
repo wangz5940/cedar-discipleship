@@ -12,7 +12,7 @@ onBeforeUnmount(() => { window.removeEventListener('storage', refresh); window.r
 </script>
 <template>
   <section class="study-favorites">
-    <h2 class="course-section-title"><Bookmark :size="23" />我的收藏<small>{{ items.length }} 个课时 · {{ status.accountId ? '账号同步' : '游客本地保存' }}</small></h2>
+    <h2 class="course-section-title"><Bookmark :size="23" />视频收藏<small>{{ items.length }} 个课时 · {{ status.accountId ? '账号同步' : '游客本地保存' }}</small></h2>
     <p v-if="status.failure" role="status">{{ status.failure }} <button type="button" class="ghost" @click="retryStudySync">重试同步</button></p>
     <p v-else-if="!status.ready || status.syncing" role="status">正在同步账号数据…</p>
     <p v-if="!items.length" class="course-empty">还没有收藏。打开音视频课时，点击“收藏课时”即可保存。</p>
